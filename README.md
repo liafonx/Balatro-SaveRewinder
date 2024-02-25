@@ -1,3 +1,5 @@
+Save Manager for Balatro, macOS only
+
 ## Usage
 
 # Build
