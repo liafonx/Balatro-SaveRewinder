@@ -62,56 +62,60 @@ position = "after"
 match_indent = true
 overwrite = false
 payload = '''
-if ANTIHYP and G.ARGS and G.ARGS.save_run then
-   local save = G.ARGS.save_run
+   if ANTIHYP and G.ARGS and G.ARGS.save_run then
+      local save = G.ARGS.save_run
+      local state = G.STATE or (save and save.STATE)
 
-   -- One-shot skip used when loading a run so we do not
-   -- immediately back up the exact same state again.
-   if ANTIHYP.skip_next_backup then
-      save.ANTIHYP_SKIP_BACKUP = true
-      ANTIHYP.skip_next_backup = false
-   else
-      -- Optional filtering based on game state and the mod's
-      -- configuration. These booleans live in the mod config
-      -- and control whether a backup is kept at each key
-      -- transition (blind select, selecting hand, end of round,
-      -- shop). If a state is recognized but disabled, we mark
-      -- this save to be skipped by the backup thread while
-      -- still allowing the normal save.jkr to be written.
-      local cfg = ANTIHYP.config or {}
-      local state = G.STATE
-      local st = G.STATES
-      if state and st then
-         local recognized = false
-         local allow = false
+      -- One-shot skip used when loading a run so we do not
+      -- immediately back up the exact same state again.
+      if ANTIHYP.skip_next_backup then
+         save.ANTIHYP_SKIP_BACKUP = true
+         ANTIHYP.skip_next_backup = false
+      else
+         -- Optional filtering based on game state and the mod's
+         -- configuration. These booleans live in the mod config
+         -- and control whether a backup is kept at each key
+         -- transition (blind select, selecting hand, end of round,
+         -- shop). If a state is recognized but disabled, we mark
+         -- this save to be skipped by the backup thread while
+         -- still allowing the normal save.jkr to be written.
+         local cfg = ANTIHYP.config or {}
+         local st = G.STATES
+         if state and st then
+            local recognized = false
+            local allow = false
 
-         if state == st.BLIND_SELECT then
-            recognized = true
-            allow = (cfg.save_on_blind ~= false)
-         elseif state == st.SELECTING_HAND then
-            recognized = true
-            allow = (cfg.save_on_selecting_hand ~= false)
-         elseif state == st.ROUND_EVAL or state == st.HAND_PLAYED then
-            recognized = true
-            allow = (cfg.save_on_round_end ~= false)
-         elseif state == st.SHOP then
-            recognized = true
-            allow = (cfg.save_on_shop ~= false)
-         end
+            if state == st.BLIND_SELECT then
+               recognized = true
+               allow = (cfg.save_on_blind ~= false)
+            elseif state == st.SELECTING_HAND then
+               recognized = true
+               allow = (cfg.save_on_selecting_hand ~= false)
+            elseif state == st.ROUND_EVAL or state == st.HAND_PLAYED then
+               recognized = true
+               allow = (cfg.save_on_round_end ~= false)
+            elseif state == st.SHOP then
+               recognized = true
+               allow = (cfg.save_on_shop ~= false)
+            end
 
-         if recognized and not allow then
-            save.ANTIHYP_SKIP_BACKUP = true
+            if recognized and not allow then
+               save.ANTIHYP_SKIP_BACKUP = true
+            end
          end
       end
-   end
 
-   -- Pass the per-round retention hint through to the save manager
-   -- thread so it can prune older saves for this ante/round.
-   do
-      local cfg = ANTIHYP.config or {}
-      local idx = cfg.keep_antes or 7
-      local map = {1, 2, 4, 6, 8, 16, 0}
-      save.ANTIHYP_KEEP_ANTES = map[idx] or 0
+      -- Pass the per-round retention hint through to the save manager
+      -- thread so it can prune older saves for this ante/round.
+      do
+         local cfg = ANTIHYP.config or {}
+         local idx = cfg.keep_antes or 7
+         local map = {1, 2, 4, 6, 8, 16, 0}
+         save.ANTIHYP_KEEP_ANTES = map[idx] or 0
+      end
+
+      -- Tag the save with the trigger state so dedupe can keep
+      -- same-content saves that happened at different transitions.
+      save.ANTIHYP_TRIGGER = state or ""
    end
-end
-'''
+   '''

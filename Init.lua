@@ -110,44 +110,6 @@ function ANTIHYP.hook_key_hold()
    ANTIHYP._key_hold_hooked = true
 end
 
-if SMODS and SMODS.current_mod then
-   ANTIHYP.config = SMODS.current_mod.config
-   SMODS.current_mod.config_tab = function()
-      return {
-         n = G.UIT.ROOT,
-         config = { r = 0.2, colour = G.C.BLACK },
-         nodes = {
-            {
-               n = G.UIT.C,
-               config = { padding = 0.5 },
-               nodes = {
-                  create_toggle({
-                     label = "Save when choosing blind",
-                     ref_table = ANTIHYP.config,
-                     ref_value = "save_on_blind",
-                  }),
-                  create_toggle({
-                     label = "Save when selecting hand",
-                     ref_table = ANTIHYP.config,
-                     ref_value = "save_on_selecting_hand",
-                  }),
-                  create_toggle({
-                     label = "Save at end of round",
-                     ref_table = ANTIHYP.config,
-                     ref_value = "save_on_round_end",
-                  }),
-                  create_toggle({
-                     label = "Save in shop",
-                     ref_table = ANTIHYP.config,
-                     ref_value = "save_on_shop",
-                  }),
-               },
-            },
-         },
-      }
-   end
-end
-
 ANTIHYP._start_run = Game.start_run
 
 function Game:start_run(args)
@@ -162,6 +124,8 @@ function Game:start_run(args)
    -- so the first press of 's' in-run always opens it.
    if ANTIHYP then
       ANTIHYP.backups_open = false
+      ANTIHYP._seq_by_key = {}
+      ANTIHYP._last_hash_by_trigger = {}
    end
 
    -- For a brand new run (no savetext), clear any leftovers from the
@@ -179,4 +143,12 @@ function Game:start_run(args)
    ANTIHYP._start_run(self, args)
 
    ANTIHYP.hook_key_hold()
+end
+
+G.FUNCS = G.FUNCS or {}
+G.FUNCS.fastsl_config_change = function(args)
+   args = args or {}
+   if args.cycle_config and args.cycle_config.ref_table and args.cycle_config.ref_value then
+      args.cycle_config.ref_table[args.cycle_config.ref_value] = args.to_key
+   end
 end

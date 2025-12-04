@@ -37,14 +37,14 @@ Backups are stored per‑profile under `PROFILE/FastSaveLoader`.
 
 1. Start or continue a run with the mod enabled.
 2. As you play, backups are created automatically at the enabled state transitions.
-3. Press `S` during a run to open the **Backups** window:
+3. Press `Ctrl + S` during a run to open the **Backups** window:
    - Click a row to load that backup (the game restarts the run from that state).
    - Use the page selector at the bottom to switch pages.
    - Use **Delete all** to clear all backups for the current profile.
+   - Press `Ctrl + S` again to close the window.
 4. Press `S` during a run to quickly step back one backup:
    - The most recent backup is deleted.
    - The previous backup is loaded and the run is restarted from that point.
-5. Press `Ctrl + S` during a run to open or close the **Backups** window without using the options menu.
 
 ## Configuration
 

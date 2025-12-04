@@ -95,6 +95,7 @@ if SMODS and SMODS.current_mod then
                            scale = 0.75,
                            ref_table = ANTIHYP.config,
                            ref_value = "keep_antes",
+                           opt_callback = "fastsl_config_change",
                         }),
                      },
                   },

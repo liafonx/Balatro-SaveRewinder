@@ -61,6 +61,8 @@ function ANTIHYP.execute_save_manager(request)
       save_table.ANTIHYP_SKIP_BACKUP = nil
       return
    end
+   local trigger = tostring(save_table.ANTIHYP_TRIGGER or "")
+   save_table.ANTIHYP_TRIGGER = nil
 
    -- Read and clear the optional per-ante retention hint that the
    -- main game thread attached to this save. A value of 0 or nil
@@ -70,37 +72,48 @@ function ANTIHYP.execute_save_manager(request)
 
    -- String-pack the incoming save so we can cheaply compare against
    -- the most recent backup. This lets us avoid creating duplicate
-   -- backups when reloading the same state (either from this mod or
-   -- from the vanilla continue menu).
-   local packed_new
+   -- backups for identical states.
+   local packed_new, hash_new
    if STR_PACK then
       local ok, result = pcall(STR_PACK, save_table)
       if ok and type(result) == "string" then
          packed_new = result
+         if love and love.data and love.data.hash then
+            local ok_hash, h = pcall(love.data.hash, "md5", packed_new)
+            if ok_hash and h then hash_new = h end
+         else
+            hash_new = packed_new
+         end
       end
    end
 
    local newest_file, entries, ante_set = nil, nil, nil
-   if packed_new or keep_antes > 0 then
+   if keep_antes > 0 then
       newest_file, entries, ante_set = collect_backups(backup_dir)
    end
 
-   if packed_new and newest_file then
-      local ok, packed_old = pcall(get_compressed, newest_file)
-      if ok and type(packed_old) == "string" and packed_old == packed_new then
-         -- New save is byte-identical to the last backup: skip.
+   -- Drop exact duplicates for the same trigger to avoid flooding when
+   -- bouncing quickly between identical states.
+   ANTIHYP._last_hash_by_trigger = ANTIHYP._last_hash_by_trigger or {}
+   if hash_new then
+      if ANTIHYP._last_hash_by_trigger[trigger] == hash_new then
          return
       end
+      ANTIHYP._last_hash_by_trigger[trigger] = hash_new
    end
 
    local game = save_table.GAME or {}
    local ante = (game.round_resets and tonumber(game.round_resets.ante)) or 0
    local round = tonumber(game.round or 0) or 0
-   local timestamp = os.time()
+   local key = table.concat({ trigger, ante, round }, ":")
+   ANTIHYP._seq_by_key = ANTIHYP._seq_by_key or {}
+   ANTIHYP._seq_by_key[key] = (ANTIHYP._seq_by_key[key] or 0) + 1
+   local seq = ANTIHYP._seq_by_key[key]
 
-   -- File names only encode ante, round and timestamp.
-   -- Example: "2-3-1710000000.jkr"
-   local file_name = string.format("%d-%d-%d", ante, round, timestamp)
+   -- File names encode ante, round, trigger, and a per-key sequence.
+   -- Example: "2-3-selecting_hand-4.jkr"
+   local file_name = string.format("%d-%d-%s-%d", ante, round, trigger, seq)
+
    local save_path = backup_dir .. "/" .. file_name .. ".jkr"
 
    -- If we successfully packed the table, reuse that string so that

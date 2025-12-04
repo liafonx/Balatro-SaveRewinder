@@ -156,14 +156,11 @@ function ANTIHYP.get_backups_page(args)
       local offset = (page_num - 1) * per_page
       local max_index = math.min(#entries - offset, per_page)
 
-      -- First pass over all entries: collect metadata and total counts
-      -- per label so that we can give older saves lower numbers (1 is
-      -- the oldest occurrence of that label, even if it is not on the
-      -- first page). While we are doing this, also work out a
-      -- per-ante "relative round" index so that rounds reset to 1
-      -- when starting a new ante.
+      -- First pass over all entries: collect metadata and find the
+      -- minimum round per ante so that we can later compute a
+      -- per-ante "relative round" index (rounds reset to 1 when
+      -- starting a new ante).
       local metas_all = {}
-      local label_totals = {}
       local ante_min_round = {}
       for idx, entry in ipairs(entries) do
          local meta = get_backup_meta(entry)
@@ -174,23 +171,24 @@ function ANTIHYP.get_backups_page(args)
          if ante_min_round[ante] == nil or round < ante_min_round[ante] then
             ante_min_round[ante] = round
          end
-
-         -- Group counts by (ante, round, label) so that
-         -- numbering restarts for each round.
-         local key = tostring(ante) .. ":" .. tostring(round) .. ":" .. (meta.label or "")
-         label_totals[key] = (label_totals[key] or 0) + 1
       end
 
-      -- Second pass to assign a per-ante relative round number
-      -- starting at 1 for the first saved state in each ante.
-      for idx, meta in ipairs(metas_all) do
+      -- Second pass: assign a per-ante relative round number starting
+      -- at 1 for the first saved state in each ante, and count how
+      -- many saves share each (ante, rel_round, label) key so we can
+      -- give them stable ordinals.
+      local label_totals = {}
+      for _, meta in ipairs(metas_all) do
          local ante = meta.ante or 0
          local round = meta.round or 0
          local base = ante_min_round[ante] or 0
          meta.rel_round = (round - base) + 1
+
+         local key = tostring(ante) .. ":" .. tostring(meta.rel_round or 0) .. ":" .. (meta.label or "")
+         label_totals[key] = (label_totals[key] or 0) + 1
       end
 
-      -- Second pass over all entries (from newest to oldest) to assign
+      -- Third pass over all entries (from newest to oldest) to assign
       -- ordinals where the oldest save for a given label gets "1" and
       -- newer ones get higher numbers.
       local label_seen_from_newest = {}
@@ -201,7 +199,7 @@ function ANTIHYP.get_backups_page(args)
          local rel_round = meta.rel_round or meta.round or 0
          local key = tostring(ante) .. ":" .. tostring(rel_round) .. ":" .. (meta.label or "")
          label_seen_from_newest[key] = (label_seen_from_newest[key] or 0) + 1
-         local total = label_totals[key] or 1
+         local total = label_totals[key] or label_seen_from_newest[key]
          -- Newest gets highest number; oldest (last) gets 1.
          ordinals[idx] = total - label_seen_from_newest[key] + 1
       end

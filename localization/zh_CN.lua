@@ -17,8 +17,8 @@ return {
             fastsl_state_choose_blind = '选择盲注中',
             fastsl_state_in_run = '对局进行中',
 
-            fastsl_no_backups = '暂无备份',
-            fastsl_backups_button = '备份列表',
+            fastsl_no_backups = '暂无存档',
+            fastsl_backups_button = '存档列表',
             fastsl_reload_list = '刷新列表',
             fastsl_delete_all = '全部删除',
 
