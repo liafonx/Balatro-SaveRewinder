@@ -26,15 +26,15 @@ local function get_backup_meta(entry)
    local state = save.STATE
    if G and G.STATES and state then
       if state == G.STATES.SHOP then
-         state_label = "In shop"
+         state_label = (localize and localize("fastsl_state_shop")) or "In shop"
       elseif state == G.STATES.DRAW_TO_HAND then
-         state_label = "Start of round"
+         state_label = (localize and localize("fastsl_state_start_round")) or "Start of round"
       elseif state == G.STATES.SELECTING_HAND then
-         state_label = "Selecting hand"
+         state_label = (localize and localize("fastsl_state_selecting_hand")) or "Selecting hand"
       elseif state == G.STATES.ROUND_EVAL or state == G.STATES.HAND_PLAYED then
-         state_label = "End of hand"
+         state_label = (localize and localize("fastsl_state_end_of_hand")) or "End of hand"
       elseif state == G.STATES.BLIND_SELECT then
-         state_label = "Choosing next blind"
+         state_label = (localize and localize("fastsl_state_choose_blind")) or "Choosing next blind"
       end
    end
 
@@ -47,7 +47,7 @@ local function get_backup_meta(entry)
 
    local label = table.concat(label_parts, " • ")
    if label == "" then
-      label = "In run"
+      label = (localize and localize("fastsl_state_in_run")) or "In run"
    end
 
    return {
@@ -85,7 +85,9 @@ function ANTIHYP.build_backup_node(entry, meta, ordinal_suffix)
    local parts = {}
 
    if meta.ante and meta.round then
-      table.insert(parts, "Ante " .. meta.ante .. "  Round " .. meta.round)
+      local ante_label = (localize and localize("fastsl_ante_label")) or "Ante"
+      local round_label = (localize and localize("fastsl_round_label")) or "Round"
+      table.insert(parts, ante_label .. " " .. tostring(meta.ante) .. "  " .. round_label .. " " .. tostring(meta.round))
    end
    if meta.label then
       table.insert(parts, meta.label)
@@ -139,7 +141,11 @@ function ANTIHYP.get_backups_page(args)
    if #entries == 0 then
       content = {
          n = G.UIT.T,
-         config = { text = "No Backups Yet", colour = G.C.UI.TEXT_LIGHT, scale = 0.5 },
+         config = {
+            text = (localize and localize("fastsl_no_backups")) or "No backups yet",
+            colour = G.C.UI.TEXT_LIGHT,
+            scale = 0.5,
+         },
       }
    else
       local nodes = {}
@@ -212,7 +218,8 @@ function G.UIDEF.antihypertensive_backups()
    local total_pages = math.max(1, math.ceil(#entries / per_page))
    local page_numbers = {}
    for i = 1, total_pages do
-      page_numbers[i] = "Page " .. i .. "/" .. total_pages
+      local pattern = (localize and localize("fastsl_page_label")) or "Page %d/%d"
+      page_numbers[i] = string.format(pattern, i, total_pages)
    end
 
    local backups_box = UIBox({
@@ -256,7 +263,7 @@ function G.UIDEF.antihypertensive_backups()
                   nodes = {
                      UIBox_button({
                         button = "anti_backup_reload",
-                        label = { "Reload list" },
+                        label = { (localize and localize("fastsl_reload_list")) or "Reload list" },
                         minw = 4,
                      }),
                   },
@@ -267,7 +274,7 @@ function G.UIDEF.antihypertensive_backups()
                   nodes = {
                      UIBox_button({
                         button = "anti_backup_delete_all",
-                        label = { "Delete all" },
+                        label = { (localize and localize("fastsl_delete_all")) or "Delete all" },
                         minw = 4,
                      }),
                   },
@@ -292,7 +299,7 @@ function create_UIBox_options()
       if n3 and n3.nodes then
          local button = UIBox_button({
             button = "anti_backup_open",
-            label = { "Backups" },
+            label = { (localize and localize("fastsl_backups_button")) or "Backups" },
             minw = 5,
          })
          table.insert(n3.nodes, button)

@@ -22,6 +22,9 @@ Backups are stored per‑profile under `PROFILE/FastSaveLoader`.
 - Configurable:
   - Toggles for which states create backups
   - Limit for how many recent antes’ saves are kept
+- Localization:
+  - English (`en-us`)
+  - Simplified Chinese (`zh_CN`)
 
 ## Installation
 
