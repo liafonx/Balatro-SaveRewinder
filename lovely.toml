@@ -1,0 +1,117 @@
+[manifest]
+version = "1.0"
+dump_lua = true
+priority = 5
+
+# Fast Save Loader mod for Balatro.
+# Folder layout:
+# FastSaveLoaderMod/
+# ├─ lovely.toml
+# ├─ Init.lua
+# ├─ SaveManager.lua
+# ├─ Keybinds.lua
+# └─ UI/
+#    ├─ BackupsUI.lua
+#    └─ ButtonCallbacks.lua
+
+[[patches]]
+[patches.copy]
+target = "globals.lua"
+position = "append"
+sources = [ "Init.lua" ]
+
+[[patches]]
+[patches.copy]
+target = "main.lua"
+position = "append"
+sources = [ "Keybinds.lua" ]
+
+[[patches]]
+[patches.copy]
+target = "functions/UI_definitions.lua"
+position = "append"
+sources = [ "UI/BackupsUI.lua" ]
+
+[[patches]]
+[patches.copy]
+target = "functions/button_callbacks.lua"
+position = "append"
+sources = [ "UI/ButtonCallbacks.lua" ]
+
+[[patches]]
+[patches.module]
+source = "SaveManager.lua"
+before = "engine/save_manager.lua"
+name = "ANTIHYP"
+load_now = true
+
+[[patches]]
+[patches.pattern]
+target = "engine/save_manager.lua"
+pattern = "compress_and_save(prefix_profile..'save.jkr', request.save_table)"
+position = "after"
+match_indent = true
+overwrite = false
+payload = "ANTIHYP.execute_save_manager(request)"
+
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "if G.FILE_HANDLER.run then"
+position = "after"
+match_indent = true
+overwrite = false
+payload = '''
+if ANTIHYP and G.ARGS and G.ARGS.save_run then
+   local save = G.ARGS.save_run
+
+   -- One-shot skip used when loading a run so we do not
+   -- immediately back up the exact same state again.
+   if ANTIHYP.skip_next_backup then
+      save.ANTIHYP_SKIP_BACKUP = true
+      ANTIHYP.skip_next_backup = false
+   else
+      -- Optional filtering based on game state and the mod's
+      -- configuration. These booleans live in the mod config
+      -- and control whether a backup is kept at each key
+      -- transition (blind select, selecting hand, end of round,
+      -- shop). If a state is recognized but disabled, we mark
+      -- this save to be skipped by the backup thread while
+      -- still allowing the normal save.jkr to be written.
+      local cfg = ANTIHYP.config or {}
+      local state = G.STATE
+      local st = G.STATES
+      if state and st then
+         local recognized = false
+         local allow = false
+
+         if state == st.BLIND_SELECT then
+            recognized = true
+            allow = (cfg.save_on_blind ~= false)
+         elseif state == st.SELECTING_HAND then
+            recognized = true
+            allow = (cfg.save_on_selecting_hand ~= false)
+         elseif state == st.ROUND_EVAL or state == st.HAND_PLAYED then
+            recognized = true
+            allow = (cfg.save_on_round_end ~= false)
+         elseif state == st.SHOP then
+            recognized = true
+            allow = (cfg.save_on_shop ~= false)
+         end
+
+         if recognized and not allow then
+            save.ANTIHYP_SKIP_BACKUP = true
+         end
+      end
+   end
+
+   -- Pass the per-round retention hint through to the save manager
+   -- thread so it can prune older saves for this ante/round.
+   do
+      local cfg = ANTIHYP.config or {}
+      local idx = cfg.keep_antes or 7
+      local map = {1, 2, 4, 6, 8, 16, 0}
+      save.ANTIHYP_KEEP_ANTES = map[idx] or 0
+   end
+end
+'''

@@ -1,29 +1,57 @@
-Save Manager for Balatro, macOS only
+Fast Save Loader for Balatro
+============================
+
+Fast Save Loader is a Steamodded/Lovely mod that keeps rolling backups of your current run and lets you jump between recent states directly from inside Balatro.
+
+Backups are stored per‑profile under `PROFILE/FastSaveLoader`.
+
+## Features
+
+- In‑run backups for key states:
+  - Choosing blind
+  - Selecting hand
+  - End of round
+  - In shop
+- In‑game backup browser with:
+  - Ante / round / state labels
+  - Pagination
+  - “Reload list” and “Delete all” actions
+- Keyboard shortcuts:
+  - `S` in a run: open/close the backups window
+  - `Ctrl + S` in a run: delete the latest backup and load the previous one
+- Configurable:
+  - Toggles for which states create backups
+  - Limit for how many recent antes’ saves are kept
+
+## Installation
+
+1. Install Steamodded / Lovely for Balatro (follow their documentation).
+2. Copy this folder into your Balatro `Mods` directory, for example:
+   - macOS: `~/Library/Application Support/Balatro/Mods/FastSaveLoader`
+3. Restart Balatro. You should see **Fast Save Loader** in the mods list.
 
 ## Usage
 
-# Build
-Run and copy the app (GUI or Executable) from Xcode/Vscode, or:
-```
-git clone https://github.com/miku1958/Balatro.antihypertensive
-cd Balatro.antihypertensive
-swift build
-cd .build/arm64-apple-macosx/debug
-```
+1. Start or continue a run with the mod enabled.
+2. As you play, backups are created automatically at the enabled state transitions.
+3. Press `S` during a run to open the **Backups** window:
+   - Click a row to load that backup (the game restarts the run from that state).
+   - Use the page selector at the bottom to switch pages.
+   - Use **Delete all** to clear all backups for the current profile.
+4. Press `Ctrl + S` during a run to quickly step back one backup:
+   - The most recent backup is deleted.
+   - The previous backup is loaded and the run is restarted from that point.
 
+## Configuration
 
-# GUI
-1. Select the save forlder on first boot
+In the Steamodded mod config UI for **Fast Save Loader** you can:
 
-you can open the C drive in Whisky
-<img width="1012" alt="Screenshot 2024-02-25 at 16 27 43" src="https://github.com/miku1958/Balatro.antihypertensive/assets/24806909/38fab228-ea37-4cc0-8183-d738c845e967">
-Then find the save folder under  `drive_c/users/crossover/AppData/Roaming/Balatro`
+- Enable/disable saving when:
+  - Choosing blind
+  - Selecting hand
+  - At end of round
+  - In shop
+- Choose **Max saved antes per run** (1, 2, 4, 6, 8, 16, or All).
+- Click **Delete all saves** to purge every backup for the current profile.
 
-2. After the game is saved, a new item will appear in the UI
-<img width="1012" alt="image" src="https://github.com/miku1958/Balatro.antihypertensive/assets/24806909/c18593f3-8f83-4e05-a2d6-fb100f71cb0a">
-
-
-# Executable
-1. If this is your first boot, add the save folder as a parameter: `Executable /Users/xxx/Library/Containers/com.isaacmarovitz.Whisky/Bottles/yyyy/drive_c/users/crossover/AppData/Roaming/Balatro`
-2. The executable file will back up save files automatically.
-3. Manually restore the save file.
+Changes take effect immediately for subsequent saves. Existing backups are pruned according to the ante limit. 

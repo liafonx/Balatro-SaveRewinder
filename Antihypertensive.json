@@ -1,0 +1,13 @@
+{
+  "id": "fast_save_loader",
+  "name": "Fast Save Loader",
+  "display_name": "Fast Save Loader",
+  "author": ["liafonx"],
+  "description": "Fast in-run save browser and quick loader for Balatro.",
+  "prefix": "fastsl",
+  "main_file": "main.lua",
+  "priority": 0,
+  "badge_colour": "ffffff",
+  "badge_text_colour": "000000",
+  "version": "1.0.0"
+}
