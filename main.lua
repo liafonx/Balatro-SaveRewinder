@@ -79,7 +79,15 @@ if SMODS and SMODS.current_mod then
                      nodes = {
                         create_option_cycle({
                            label = localize and localize("fastsl_max_antes_per_run") or "Max saved antes per run",
-                           options = { "1", "2", "4", "6", "8", "16", "All" },
+                           options = {
+                              "1",
+                              "2",
+                              "4",
+                              "6",
+                              "8",
+                              "16",
+                              (localize and localize("fastsl_all_label")) or "All",
+                           },
                            current_option = ANTIHYP.config.keep_antes or 7,
                            colour = G.C.BOOSTER,
                            w = 4,

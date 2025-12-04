@@ -51,11 +51,9 @@ function love.keypressed(key, scancode, isrepeat)
       end
 
       local ctrl_down = love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl")
-      if ctrl_down and not isrepeat then
-         revert_to_previous_backup()
-         return
-     else
-         -- Toggle the backups window with plain 's'
+      if ctrl_down then
+         -- Ctrl + S: toggle the backups window
+         if isrepeat then return end
          if ANTIHYP.backups_open then
             if G.FUNCS.exit_overlay_menu then
                G.FUNCS.exit_overlay_menu()
@@ -68,6 +66,12 @@ function love.keypressed(key, scancode, isrepeat)
                ANTIHYP.backups_open = true
                return
             end
+         end
+      else
+         -- Plain 'S': delete latest backup and load the previous one
+         if not isrepeat then
+            revert_to_previous_backup()
+            return
          end
       end
    end

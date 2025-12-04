@@ -32,7 +32,7 @@ local function get_backup_meta(entry)
       elseif state == G.STATES.SELECTING_HAND then
          state_label = (localize and localize("fastsl_state_selecting_hand")) or "Selecting hand"
       elseif state == G.STATES.ROUND_EVAL or state == G.STATES.HAND_PLAYED then
-         state_label = (localize and localize("fastsl_state_end_of_hand")) or "End of hand"
+         state_label = (localize and localize("fastsl_state_end_of_round")) or "End of round"
       elseif state == G.STATES.BLIND_SELECT then
          state_label = (localize and localize("fastsl_state_choose_blind")) or "Choosing next blind"
       end
@@ -84,10 +84,14 @@ function ANTIHYP.build_backup_node(entry, meta, ordinal_suffix)
    meta = meta or get_backup_meta(entry)
    local parts = {}
 
-   if meta.ante and meta.round then
+   if meta.ante and (meta.rel_round or meta.round) then
       local ante_label = (localize and localize("fastsl_ante_label")) or "Ante"
       local round_label = (localize and localize("fastsl_round_label")) or "Round"
-      table.insert(parts, ante_label .. " " .. tostring(meta.ante) .. "  " .. round_label .. " " .. tostring(meta.round))
+      local round_value = meta.rel_round or meta.round
+      table.insert(
+         parts,
+         ante_label .. " " .. tostring(meta.ante) .. "  " .. round_label .. " " .. tostring(round_value)
+      )
    end
    if meta.label then
       table.insert(parts, meta.label)
@@ -155,16 +159,35 @@ function ANTIHYP.get_backups_page(args)
       -- First pass over all entries: collect metadata and total counts
       -- per label so that we can give older saves lower numbers (1 is
       -- the oldest occurrence of that label, even if it is not on the
-      -- first page).
+      -- first page). While we are doing this, also work out a
+      -- per-ante "relative round" index so that rounds reset to 1
+      -- when starting a new ante.
       local metas_all = {}
       local label_totals = {}
+      local ante_min_round = {}
       for idx, entry in ipairs(entries) do
          local meta = get_backup_meta(entry)
          metas_all[idx] = meta
+
+         local ante = meta.ante or 0
+         local round = meta.round or 0
+         if ante_min_round[ante] == nil or round < ante_min_round[ante] then
+            ante_min_round[ante] = round
+         end
+
          -- Group counts by (ante, round, label) so that
          -- numbering restarts for each round.
-         local key = tostring(meta.ante or 0) .. ":" .. tostring(meta.round or 0) .. ":" .. (meta.label or "")
+         local key = tostring(ante) .. ":" .. tostring(round) .. ":" .. (meta.label or "")
          label_totals[key] = (label_totals[key] or 0) + 1
+      end
+
+      -- Second pass to assign a per-ante relative round number
+      -- starting at 1 for the first saved state in each ante.
+      for idx, meta in ipairs(metas_all) do
+         local ante = meta.ante or 0
+         local round = meta.round or 0
+         local base = ante_min_round[ante] or 0
+         meta.rel_round = (round - base) + 1
       end
 
       -- Second pass over all entries (from newest to oldest) to assign
@@ -174,7 +197,9 @@ function ANTIHYP.get_backups_page(args)
       local ordinals = {}
       for idx, entry in ipairs(entries) do
          local meta = metas_all[idx]
-         local key = tostring(meta.ante or 0) .. ":" .. tostring(meta.round or 0) .. ":" .. (meta.label or "")
+         local ante = meta.ante or 0
+         local rel_round = meta.rel_round or meta.round or 0
+         local key = tostring(ante) .. ":" .. tostring(rel_round) .. ":" .. (meta.label or "")
          label_seen_from_newest[key] = (label_seen_from_newest[key] or 0) + 1
          local total = label_totals[key] or 1
          -- Newest gets highest number; oldest (last) gets 1.

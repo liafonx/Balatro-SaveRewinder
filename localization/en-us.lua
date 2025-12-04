@@ -13,7 +13,7 @@ return {
             fastsl_state_shop = 'In shop',
             fastsl_state_start_round = 'Start of round',
             fastsl_state_selecting_hand = 'Selecting hand',
-            fastsl_state_end_of_hand = 'End of hand',
+            fastsl_state_end_of_round = 'End of round',
             fastsl_state_choose_blind = 'Choosing next blind',
             fastsl_state_in_run = 'In run',
 
@@ -25,6 +25,7 @@ return {
             fastsl_ante_label = 'Ante',
             fastsl_round_label = 'Round',
             fastsl_page_label = 'Page %d/%d',
+            fastsl_all_label = 'All'
         },
     },
 }

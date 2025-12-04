@@ -30,7 +30,8 @@ local function collect_backups(backup_dir)
             newest_mtime, newest_file = mtime, full
          end
 
-         local _, ante_str, round_str = string.match(file, "^(.-)%-(%d+)%-(%d+)%-%d+%.jkr$")
+         -- New filename format: "<ante>-<round>-<timestamp>.jkr"
+         local ante_str, round_str = string.match(file, "^(%d+)%-(%d+)%-%d+%.jkr$")
          local ante = tonumber(ante_str or "")
          local round = tonumber(round_str or "")
          if ante then
@@ -93,12 +94,13 @@ function ANTIHYP.execute_save_manager(request)
    end
 
    local game = save_table.GAME or {}
-   local seed = (game.pseudorandom and game.pseudorandom.seed) and tostring(game.pseudorandom.seed) or "seed"
    local ante = (game.round_resets and tonumber(game.round_resets.ante)) or 0
    local round = tonumber(game.round or 0) or 0
    local timestamp = os.time()
 
-   local file_name = string.format("%s-%d-%d-%d", seed, ante, round, timestamp)
+   -- File names only encode ante, round and timestamp.
+   -- Example: "2-3-1710000000.jkr"
+   local file_name = string.format("%d-%d-%d", ante, round, timestamp)
    local save_path = backup_dir .. "/" .. file_name .. ".jkr"
 
    -- If we successfully packed the table, reuse that string so that

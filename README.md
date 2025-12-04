@@ -17,8 +17,8 @@ Backups are stored per‑profile under `PROFILE/FastSaveLoader`.
   - Pagination
   - “Reload list” and “Delete all” actions
 - Keyboard shortcuts:
-  - `S` in a run: open/close the backups window
-  - `Ctrl + S` in a run: delete the latest backup and load the previous one
+  - `S` in a run: delete the latest backup and load the most recent previous one (not the current state)
+  - `Ctrl + S` in a run: open/close the backups window
 - Configurable:
   - Toggles for which states create backups
   - Limit for how many recent antes’ saves are kept
@@ -41,9 +41,10 @@ Backups are stored per‑profile under `PROFILE/FastSaveLoader`.
    - Click a row to load that backup (the game restarts the run from that state).
    - Use the page selector at the bottom to switch pages.
    - Use **Delete all** to clear all backups for the current profile.
-4. Press `Ctrl + S` during a run to quickly step back one backup:
+4. Press `S` during a run to quickly step back one backup:
    - The most recent backup is deleted.
    - The previous backup is loaded and the run is restarted from that point.
+5. Press `Ctrl + S` during a run to open or close the **Backups** window without using the options menu.
 
 ## Configuration
 
@@ -58,6 +59,14 @@ In the Steamodded mod config UI for **Fast Save Loader** you can:
 - Click **Delete all saves** to purge every backup for the current profile.
 
 Changes take effect immediately for subsequent saves. Existing backups are pruned according to the ante limit. 
+
+## Notes and limitations
+
+- Fast Save Loader creates backups at a few safe points (choosing blind, in shop, end of round, etc.).
+- If you trigger a load while Balatro is still saving during an animation/transition, the backup you restore may be slightly behind what you currently see on screen.
+- Because of this, the mod works best when combined with higher game speeds (for example, 4x or above), where you are mostly jumping back across larger chunks of play.
+- If you usually play at normal or low speeds (below 4x) and want to rewind to the exact current state instead, consider a mod designed for that use case such as **BalatroQuickLoad**:  
+  https://github.com/TsunamiinFantasy/BalatroQuickLoad
 
 ## Credits
 
