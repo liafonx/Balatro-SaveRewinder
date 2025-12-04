@@ -6,24 +6,56 @@
 if not ANTIHYP then ANTIHYP = {} end
 
 if not ANTIHYP.PATHS then
-   ANTIHYP.PATHS = {
-      BACKUPS = "FastSaveLoader",
-   }
+   ANTIHYP.PATHS = { BACKUPS = "FastSaveLoader" }
+end
+
+local function ensure_dir(path)
+   if not love.filesystem.getInfo(path) then
+      love.filesystem.createDirectory(path)
+   end
+end
+
+local function collect_backups(backup_dir)
+   local newest_file, newest_mtime = nil, -math.huge
+   local entries = {}
+   local ante_set = {}
+
+   local items = love.filesystem.getDirectoryItems(backup_dir)
+   for _, file in ipairs(items) do
+      local full = backup_dir .. "/" .. file
+      local info = love.filesystem.getInfo(full)
+      if info and info.type == "file" then
+         local mtime = info.modtime or 0
+         if mtime > newest_mtime then
+            newest_mtime, newest_file = mtime, full
+         end
+
+         local _, ante_str, round_str = string.match(file, "^(.-)%-(%d+)%-(%d+)%-%d+%.jkr$")
+         local ante = tonumber(ante_str or "")
+         local round = tonumber(round_str or "")
+         if ante then
+            table.insert(entries, {
+               file = file,
+               ante = ante,
+               round = round,
+               modtime = mtime,
+            })
+            ante_set[ante] = true
+         end
+      end
+   end
+
+   return newest_file, entries, ante_set
 end
 
 function ANTIHYP.execute_save_manager(request)
    local profile = tostring(request.profile_num or 1)
-   if not love.filesystem.getInfo(profile) then
-      love.filesystem.createDirectory(profile)
-   end
+   ensure_dir(profile)
 
    local backup_dir = profile .. "/" .. ANTIHYP.PATHS.BACKUPS
-   if not love.filesystem.getInfo(backup_dir) then
-      love.filesystem.createDirectory(backup_dir)
-   end
+   ensure_dir(backup_dir)
 
    local save_table = request.save_table or {}
-
    if save_table.ANTIHYP_SKIP_BACKUP then
       save_table.ANTIHYP_SKIP_BACKUP = nil
       return
@@ -47,41 +79,22 @@ function ANTIHYP.execute_save_manager(request)
       end
    end
 
-   if packed_new then
-      local latest_file
-      local latest_mtime = -math.huge
-      if love.filesystem.getInfo(backup_dir) then
-         for _, file in ipairs(love.filesystem.getDirectoryItems(backup_dir)) do
-            local full = backup_dir .. "/" .. file
-            local info = love.filesystem.getInfo(full)
-            if info and info.type == "file" and (info.modtime or 0) > latest_mtime then
-               latest_mtime = info.modtime or 0
-               latest_file = full
-            end
-         end
-      end
+   local newest_file, entries, ante_set = nil, nil, nil
+   if packed_new or keep_antes > 0 then
+      newest_file, entries, ante_set = collect_backups(backup_dir)
+   end
 
-      if latest_file then
-         local ok, packed_old = pcall(get_compressed, latest_file)
-         if ok and type(packed_old) == "string" and packed_old == packed_new then
-            -- New save is byte-identical to the last backup: skip.
-            return
-         end
+   if packed_new and newest_file then
+      local ok, packed_old = pcall(get_compressed, newest_file)
+      if ok and type(packed_old) == "string" and packed_old == packed_new then
+         -- New save is byte-identical to the last backup: skip.
+         return
       end
    end
 
    local game = save_table.GAME or {}
-
-   local seed = "seed"
-   if game.pseudorandom and game.pseudorandom.seed then
-      seed = tostring(game.pseudorandom.seed)
-   end
-
-   local ante = 0
-   if game.round_resets and game.round_resets.ante then
-      ante = tonumber(game.round_resets.ante) or 0
-   end
-
+   local seed = (game.pseudorandom and game.pseudorandom.seed) and tostring(game.pseudorandom.seed) or "seed"
+   local ante = (game.round_resets and tonumber(game.round_resets.ante)) or 0
    local round = tonumber(game.round or 0) or 0
    local timestamp = os.time()
 
@@ -99,42 +112,16 @@ function ANTIHYP.execute_save_manager(request)
    -- If configured, keep only the most recent N antes worth of saves
    -- in this run (all saves from the latest antes, none from older
    -- antes). A keep_antes of 0 means "unlimited".
-   if keep_antes and keep_antes > 0 then
-      local entries = {}
-      if love.filesystem.getInfo(backup_dir) then
-         for _, file in ipairs(love.filesystem.getDirectoryItems(backup_dir)) do
-            local full = backup_dir .. "/" .. file
-            local info = love.filesystem.getInfo(full)
-            if info and info.type == "file" then
-               local seed_str, ante_str, round_str = string.match(file, "^(.-)%-(%d+)%-(%d+)%-%d+%.jkr$")
-               local a = tonumber(ante_str or "")
-               local r = tonumber(round_str or "")
-               if a then
-                  table.insert(entries, {
-                     file = file,
-                     ante = a,
-                     round = r,
-                     modtime = info.modtime or 0,
-                  })
-               end
-            end
-         end
-      end
-
-      -- Work out which antes we are allowed to keep: take the highest
-      -- N ante numbers present and delete saves from older antes.
-      local ante_set = {}
-      for _, e in ipairs(entries) do
-         ante_set[e.ante] = true
-      end
+   if keep_antes and keep_antes > 0 and entries and next(entries) ~= nil then
       local antes = {}
-      for a, _ in pairs(ante_set) do
+      for a in pairs(ante_set or {}) do
          table.insert(antes, a)
       end
       table.sort(antes, function(a, b) return a > b end)
 
       local allowed = {}
-      for i = 1, math.min(keep_antes, #antes) do
+      local limit = math.min(keep_antes, #antes)
+      for i = 1, limit do
          allowed[antes[i]] = true
       end
 

@@ -55,3 +55,9 @@ In the Steamodded mod config UI for **Fast Save Loader** you can:
 - Click **Delete all saves** to purge every backup for the current profile.
 
 Changes take effect immediately for subsequent saves. Existing backups are pruned according to the ante limit. 
+
+## Credits
+
+Fast Save Loader is derived from and heavily inspired by the original Antihypertensive save manager project:
+
+- https://github.com/miku1958/Balatro.antihypertensive.git
