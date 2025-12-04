@@ -22,7 +22,7 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.01 },
                      nodes = {
                         create_toggle({
-                           label = "Save when choosing blind",
+                           label = localize and localize("fastsl_save_on_blind") or "Save when choosing blind",
                            ref_table = ANTIHYP.config,
                            ref_value = "save_on_blind",
                            label_scale = 0.35,
@@ -36,7 +36,7 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.01 },
                      nodes = {
                         create_toggle({
-                           label = "Save when selecting hand",
+                           label = localize and localize("fastsl_save_on_selecting_hand") or "Save when selecting hand",
                            ref_table = ANTIHYP.config,
                            ref_value = "save_on_selecting_hand",
                            label_scale = 0.35,
@@ -50,7 +50,7 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.01 },
                      nodes = {
                         create_toggle({
-                           label = "Save at end of round",
+                           label = localize and localize("fastsl_save_on_round_end") or "Save at end of round",
                            ref_table = ANTIHYP.config,
                            ref_value = "save_on_round_end",
                            label_scale = 0.35,
@@ -64,7 +64,7 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.01 },
                      nodes = {
                         create_toggle({
-                           label = "Save in shop",
+                           label = localize and localize("fastsl_save_on_shop") or "Save in shop",
                            ref_table = ANTIHYP.config,
                            ref_value = "save_on_shop",
                            label_scale = 0.35,
@@ -78,7 +78,7 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.03 },
                      nodes = {
                         create_option_cycle({
-                           label = "Max saved antes per run",
+                           label = localize and localize("fastsl_max_antes_per_run") or "Max saved antes per run",
                            options = { "1", "2", "4", "6", "8", "16", "All" },
                            current_option = ANTIHYP.config.keep_antes or 7,
                            colour = G.C.BOOSTER,
@@ -95,7 +95,7 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.01 },
                      nodes = {
                         UIBox_button({
-                           label = { "Delete all saves" },
+                           label = { (localize and localize("fastsl_delete_all_saves_button")) or "Delete all saves" },
                            button = "anti_backup_delete_all",
                            minw = 3,
                            minh = 0.7,
