@@ -9,7 +9,13 @@ ANTIHYP._love_keypressed = love.keypressed
 local function revert_to_previous_backup()
    if not ANTIHYP or not ANTIHYP.get_backup_files or not ANTIHYP.get_backup_dir then return end
    local entries = ANTIHYP.get_backup_files()
-   if not entries or #entries < 2 then return end
+   if not entries or #entries < 2 then
+      -- Fall back to the latest in-memory save if available.
+      if ANTIHYP.load_latest_live then
+         ANTIHYP.load_latest_live()
+      end
+      return
+   end
 
    local dir = ANTIHYP.get_backup_dir()
    local latest = entries[1]

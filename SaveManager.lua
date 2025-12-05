@@ -61,7 +61,6 @@ function ANTIHYP.execute_save_manager(request)
       save_table.ANTIHYP_SKIP_BACKUP = nil
       return
    end
-   local trigger = tostring(save_table.ANTIHYP_TRIGGER or "")
    save_table.ANTIHYP_TRIGGER = nil
 
    -- Read and clear the optional per-ante retention hint that the
@@ -70,20 +69,12 @@ function ANTIHYP.execute_save_manager(request)
    local keep_antes = tonumber(save_table.ANTIHYP_KEEP_ANTES or 0) or 0
    save_table.ANTIHYP_KEEP_ANTES = nil
 
-   -- String-pack the incoming save so we can cheaply compare against
-   -- the most recent backup. This lets us avoid creating duplicate
-   -- backups for identical states.
-   local packed_new, hash_new
+   -- String-pack the incoming save for consistent on-disk format.
+   local packed_new
    if STR_PACK then
       local ok, result = pcall(STR_PACK, save_table)
       if ok and type(result) == "string" then
          packed_new = result
-         if love and love.data and love.data.hash then
-            local ok_hash, h = pcall(love.data.hash, "md5", packed_new)
-            if ok_hash and h then hash_new = h end
-         else
-            hash_new = packed_new
-         end
       end
    end
 
@@ -92,27 +83,14 @@ function ANTIHYP.execute_save_manager(request)
       newest_file, entries, ante_set = collect_backups(backup_dir)
    end
 
-   -- Drop exact duplicates for the same trigger to avoid flooding when
-   -- bouncing quickly between identical states.
-   ANTIHYP._last_hash_by_trigger = ANTIHYP._last_hash_by_trigger or {}
-   if hash_new then
-      if ANTIHYP._last_hash_by_trigger[trigger] == hash_new then
-         return
-      end
-      ANTIHYP._last_hash_by_trigger[trigger] = hash_new
-   end
-
    local game = save_table.GAME or {}
    local ante = (game.round_resets and tonumber(game.round_resets.ante)) or 0
    local round = tonumber(game.round or 0) or 0
-   local key = table.concat({ trigger, ante, round }, ":")
-   ANTIHYP._seq_by_key = ANTIHYP._seq_by_key or {}
-   ANTIHYP._seq_by_key[key] = (ANTIHYP._seq_by_key[key] or 0) + 1
-   local seq = ANTIHYP._seq_by_key[key]
+   ANTIHYP._save_counter = (ANTIHYP._save_counter or 0) + 1
 
-   -- File names encode ante, round, trigger, and a per-key sequence.
-   -- Example: "2-3-selecting_hand-4.jkr"
-   local file_name = string.format("%d-%d-%s-%d", ante, round, trigger, seq)
+   -- File names encode ante, round, and a monotonic counter for the run.
+   -- Example: "2-3-42.jkr"
+   local file_name = string.format("%d-%d-%d", ante, round, ANTIHYP._save_counter)
 
    local save_path = backup_dir .. "/" .. file_name .. ".jkr"
 

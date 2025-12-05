@@ -10,6 +10,50 @@ if not ANTIHYP.PATHS then
    }
 end
 
+-- Keep a small in-memory ring of the most recent save payloads seen at the
+-- game hook. This avoids a disk read when the latest state is needed quickly.
+ANTIHYP._live_saves = {}
+local MAX_LIVE_SAVES = 8
+
+function ANTIHYP.cache_live_save(save_table, state)
+   if not save_table then return end
+
+   -- Shallow copy to avoid the game mutating the table after we store it.
+   local copy = {}
+   for k, v in pairs(save_table) do
+      copy[k] = v
+   end
+
+   local packed = nil
+   if STR_PACK then
+      local ok, result = pcall(STR_PACK, copy)
+      if ok and type(result) == "string" then
+         packed = result
+      end
+   end
+
+   local game = copy.GAME or {}
+   local ante = (game.round_resets and tonumber(game.round_resets.ante)) or game.ante or 0
+   local round = tonumber(game.round or 0) or 0
+
+   table.insert(ANTIHYP._live_saves, 1, {
+      packed = packed,
+      save = copy,
+      trigger = state,
+      ante = ante,
+      round = round,
+      ts = os.time(),
+   })
+
+   while #ANTIHYP._live_saves > MAX_LIVE_SAVES do
+      table.remove(ANTIHYP._live_saves)
+   end
+end
+
+function ANTIHYP.get_latest_live_save()
+   return ANTIHYP._live_saves and ANTIHYP._live_saves[1] or nil
+end
+
 function ANTIHYP.get_profile()
    if G and G.SETTINGS and G.SETTINGS.profile then
       return tostring(G.SETTINGS.profile)
@@ -43,9 +87,8 @@ function ANTIHYP.load_backup(file)
    return nil
 end
 
-function ANTIHYP.load_and_start_from_file(file)
-   local run_data = ANTIHYP.load_backup(file)
-   if not run_data then return end
+local function start_from_run_data(run_data)
+   if not run_data then return false end
 
    -- Work out which index this file currently has in the backup list.
    -- This keeps stepping behaviour in sync even if the list changes
@@ -54,10 +97,10 @@ function ANTIHYP.load_and_start_from_file(file)
    -- older state discards the "future" timeline.
    local idx_from_list = nil
    local entries = nil
-   if ANTIHYP.get_backup_files then
+   if ANTIHYP.get_backup_files and run_data._file then
       entries = ANTIHYP.get_backup_files()
       for i, e in ipairs(entries) do
-         if e.file == file then
+         if e.file == run_data._file then
             idx_from_list = i
             break
          end
@@ -101,6 +144,33 @@ function ANTIHYP.load_and_start_from_file(file)
          savetext = G.SAVED_GAME,
       })
    end
+
+   return true
+end
+
+function ANTIHYP.load_and_start_from_file(file)
+   local run_data = ANTIHYP.load_backup(file)
+   if run_data then
+      run_data._file = file
+   end
+   start_from_run_data(run_data)
+end
+
+function ANTIHYP.load_latest_live()
+   local entry = ANTIHYP.get_latest_live_save and ANTIHYP.get_latest_live_save()
+   if not entry then return false end
+   local run_data = nil
+   if entry.packed then
+      local ok, unpacked = pcall(STR_UNPACK, entry.packed)
+      if ok then
+         run_data = unpacked
+      end
+   end
+   run_data = run_data or entry.save
+   if run_data then
+      run_data._file = "_live"
+   end
+   return start_from_run_data(run_data)
 end
 
 function ANTIHYP.hook_key_hold()
@@ -124,8 +194,8 @@ function Game:start_run(args)
    -- so the first press of 's' in-run always opens it.
    if ANTIHYP then
       ANTIHYP.backups_open = false
-      ANTIHYP._seq_by_key = {}
-      ANTIHYP._last_hash_by_trigger = {}
+      ANTIHYP._save_counter = 0
+      ANTIHYP._live_saves = {}
    end
 
    -- For a brand new run (no savetext), clear any leftovers from the

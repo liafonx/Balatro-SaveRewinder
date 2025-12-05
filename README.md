@@ -63,10 +63,8 @@ Changes take effect immediately for subsequent saves. Existing backups are prune
 ## Notes and limitations
 
 - Fast Save Loader creates backups at a few safe points (choosing blind, in shop, end of round, etc.).
-- If you trigger a load while Balatro is still saving during an animation/transition, the backup you restore may be slightly behind what you currently see on screen.
-- Because of this, the mod works best when combined with higher game speeds (for example, 4x or above), where you are mostly jumping back across larger chunks of play.
-- If you usually play at normal or low speeds (below 4x) and want to rewind to the exact current state instead, consider a mod designed for that use case such as **BalatroQuickLoad**:  
-  https://github.com/TsunamiinFantasy/BalatroQuickLoad
+- If you trigger a load while Balatro is still saving during an animation/transition, the backup you restore may be slightly behind the save point you expect to be.
+- Because of Balatro’s own saving behaviour and the time it takes to write and read `save.jkr`, the sequence of backups is not guaranteed to include every single intermediate state. During very fast transitions between states/pages, some points that “feel” like they should have been saved may be skipped in the backup list.
 
 ## Credits
 
