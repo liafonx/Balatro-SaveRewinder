@@ -41,11 +41,11 @@ sources = [ "UI/ButtonCallbacks.lua" ]
 [[patches]]
 [patches.regex]
 target = "functions/button_callbacks.lua"
-pattern = "func = function\\(\\)\\n      delay\\(0.3\\)"
+pattern = "func = function\\(\\)\\n      delay\\(0.1\\)"
 position = "at"
 payload = """func = function()
       if not G.screenwipe or not G.screenwipe.children or not G.screenwipe.children.particles then return true end
-      delay(0.3)"""
+      delay(0.1)"""
 match_indent = true
 
 [[patches]]
@@ -80,12 +80,14 @@ load_now = true
 name = "StateSignature"
 source = "StateSignature.lua"
 load_now = true # Load immediately so Init.lua can require it
+before = "globals.lua"
 
 [[patches]]
 [patches.module]
 name = "BackupManager"
 source = "BackupManager.lua"
 load_now = true # Load immediately so Init.lua can require it
+before = "globals.lua"
 
 [[patches]]
 [patches.copy] # GamePatches is not a module; it's a set of global overrides.
