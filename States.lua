@@ -1,0 +1,21 @@
+self.STATES = {
+        SELECTING_HAND = 1,
+        HAND_PLAYED = 2,
+        DRAW_TO_HAND = 3,
+        GAME_OVER = 4,
+        SHOP = 5,
+        PLAY_TAROT = 6,
+        BLIND_SELECT = 7,
+        ROUND_EVAL = 8,
+        TAROT_PACK = 9,
+        PLANET_PACK = 10,
+        MENU = 11,
+        TUTORIAL = 12,
+        SPLASH = 13,--DO NOT CHANGE, this has a dependency in the SOUND_MANAGER
+        SANDBOX = 14,
+        SPECTRAL_PACK = 15,
+        DEMO_CTA = 16,
+        STANDARD_PACK = 17,
+        BUFFOON_PACK = 18,
+        NEW_ROUND = 19,
+    }
