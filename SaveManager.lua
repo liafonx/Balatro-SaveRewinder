@@ -83,6 +83,35 @@ local function collect_backups(backup_dir)
    return newest_file, entries, ante_set
 end
 
+local function apply_retention_policy(backup_dir, keep_antes)
+    -- If configured, keep only the most recent N antes worth of saves
+    -- in this run (all saves from the latest antes, none from older
+    -- antes). A keep_antes of 0 means "unlimited".
+    if keep_antes and keep_antes > 0 then
+       local _, entries, ante_set = collect_backups(backup_dir)
+       if entries and next(entries) ~= nil then
+       local antes = {}
+       for a in pairs(ante_set or {}) do
+          table.insert(antes, a)
+       end
+       table.sort(antes, function(a, b) return a > b end)
+ 
+       local allowed = {}
+       local limit = math.min(keep_antes, #antes)
+       for i = 1, limit do
+          allowed[antes[i]] = true
+       end
+ 
+          for _, e in ipairs(entries) do
+             if not allowed[e.ante] then
+                pcall(love.filesystem.remove, backup_dir .. "/" .. e.file)
+                pcall(love.filesystem.remove, backup_dir .. "/" .. e.file:gsub("%.jkr$", ".meta")) -- Delete companion .meta file
+             end
+          end
+       end
+    end
+end
+ 
 function LOADER.execute_save_manager(request)
    local profile = tostring(request.profile_num or 1)
    ensure_dir(profile)
@@ -156,33 +185,4 @@ function LOADER.execute_save_manager(request)
        apply_retention_policy(backup_dir, keep_antes)
    end
    
-   local function apply_retention_policy(backup_dir, keep_antes)
-       -- If configured, keep only the most recent N antes worth of saves
-       -- in this run (all saves from the latest antes, none from older
-       -- antes). A keep_antes of 0 means "unlimited".
-       if keep_antes and keep_antes > 0 then
-          local _, entries, ante_set = collect_backups(backup_dir)
-          if entries and next(entries) ~= nil then
-          local antes = {}
-          for a in pairs(ante_set or {}) do
-             table.insert(antes, a)
-          end
-          table.sort(antes, function(a, b) return a > b end)
-    
-          local allowed = {}
-          local limit = math.min(keep_antes, #antes)
-          for i = 1, limit do
-             allowed[antes[i]] = true
-          end
-    
-             for _, e in ipairs(entries) do
-                if not allowed[e.ante] then
-                   pcall(love.filesystem.remove, backup_dir .. "/" .. e.file)
-                   pcall(love.filesystem.remove, backup_dir .. "/" .. e.file:gsub("%.jkr$", ".meta")) -- Delete companion .meta file
-                end
-             end
-          end
-       end
-   end
-    
    return LOADER
