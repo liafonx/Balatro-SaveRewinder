@@ -8,7 +8,6 @@ if not LOADER then LOADER = {} end
 -- 1. Load Core Modules
 local StateSignature = require("StateSignature")
 local BackupManager = require("BackupManager")
-local GamePatches = require("GamePatches")
 
 -- 2. Export API to LOADER namespace (for UI and Hooks)
 LOADER.PATHS = BackupManager.PATHS
@@ -17,7 +16,10 @@ LOADER.PATHS = BackupManager.PATHS
 LOADER.mark_loaded_state = BackupManager.mark_loaded_state
 LOADER.consume_skip_on_save = BackupManager.consume_skip_on_save
 LOADER.describe_backup = BackupManager.describe_backup
+
+-- StateSignature helpers
 LOADER.describe_state_label = StateSignature.describe_state_label
+LOADER.StateSignature = StateSignature -- Expose StateSignature module itself for GamePatches to pass to SaveManager
 
 -- File/Backup Management
 LOADER.get_backup_dir = BackupManager.get_backup_dir
@@ -32,12 +34,13 @@ LOADER.load_backup_at_index = BackupManager.load_backup_at_index
 LOADER.pending_future_prune = BackupManager.pending_future_prune
 LOADER.current_index = BackupManager.current_index
 LOADER.pending_index = BackupManager.pending_index
+LOADER.skipping_pack_open = BackupManager.skipping_pack_open
+LOADER.restore_skip_count = BackupManager.restore_skip_count
 
--- Debug Logging
+-- Debug Logging (Init.lua owns the debug output mechanism)
+LOADER._debug_alert = nil
 LOADER._debug_prefix = "[FastSL]"
 LOADER.debug_log = function(tag, msg)
-   -- Always log timeline stepping and list dumps to make debugging
-   -- easier, even if debug_backups is disabled in config.
    local always_log = (tag == "step" or tag == "list")
    if not always_log then
       if not LOADER or not LOADER.config or not LOADER.config.debug_backups then return end
@@ -54,7 +57,7 @@ end
 -- Inject debug logger back into BackupManager (circular dep fix)
 BackupManager.debug_log = LOADER.debug_log
 
--- UI Helper (Alert Box)
+-- UI Helper (Alert Box) - Remains in Init.lua for now.
 function LOADER.show_backup_debug(ante, round, label)
    if not G or not G.ROOM_ATTACH or not UIBox or not G.UIT then return end
    label = label or ""
@@ -124,19 +127,6 @@ function LOADER.show_backup_debug(ante, round, label)
          end,
       }))
    end
-end
-
-function LOADER.hook_key_hold()
-   if LOADER._key_hold_hooked then return end
-   LOADER._key_hold_hooked = true
-end
-
--- Global Shim for ensure_shop_areas
-function ensure_shop_areas(run_data)
-   if LOADER.debug_log then
-      LOADER.debug_log("shop", "ensure_shop_areas called (no-op)")
-   end
-   return run_data
 end
 
 G.FUNCS = G.FUNCS or {}
