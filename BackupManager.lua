@@ -28,7 +28,7 @@ M.debug_log = function(tag, msg)
     if LOADER and LOADER.debug_log then
         LOADER.debug_log(tag, msg)
     else
-        print("[FastSL][" .. tostring(tag) .. "] " .. tostring(msg))
+        print("[FastSL][BackupManager][" .. tostring(tag) .. "] " .. tostring(msg))
     end
 end
 
@@ -57,17 +57,46 @@ end
 
 -- --- Backup Listing & Metadata ---
 
+-- Parses a meta string (e.g., "ante:1,round:2,state:shop") into a table
+local function parse_meta_string(meta_string)
+    local meta_table = {}
+    if meta_string then
+        for pair in meta_string:gmatch("([^,]+)") do
+            local key, value = pair:match("([^:]+):(.*)")
+            if key and value then
+                -- Try to convert to number if possible
+                meta_table[key] = tonumber(value) or value
+            end
+        end
+    end
+    return meta_table
+end
+
 -- Reads the metadata for a single backup file.
--- TODO: Implement .meta file optimization here.
 function M.get_backup_meta(entry)
     if not entry or not entry.file then return nil end
     
-    -- Optimistic check: if we already have metadata, return it
     if entry.meta then return entry.meta end
 
-    -- Fallback: Read the full save file (Slow!)
-    -- Ideally, we should read a companion .meta file instead.
     local dir = M.get_backup_dir()
+    local meta_filename = entry.file:gsub("%.jkr$", ".meta")
+    local meta_full_path = dir .. "/" .. meta_filename
+
+    local meta_string = nil
+    local success, content = pcall(love.filesystem.read, meta_full_path)
+    if success and content then
+        meta_string = content
+    end
+
+    if meta_string then
+        local meta_table = parse_meta_string(meta_string)
+        if next(meta_table) then -- Check if table is not empty
+            entry.meta = meta_table
+            return meta_table
+        end
+    end
+
+    -- Fallback: Read the full save file (Slow!)
     local full_path = dir .. "/" .. entry.file
     local data = get_compressed(full_path)
     
@@ -89,22 +118,39 @@ function M.get_backup_files()
    local entries = {}
 
    for _, file in ipairs(files) do
-      local full = dir .. "/" .. file
-      local info = love.filesystem.getInfo(full)
-      if info and info.type == "file" and file:match("%.jkr$") then
-         -- Filename format: "<ante>-<round>-<index>.jkr"
-         local ante_str, round_str, index_str = string.match(file, "^(%d+)%-(%d+)%-(%d+)%.jkr$")
-         local ante = tonumber(ante_str or 0)
-         local round = tonumber(round_str or 0)
-         local index = tonumber(index_str or 0)
-         
-         table.insert(entries, {
-            file = file,
-            ante = ante,
-            round = round,
-            index = index,
-            modtime = info.modtime or 0,
-         })
+      if file:match("%.jkr$") then -- Only process .jkr files
+         local full = dir .. "/" .. file
+         local info = love.filesystem.getInfo(full)
+         if info and info.type == "file" then
+            -- Filename format: "<ante>-<round>-<index>.jkr"
+            local ante_str, round_str, index_str = string.match(file, "^(%d+)%-(%d+)%-(%d+)%.jkr$")
+            local ante = tonumber(ante_str or 0)
+            local round = tonumber(round_str or 0)
+            local index = tonumber(index_str or 0)
+            
+            local entry = {
+               file = file,
+               ante = ante,
+               round = round,
+               index = index,
+               modtime = info.modtime or 0,
+            }
+            
+            -- Attempt to read companion .meta file
+            local meta_filename = file:gsub("%.jkr$", ".meta")
+            local meta_full_path = dir .. "/" .. meta_filename
+            local meta_string = nil
+            local success, content = pcall(love.filesystem.read, meta_full_path)
+            if success and content then
+                meta_string = content
+            end
+
+            if meta_string then
+                entry.meta = parse_meta_string(meta_string)
+            end
+
+            table.insert(entries, entry)
+         end
       end
    end
 
@@ -180,7 +226,7 @@ local function start_from_run_data(run_data)
    local entries = nil
    if run_data._file then
       entries = M.get_backup_files()
-      for i, e in ipairs(entries) do
+      for _, e in ipairs(entries) do
          if e.file == run_data._file then
             idx_from_list = i
             break

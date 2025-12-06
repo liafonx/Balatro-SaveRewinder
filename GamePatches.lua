@@ -153,6 +153,14 @@ function Game:write_save_file(slot, quick)
                     or nil
             end
         end
+        -- Pass the StateSignature API for .meta file generation in the save manager thread.
+        self.SAVED_GAME.LOADER_STATE_SIGNATURE_API = {
+            get_signature = LOADER.StateSignature.get_signature,
+            describe_state_label = LOADER.StateSignature.describe_state_label,
+            is_shop_signature = LOADER.StateSignature.is_shop_signature,
+            signatures_equal = LOADER.StateSignature.signatures_equal,
+            describe_signature = LOADER.StateSignature.describe_signature,
+        }
     end
 
     return LOADER._Game_write_save_file(self, slot, quick)
