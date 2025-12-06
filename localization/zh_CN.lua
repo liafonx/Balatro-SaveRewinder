@@ -6,6 +6,7 @@ return {
             fastsl_save_on_selecting_hand = '操作手牌时存档',
             fastsl_save_on_round_end = '回合结束时存档',
             fastsl_save_on_shop = '在商店中时存档',
+            fastsl_debug_backups = '调试：显示存档通知',
             fastsl_max_antes_per_run = '每局最多保留的盲注存档数',
             fastsl_delete_all_saves_button = '删除所有存档',
 

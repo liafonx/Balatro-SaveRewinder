@@ -3,10 +3,10 @@
 -- Runs in the save manager thread and creates timestamped backups
 -- whenever the main save file is written.
 
-if not ANTIHYP then ANTIHYP = {} end
+if not LOADER then LOADER = {} end
 
-if not ANTIHYP.PATHS then
-   ANTIHYP.PATHS = { BACKUPS = "FastSaveLoader" }
+if not LOADER.PATHS then
+   LOADER.PATHS = { BACKUPS = "FastSaveLoader" }
 end
 
 local function ensure_dir(path)
@@ -30,15 +30,17 @@ local function collect_backups(backup_dir)
             newest_mtime, newest_file = mtime, full
          end
 
-         -- New filename format: "<ante>-<round>-<timestamp>.jkr"
-         local ante_str, round_str = string.match(file, "^(%d+)%-(%d+)%-%d+%.jkr$")
+         -- Filename format: "<ante>-<round>-<index>.jkr"
+         local ante_str, round_str, index_str = string.match(file, "^(%d+)%-(%d+)%-(%d+)%.jkr$")
          local ante = tonumber(ante_str or "")
          local round = tonumber(round_str or "")
+         local index = tonumber(index_str or "")
          if ante then
             table.insert(entries, {
                file = file,
                ante = ante,
                round = round,
+               index = index or 0,
                modtime = mtime,
             })
             ante_set[ante] = true
@@ -49,63 +51,71 @@ local function collect_backups(backup_dir)
    return newest_file, entries, ante_set
 end
 
-function ANTIHYP.execute_save_manager(request)
+function LOADER.execute_save_manager(request)
    local profile = tostring(request.profile_num or 1)
    ensure_dir(profile)
 
-   local backup_dir = profile .. "/" .. ANTIHYP.PATHS.BACKUPS
+   local backup_dir = profile .. "/" .. LOADER.PATHS.BACKUPS
    ensure_dir(backup_dir)
 
    local save_table = request.save_table or {}
-   if save_table.ANTIHYP_SKIP_BACKUP then
-      save_table.ANTIHYP_SKIP_BACKUP = nil
+   local prune_list = save_table.LOADER_PRUNE_LIST
+   save_table.LOADER_PRUNE_LIST = nil
+
+   if save_table.LOADER_SKIP_BACKUP then
+      save_table.LOADER_SKIP_BACKUP = nil
+      -- Hold only the most recent prune list so the last loaded save
+      -- decides which branch gets trimmed.
+      if prune_list and next(prune_list) then
+         LOADER._deferred_prune = prune_list
+         if LOADER.debug_log then LOADER.debug_log("prune", "Deferring prune list with " .. tostring(#prune_list) .. " items (backup skipped)") end
+      else
+         LOADER._deferred_prune = nil
+      end
       return
    end
-   save_table.ANTIHYP_TRIGGER = nil
+
+   -- Apply a deferred prune list if no new list was provided.
+   if (not prune_list or not next(prune_list)) and LOADER and LOADER._deferred_prune then
+      prune_list = LOADER._deferred_prune
+      if LOADER.debug_log then LOADER.debug_log("prune", "Using deferred prune list with " .. tostring(#(prune_list or {})) .. " items") end
+   end
+   LOADER._deferred_prune = nil
+
+   -- If a prune list was passed and we are keeping this backup, delete
+   -- those files now to complete the timeline branch.
+   if prune_list and next(prune_list) then
+      for _, file_to_delete in ipairs(prune_list) do
+         pcall(love.filesystem.remove, backup_dir .. "/" .. file_to_delete)
+      end
+      if LOADER.debug_log then LOADER.debug_log("prune", "Applied prune list size " .. tostring(#prune_list)) end
+   end
 
    -- Read and clear the optional per-ante retention hint that the
    -- main game thread attached to this save. A value of 0 or nil
    -- means no ante limit ("All").
-   local keep_antes = tonumber(save_table.ANTIHYP_KEEP_ANTES or 0) or 0
-   save_table.ANTIHYP_KEEP_ANTES = nil
-
-   -- String-pack the incoming save for consistent on-disk format.
-   local packed_new
-   if STR_PACK then
-      local ok, result = pcall(STR_PACK, save_table)
-      if ok and type(result) == "string" then
-         packed_new = result
-      end
-   end
-
-   local newest_file, entries, ante_set = nil, nil, nil
-   if keep_antes > 0 then
-      newest_file, entries, ante_set = collect_backups(backup_dir)
-   end
+   local keep_antes = tonumber(save_table.LOADER_KEEP_ANTES or 0) or 0
+   save_table.LOADER_KEEP_ANTES = nil
 
    local game = save_table.GAME or {}
    local ante = (game.round_resets and tonumber(game.round_resets.ante)) or 0
    local round = tonumber(game.round or 0) or 0
-   ANTIHYP._save_counter = (ANTIHYP._save_counter or 0) + 1
+   LOADER._save_counter = (LOADER._save_counter or 0) + 1
 
-   -- File names encode ante, round, and a monotonic counter for the run.
+   -- File names encode ante, round, and a monotonic index for this run.
    -- Example: "2-3-42.jkr"
-   local file_name = string.format("%d-%d-%d", ante, round, ANTIHYP._save_counter)
+   local file_name = string.format("%d-%d-%d", ante, round, LOADER._save_counter)
 
    local save_path = backup_dir .. "/" .. file_name .. ".jkr"
 
-   -- If we successfully packed the table, reuse that string so that
-   -- comparisons stay consistent. Otherwise fall back to the table.
-   if packed_new then
-      compress_and_save(save_path, packed_new)
-   else
-      compress_and_save(save_path, save_table)
-   end
+   compress_and_save(save_path, save_table)
 
    -- If configured, keep only the most recent N antes worth of saves
    -- in this run (all saves from the latest antes, none from older
    -- antes). A keep_antes of 0 means "unlimited".
-   if keep_antes and keep_antes > 0 and entries and next(entries) ~= nil then
+   if keep_antes and keep_antes > 0 then
+      local _, entries, ante_set = collect_backups(backup_dir)
+      if entries and next(entries) ~= nil then
       local antes = {}
       for a in pairs(ante_set or {}) do
          table.insert(antes, a)
@@ -118,12 +128,13 @@ function ANTIHYP.execute_save_manager(request)
          allowed[antes[i]] = true
       end
 
-      for _, e in ipairs(entries) do
-         if not allowed[e.ante] then
-            pcall(love.filesystem.remove, backup_dir .. "/" .. e.file)
+         for _, e in ipairs(entries) do
+            if not allowed[e.ante] then
+               pcall(love.filesystem.remove, backup_dir .. "/" .. e.file)
+            end
          end
       end
    end
 end
 
-return ANTIHYP
+return LOADER

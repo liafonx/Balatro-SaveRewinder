@@ -1,11 +1,11 @@
---- Antihypertensive Save Manager - UI/BackupsUI.lua
+--- Fast Save Loader - UI/BackupsUI.lua
 --
 -- In-game UI for listing and restoring backups, plus an Options button.
 
-if not ANTIHYP then ANTIHYP = {} end
+if not LOADER then LOADER = {} end
 
-local function get_backup_meta(entry)
-   local dir = ANTIHYP.get_backup_dir()
+function LOADER.get_backup_meta(entry)
+   local dir = LOADER.get_backup_dir()
    local full_path = dir .. "/" .. entry.file
 
    local ok, packed = pcall(get_compressed, full_path)
@@ -23,6 +23,7 @@ local function get_backup_meta(entry)
    local round = game.round or 0
 
    local state_label = nil
+   local state_debug = nil
    local state = save.STATE
    if G and G.STATES and state then
       if state == G.STATES.SHOP then
@@ -35,6 +36,9 @@ local function get_backup_meta(entry)
          state_label = (localize and localize("fastsl_state_end_of_round")) or "End of round"
       elseif state == G.STATES.BLIND_SELECT then
          state_label = (localize and localize("fastsl_state_choose_blind")) or "Choosing next blind"
+      end
+      if LOADER and LOADER.describe_state_label then
+         state_debug = LOADER.describe_state_label(state)
       end
    end
 
@@ -50,15 +54,23 @@ local function get_backup_meta(entry)
       label = (localize and localize("fastsl_state_in_run")) or "In run"
    end
 
-   return {
+   local meta = {
       ante = ante or 0,
       round = round or 0,
       label = label,
+      state = state,
+      debug_label = state_debug,
    }
+
+   -- Cache for debug logging elsewhere.
+   LOADER._last_metas = LOADER._last_metas or {}
+   LOADER._last_metas[entry.file] = meta
+
+   return meta
 end
 
-function ANTIHYP.get_backup_files()
-   local dir = ANTIHYP.get_backup_dir()
+function LOADER.get_backup_files()
+   local dir = LOADER.get_backup_dir()
    local entries = {}
 
    if not love.filesystem.getInfo(dir) then
@@ -69,25 +81,41 @@ function ANTIHYP.get_backup_files()
       local full = dir .. "/" .. file
       local info = love.filesystem.getInfo(full)
       if info and info.type == "file" then
-         table.insert(entries, { file = file, modtime = info.modtime })
+         local ante_str, round_str, index_str = string.match(file, "^(%d+)%-(%d+)%-(%d+)%.jkr$")
+         local index = tonumber(index_str or "")
+         table.insert(entries, {
+            file = file,
+            modtime = info.modtime,
+            index = index or 0,
+         })
       end
    end
 
    table.sort(entries, function(a, b)
-      return (a.modtime or 0) > (b.modtime or 0)
+      local ma, mb = a.modtime or 0, b.modtime or 0
+      if ma ~= mb then
+         return ma > mb
+      end
+      local ia, ib = a.index or 0, b.index or 0
+      if ia ~= ib then
+         return ia > ib
+      end
+      return (a.file or "") < (b.file or "")
    end)
 
    return entries
 end
 
-function ANTIHYP.build_backup_node(entry, meta, ordinal_suffix)
-   meta = meta or get_backup_meta(entry)
+function LOADER.build_backup_node(entry, meta, ordinal_suffix)
+   meta = meta or LOADER.get_backup_meta(entry)
    local parts = {}
 
    if meta.ante and (meta.rel_round or meta.round) then
       local ante_label = (localize and localize("fastsl_ante_label")) or "Ante"
       local round_label = (localize and localize("fastsl_round_label")) or "Round"
-      local round_value = meta.rel_round or meta.round
+      -- Display the actual game round (which starts at 0) rather than
+      -- the per-ante relative index used internally for grouping.
+      local round_value = meta.round or meta.rel_round
       table.insert(
          parts,
          ante_label .. " " .. tostring(meta.ante) .. "  " .. round_label .. " " .. tostring(round_value)
@@ -110,7 +138,7 @@ function ANTIHYP.build_backup_node(entry, meta, ordinal_suffix)
          {
             n = G.UIT.R,
             config = {
-               button = "anti_backup_restore",
+               button = "loader_backup_restore",
                align = "cl",
                colour = G.C.BLUE,
                minw = 9.6,
@@ -136,7 +164,7 @@ function ANTIHYP.build_backup_node(entry, meta, ordinal_suffix)
    }
 end
 
-function ANTIHYP.get_backups_page(args)
+function LOADER.get_backups_page(args)
    local entries = args.entries or {}
    local per_page = args.per_page or 8
    local page_num = args.page_num or 1
@@ -163,7 +191,7 @@ function ANTIHYP.get_backups_page(args)
       local metas_all = {}
       local ante_min_round = {}
       for idx, entry in ipairs(entries) do
-         local meta = get_backup_meta(entry)
+         local meta = LOADER.get_backup_meta(entry)
          metas_all[idx] = meta
 
          local ante = meta.ante or 0
@@ -211,7 +239,7 @@ function ANTIHYP.get_backups_page(args)
          local meta = metas_all[global_index]
          local ordinal_suffix = tostring(ordinals[global_index] or 1)
 
-         table.insert(nodes, ANTIHYP.build_backup_node(entry, meta, ordinal_suffix))
+         table.insert(nodes, LOADER.build_backup_node(entry, meta, ordinal_suffix))
       end
 
       content = {
@@ -234,8 +262,8 @@ function ANTIHYP.get_backups_page(args)
    }
 end
 
-function G.UIDEF.antihypertensive_backups()
-   local entries = ANTIHYP.get_backup_files()
+function G.UIDEF.fast_loader_backups()
+   local entries = LOADER.get_backup_files()
    local per_page = 8
 
    local total_pages = math.max(1, math.ceil(#entries / per_page))
@@ -246,7 +274,7 @@ function G.UIDEF.antihypertensive_backups()
    end
 
    local backups_box = UIBox({
-      definition = ANTIHYP.get_backups_page({ entries = entries, per_page = per_page, page_num = 1 }),
+      definition = LOADER.get_backups_page({ entries = entries, per_page = per_page, page_num = 1 }),
       config = { type = "cm" },
    })
 
@@ -257,7 +285,7 @@ function G.UIDEF.antihypertensive_backups()
             n = G.UIT.R,
             config = { align = "cm" },
             nodes = {
-               { n = G.UIT.O, config = { id = "antihyp_backups", object = backups_box } },
+               { n = G.UIT.O, config = { id = "loader_backups", object = backups_box } },
             },
          },
          {
@@ -267,7 +295,7 @@ function G.UIDEF.antihypertensive_backups()
                create_option_cycle({
                   options = page_numbers,
                   current_option = 1,
-                  opt_callback = "anti_backup_update_page",
+                  opt_callback = "loader_backup_update_page",
                   opt_args = { ui = backups_box, per_page = per_page, entries = entries },
                   w = 4.5,
                   colour = G.C.RED,
@@ -285,7 +313,7 @@ function G.UIDEF.antihypertensive_backups()
                   config = { align = "cm", padding = 0.1 },
                   nodes = {
                      UIBox_button({
-                        button = "anti_backup_reload",
+                        button = "loader_backup_reload",
                         label = { (localize and localize("fastsl_reload_list")) or "Reload list" },
                         minw = 4,
                      }),
@@ -296,7 +324,7 @@ function G.UIDEF.antihypertensive_backups()
                   config = { align = "cm", padding = 0.1 },
                   nodes = {
                      UIBox_button({
-                        button = "anti_backup_delete_all",
+                        button = "loader_backup_delete_all",
                         label = { (localize and localize("fastsl_delete_all")) or "Delete all" },
                         minw = 4,
                      }),
@@ -309,10 +337,10 @@ function G.UIDEF.antihypertensive_backups()
 end
 
 -- Inject a "Backups" button into the in-run Options menu.
-ANTIHYP._create_UIBox_options = create_UIBox_options
+LOADER._create_UIBox_options = create_UIBox_options
 
 function create_UIBox_options()
-   local ui = ANTIHYP._create_UIBox_options()
+   local ui = LOADER._create_UIBox_options()
 
    if G.STAGE == G.STAGES.RUN then
       local n1 = ui.nodes and ui.nodes[1]
@@ -321,7 +349,7 @@ function create_UIBox_options()
 
       if n3 and n3.nodes then
          local button = UIBox_button({
-            button = "anti_backup_open",
+            button = "loader_backup_open",
             label = { (localize and localize("fastsl_backups_button")) or "Backups" },
             minw = 5,
          })

@@ -7,3 +7,13 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 Balatro.antihypertensive.code-workspace
+lovely/
+!lovely/README.md
+Steamodded/
+!Steamodded/README.md
+Balatro-History/
+Contents/
+jkrs/
+AGENT.md
+save.*
+balatro_src/

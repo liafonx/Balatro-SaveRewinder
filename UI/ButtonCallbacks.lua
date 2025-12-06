@@ -1,56 +1,63 @@
---- Antihypertensive Save Manager - UI/ButtonCallbacks.lua
+--- Fast Save Loader - UI/ButtonCallbacks.lua
 --
 -- Button callbacks for the backups UI.
 
-if not ANTIHYP then ANTIHYP = {} end
+if not LOADER then LOADER = {} end
 
-function G.FUNCS.anti_backup_open(e)
+function G.FUNCS.loader_backup_open(e)
    if not G.FUNCS or not G.FUNCS.overlay_menu then return end
    G.FUNCS.overlay_menu({
-      definition = G.UIDEF.antihypertensive_backups(),
+      definition = G.UIDEF.fast_loader_backups(),
    })
-   ANTIHYP.backups_open = true
+   LOADER.backups_open = true
 end
 
-function G.FUNCS.anti_backup_reload(e)
+function G.FUNCS.loader_backup_reload(e)
    if not G.FUNCS or not G.FUNCS.exit_overlay_menu or not G.FUNCS.overlay_menu then return end
    G.FUNCS.exit_overlay_menu()
    G.FUNCS.overlay_menu({
-      definition = G.UIDEF.antihypertensive_backups(),
+      definition = G.UIDEF.fast_loader_backups(),
    })
-   ANTIHYP.backups_open = true
+   LOADER.backups_open = true
 end
 
-function G.FUNCS.anti_backup_delete_all(e)
-   local dir = ANTIHYP.get_backup_dir()
+function G.FUNCS.loader_backup_delete_all(e)
+   local dir = LOADER.get_backup_dir()
    if love.filesystem.getInfo(dir) then
       for _, file in ipairs(love.filesystem.getDirectoryItems(dir)) do
          love.filesystem.remove(dir .. "/" .. file)
       end
    end
-   G.FUNCS.anti_backup_reload(e)
+   G.FUNCS.loader_backup_reload(e)
 end
 
-function G.FUNCS.anti_backup_restore(e)
+function G.FUNCS.loader_backup_restore(e)
    if not e or not e.config or not e.config.ref_table then return end
    local file = e.config.ref_table.file
    if not file then return end
 
    -- Make long-press stepping line up with restores done via the UI.
-   if ANTIHYP and ANTIHYP.get_backup_files then
-      local entries = ANTIHYP.get_backup_files()
+   if LOADER and LOADER.get_backup_files then
+      local entries = LOADER.get_backup_files()
       for i, entry in ipairs(entries) do
          if entry.file == file then
-            ANTIHYP.pending_index = i
+            LOADER.pending_index = i
             break
          end
       end
    end
 
-   ANTIHYP.load_and_start_from_file(file)
+   if LOADER and LOADER.debug_log then
+      local label = file
+      if LOADER.describe_backup then
+        label = LOADER.describe_backup({ file = file })
+      end
+      LOADER.debug_log("restore", "UI click -> loading " .. label)
+   end
+   LOADER.load_and_start_from_file(file)
 end
 
-function G.FUNCS.anti_backup_update_page(args)
+function G.FUNCS.loader_backup_update_page(args)
    if not args or not args.cycle_config then return end
    local callback_args = args.cycle_config.opt_args
 
@@ -59,7 +66,7 @@ function G.FUNCS.anti_backup_update_page(args)
 
    backups_wrap.config.object:remove()
    backups_wrap.config.object = UIBox({
-      definition = ANTIHYP.get_backups_page({
+      definition = LOADER.get_backups_page({
          entries = callback_args.entries,
          per_page = callback_args.per_page,
          page_num = args.to_key,

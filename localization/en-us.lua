@@ -6,6 +6,7 @@ return {
             fastsl_save_on_selecting_hand = 'Save when selecting hand',
             fastsl_save_on_round_end = 'Save at end of round',
             fastsl_save_on_shop = 'Save in shop',
+            fastsl_debug_backups = 'Debug: show backup notifications',
             fastsl_max_antes_per_run = 'Max saved antes per run',
             fastsl_delete_all_saves_button = 'Delete all saves',
 
