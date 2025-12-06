@@ -3,10 +3,30 @@
 -- Contains the overrides for Game:start_run and Game:write_save_file.
 -- These functions are injected into the game via lovely.toml.
 
-if not LOADER then LOADER = {} end
+-- Assume LOADER is already defined and populated by Init.lua
 
--- We expect LOADER to have these methods injected from Init.lua
--- (which delegates them to BackupManager)
+-- Global Shim for ensure_shop_areas.
+-- Some patched versions of the game's globals call a global
+-- ensure_shop_areas(run_data) helper before starting a run from
+-- saved data. Older Fast Save Loader builds provided a more
+-- invasive implementation that toggled rooms; to avoid crashes
+-- while also keeping shop restores stable we provide a minimal
+-- no-op here. Shop cardAreas are now handled safely inside our
+-- Game:start_run wrapper below.
+function ensure_shop_areas(run_data)
+   if LOADER.debug_log then
+      LOADER.debug_log("shop", "ensure_shop_areas called (no-op)")
+   end
+   return run_data
+end
+
+-- LOADER.hook_key_hold from Init.lua, now defined here.
+function LOADER.hook_key_hold()
+   -- Previously used to hook long-press behaviour; kept as a no-op
+   -- initializer so existing calls from Game:start_run remain safe.
+   if LOADER._key_hold_hooked then return end
+   LOADER._key_hold_hooked = true
+end
 
 LOADER._start_run = Game.start_run
 
@@ -14,7 +34,7 @@ function Game:start_run(args)
    args = args or {}
 
    -- 1. Mark the loaded state
-   if LOADER and args and args.savetext and LOADER.mark_loaded_state then
+   if args and args.savetext and LOADER.mark_loaded_state then
       local need_mark = (not LOADER._loaded_mark_applied)
       if need_mark then
          LOADER.mark_loaded_state(args.savetext, {
@@ -54,31 +74,30 @@ function Game:start_run(args)
    end
 
    -- 3. Reset Loader State for new run
-   if LOADER then
-      LOADER.backups_open = false
-      LOADER._save_counter = 0
-      LOADER._debug_alert = nil
+   -- These variables are directly exposed from BackupManager, no longer internal state of GamePatches.
+   LOADER.backups_open = false
+   LOADER._save_counter = 0 -- LOADER._save_counter is used by SaveManager.lua, so Init.lua must maintain it
+   LOADER._debug_alert = nil
 
-      if not args or not args.savetext then
-         -- Brand new run
-         LOADER._pending_skip_reason = nil
-         LOADER._loaded_mark_applied = nil
-         LOADER._loaded_meta = nil
-         LOADER.current_index = nil
-         LOADER._restore_active = nil
-         LOADER._last_loaded_file = nil
-         LOADER.skip_next_backup = false
-         
-         -- Prune all backups (new run destroys future of previous run)
-         if LOADER.get_backup_dir then
-             LOADER.pending_future_prune = {}
-             local dir = LOADER.get_backup_dir()
-             if love.filesystem.getInfo(dir) then
-                for _, file in ipairs(love.filesystem.getDirectoryItems(dir)) do
-                   love.filesystem.remove(dir .. "/" .. file)
-                end
+   if not args or not args.savetext then
+      -- Brand new run
+      LOADER._pending_skip_reason = nil
+      LOADER._loaded_mark_applied = nil
+      LOADER._loaded_meta = nil
+      LOADER.current_index = nil
+      LOADER._restore_active = nil
+      LOADER._last_loaded_file = nil
+      LOADER.skip_next_backup = false
+      
+      -- Prune all backups (new run destroys future of previous run)
+      if LOADER.get_backup_dir then
+          LOADER.pending_future_prune = {}
+          local dir = LOADER.get_backup_dir()
+          if love.filesystem.getInfo(dir) then
+             for _, file in ipairs(love.filesystem.getDirectoryItems(dir)) do
+                love.filesystem.remove(dir .. "/" .. file)
              end
-         end
+          end
       end
    end
 
@@ -115,53 +134,50 @@ function Game:start_run(args)
       G.load_pack_cards = nil
    end
 
-   if LOADER and LOADER.hook_key_hold then
-       LOADER.hook_key_hold()
-   end
+   -- Call the LOADER.hook_key_hold defined in this file.
+   LOADER.hook_key_hold()
 end
 
 LOADER._Game_write_save_file = Game.write_save_file
 function Game:write_save_file(slot, quick)
-    if LOADER then
-        local save_table = self.SAVED_GAME
-        
-        if save_table and LOADER.consume_skip_on_save then
-            LOADER.consume_skip_on_save(save_table)
-        elseif save_table and LOADER.skip_next_backup then
-            save_table.LOADER_SKIP_BACKUP = true
-            LOADER.skip_next_backup = false
-            LOADER._pending_skip_reason = nil
-        elseif save_table then
-            save_table.LOADER_SKIP_BACKUP = nil
-            LOADER.current_index = nil
-        end
-
-        -- Pass the prune list to the save manager thread.
-       if LOADER.pending_future_prune and next(LOADER.pending_future_prune) then
-           self.SAVED_GAME.LOADER_PRUNE_LIST = LOADER.pending_future_prune
-           LOADER.pending_future_prune = {}
-       else
-           self.SAVED_GAME.LOADER_PRUNE_LIST = nil
-       end
-
-        -- Pass config settings to the save manager thread.
-        if LOADER.config then
-            if LOADER.config.keep_antes then
-                local option_text = (G.OPTION_CYCLE_TEXT and G.OPTION_CYCLE_TEXT["fastsl_max_antes_per_run"]) or {}
-                self.SAVED_GAME.LOADER_KEEP_ANTES = (LOADER.config.keep_antes < 7 and
-                    tonumber(option_text[LOADER.config.keep_antes]))
-                    or nil
-            end
-        end
-        -- Pass the StateSignature API for .meta file generation in the save manager thread.
-        self.SAVED_GAME.LOADER_STATE_SIGNATURE_API = {
-            get_signature = LOADER.StateSignature.get_signature,
-            describe_state_label = LOADER.StateSignature.describe_state_label,
-            is_shop_signature = LOADER.StateSignature.is_shop_signature,
-            signatures_equal = LOADER.StateSignature.signatures_equal,
-            describe_signature = LOADER.StateSignature.describe_signature,
-        }
+    local save_table = self.SAVED_GAME
+    
+    if save_table and LOADER.consume_skip_on_save then
+        LOADER.consume_skip_on_save(save_table)
+    elseif save_table and LOADER.skip_next_backup then
+        save_table.LOADER_SKIP_BACKUP = true
+        LOADER.skip_next_backup = false
+        LOADER._pending_skip_reason = nil
+    elseif save_table then
+        save_table.LOADER_SKIP_BACKUP = nil
+        LOADER.current_index = nil
     end
+
+    -- Pass the prune list to the save manager thread.
+    if LOADER.pending_future_prune and next(LOADER.pending_future_prune) then
+        self.SAVED_GAME.LOADER_PRUNE_LIST = LOADER.pending_future_prune
+        LOADER.pending_future_prune = {}
+    else
+        self.SAVED_GAME.LOADER_PRUNE_LIST = nil
+    end
+
+    -- Pass config settings to the save manager thread.
+    if LOADER.config then
+        if LOADER.config.keep_antes then
+            local option_text = (G.OPTION_CYCLE_TEXT and G.OPTION_CYCLE_TEXT["fastsl_max_antes_per_run"]) or {}
+            self.SAVED_GAME.LOADER_KEEP_ANTES = (LOADER.config.keep_antes < 7 and
+                tonumber(option_text[LOADER.config.keep_antes]))
+                or nil
+        end
+    end
+    -- Pass the StateSignature API for .meta file generation in the save manager thread.
+    self.SAVED_GAME.LOADER_STATE_SIGNATURE_API = {
+        get_signature = LOADER.StateSignature.get_signature,
+        describe_state_label = LOADER.StateSignature.describe_state_label,
+        is_shop_signature = LOADER.StateSignature.is_shop_signature,
+        signatures_equal = LOADER.StateSignature.signatures_equal,
+        describe_signature = LOADER.StateSignature.describe_signature,
+    }
 
     return LOADER._Game_write_save_file(self, slot, quick)
 end
