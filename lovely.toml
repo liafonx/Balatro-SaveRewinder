@@ -6,11 +6,11 @@ priority = 5
 # Fast Save Loader mod for Balatro.
 # Folder layout:
 # FastSaveLoaderMod/
-# ├─ lovely.toml
-# ├─ Init.lua
-# ├─ SaveManager.lua
-# ├─ Keybinds.lua
-# └─ UI/
+# 		lovely.toml
+# 		Init.lua
+# 		SaveManager.lua
+# 		Keybinds.lua
+# 	└─ UI/
 #    ├─ BackupsUI.lua
 #    └─ ButtonCallbacks.lua
 
@@ -41,7 +41,7 @@ sources = [ "UI/ButtonCallbacks.lua" ]
 [[patches]]
 [patches.regex]
 target = "functions/button_callbacks.lua"
-pattern = "func = function\\(\\)\\n      delay\\(0.3\\)"
+pattern = "func = function\(\)\n      delay\(0.3\)"
 position = "at"
 payload = """func = function()
       if not G.screenwipe or not G.screenwipe.children or not G.screenwipe.children.particles then return true end
@@ -51,7 +51,7 @@ match_indent = true
 [[patches]]
 [patches.regex]
 target = "functions/button_callbacks.lua"
-pattern = "func = function\\(\\)\\n      if G.screenwipecard then"
+pattern = "func = function\(\)\n      if G.screenwipecard then"
 position = "at"
 payload = """func = function()
       if not G.screenwipe then return true end
@@ -61,7 +61,7 @@ match_indent = true
 [[patches]]
 [patches.regex]
 target = "functions/button_callbacks.lua"
-pattern = "func = function\\(\\)\\n      G.screenwipe.children.particles:remove\\(\\)"
+pattern = "func = function\(\)\n      G.screenwipe.children.particles:remove\(\)"
 position = "at"
 payload = """func = function()
       if not G.screenwipe or not G.screenwipe.children or not G.screenwipe.children.particles then return true end
@@ -86,12 +86,20 @@ payload = "LOADER.execute_save_manager(request)"
 
 [[patches]]
 [patches.pattern]
+target = "card.lua"
+pattern = "function Card:open()"
+position = "after"
+match_indent = true
+payload = "if LOADER then LOADER.skipping_pack_open = true end"
+
+[[patches]]
+[patches.pattern]
 target = "game.lua"
 pattern = "if G.FILE_HANDLER.run then"
 position = "after"
 match_indent = true
 overwrite = false
-payload = '''
+payload = """
    if LOADER and G.ARGS and G.ARGS.save_run then
       local save = G.ARGS.save_run
 
@@ -190,4 +198,4 @@ payload = '''
       end
 
    end
-   '''
+   """
