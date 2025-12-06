@@ -48,45 +48,14 @@ end
 LOADER._pending_skip_reason = nil
 LOADER._loaded_mark_applied = nil
 LOADER._loaded_meta = nil
+LOADER._shop_pack_skip_arm = nil
+LOADER._shop_pack_skip_window = nil
 
 local function normalize_reason(reason)
    if reason == "restore" or reason == "step" or reason == "continue" then
       return reason
    end
    return nil
-end
-
-local function card_signature(area)
-   if not area or type(area) ~= "table" or type(area.cards) ~= "table" then return nil end
-   local parts = {}
-   for _, card in pairs(area.cards) do
-      if type(card) == "table" then
-         local ref = nil
-         if card.save_fields and type(card.save_fields) == "table" then
-            ref = card.save_fields.card or card.save_fields.center
-         end
-         ref = ref or card.label or (card.base and card.base.id) or card.rank or "?"
-         local center = nil
-         if card.save_fields and type(card.save_fields) == "table" then
-            center = card.save_fields.center
-         elseif card.ability and card.ability.name then
-            center = card.ability.name
-         end
-         parts[#parts + 1] = tostring(ref) .. ":" .. tostring(center or "")
-      end
-   end
-   table.sort(parts)
-   if #parts == 0 then return nil end
-   return table.concat(parts, "|")
-end
-
-local function card_count(area)
-   if not area or type(area) ~= "table" or type(area.cards) ~= "table" then return 0 end
-   local n = 0
-   for _ in pairs(area.cards) do
-      n = n + 1
-   end
-   return n
 end
 
 local function state_signature(run_data)
@@ -96,32 +65,23 @@ local function state_signature(run_data)
    local round = tonumber(game.round or 0) or 0
    local state = run_data.STATE
    local label = LOADER.describe_state_label and LOADER.describe_state_label(state) or "state"
-   local st = G and G.STATES
+   
+   -- robust money check
+   local money = 0
+   if game.dollars then money = tonumber(game.dollars) end
+   if game.money then money = tonumber(game.money) end
+   if game.current_round and game.current_round.dollars then 
+        -- Prefer current_round dollars if available as it is often the active state
+        money = tonumber(game.current_round.dollars) 
+   end
+   
    local sig = {
       ante = ante,
       round = round,
       state = state,
       label = label,
-      money = tonumber(game.dollars or game.money or (game.current_round and game.current_round.dollars)) or 0,
-      deck_count = card_count(run_data.cardAreas and run_data.cardAreas.deck),
-      hand_count = card_count(run_data.cardAreas and run_data.cardAreas.hand),
-      discard_count = card_count(run_data.cardAreas and run_data.cardAreas.discard),
-      joker_count = card_count(run_data.cardAreas and run_data.cardAreas.jokers),
-      consumeable_count = card_count(run_data.cardAreas and run_data.cardAreas.consumeables),
+      money = money or 0,
    }
-
-   local ca = run_data.cardAreas or {}
-   sig.jokers_sig = card_signature(ca.jokers)
-   sig.consum_sig = card_signature(ca.consumeables)
-
-   if st and state == st.SHOP then
-      sig.shop_jokers = card_signature(ca.shop_jokers)
-      sig.shop_booster = card_signature(ca.shop_booster)
-      sig.shop_vouchers = card_signature(ca.shop_vouchers)
-      sig.pack_cards = card_signature(ca.pack_cards)
-      sig.shop_dollars = tonumber((game.current_round and game.current_round.dollars) or game.dollars) or 0
-      sig.shop_reroll = tonumber((game.round_resets and game.round_resets.reroll_cost) or (game.current_round and game.current_round.reroll_cost) or game.reroll_cost) or nil
-   end
 
    return sig
 end
@@ -130,11 +90,6 @@ local function signatures_equal(a, b)
    if not a or not b then return false end
    local keys = {
       "ante", "round", "state", "label", "money",
-      "deck_count", "hand_count", "discard_count",
-      "joker_count", "consumeable_count",
-      "jokers_sig", "consum_sig",
-      "shop_jokers", "shop_booster", "shop_vouchers", "pack_cards",
-      "shop_dollars", "shop_reroll",
    }
    for _, k in ipairs(keys) do
       local va, vb = a[k], b[k]
@@ -149,6 +104,41 @@ local function describe_signature(sig)
    if not sig then return "save" end
    local state = sig.label or "state"
    return string.format("Ante %s Round %s (%s)", tostring(sig.ante or "?"), tostring(sig.round or "?"), tostring(state))
+end
+
+local function is_shop_signature(sig)
+   if not sig then return false end
+   local state = sig.state
+   if state and G and G.STATES and G.STATES.SHOP and state == G.STATES.SHOP then
+      return true
+   end
+   local label = sig.label or sig.debug_label
+   if label and type(label) == "string" then
+      return label:lower() == "shop"
+   end
+   return false
+end
+
+local function find_card_in_area(area, target_sort_id)
+   if not area or not area.cards or not target_sort_id then return nil end
+   for _, card in pairs(area.cards) do
+      if tonumber(card and card.sort_id) == tonumber(target_sort_id) then
+         return card
+      end
+   end
+   return nil
+end
+
+local function find_shop_pack_card(cardAreas, target_sort_id)
+   if not cardAreas or not target_sort_id then return nil end
+   local preferred = { "shop_booster", "pack_cards" }
+   for _, name in ipairs(preferred) do
+      local card = find_card_in_area(cardAreas[name], target_sort_id)
+      if card then
+         return card, name
+      end
+   end
+   return nil
 end
 
 function LOADER.mark_loaded_state(run_data, opts)
@@ -170,6 +160,13 @@ function LOADER.mark_loaded_state(run_data, opts)
    end
    LOADER._loaded_meta = state_signature(run_data)
    LOADER._loaded_mark_applied = true
+   local loaded_sig = LOADER._loaded_meta
+   if incoming_reason and (incoming_reason == "restore" or incoming_reason == "step") and is_shop_signature(loaded_sig) then
+      LOADER._shop_pack_skip_arm = true
+   else
+      LOADER._shop_pack_skip_arm = nil
+   end
+   LOADER._shop_pack_skip_window = nil
 
    if debug_log then
       local label = (LOADER.describe_backup and LOADER.describe_backup({ file = opts.last_loaded_file or (run_data and run_data._file), run_data = run_data })) or tostring(opts.last_loaded_file or (run_data and run_data._file) or "save")
@@ -191,16 +188,44 @@ function LOADER.consume_skip_on_save(save_table)
    local incoming_sig = LOADER._loaded_meta
    local current_sig = state_signature(save_table)
    local should_skip = signatures_equal(incoming_sig, current_sig)
-   if should_skip and incoming_sig and (incoming_sig.state == (G and G.STATES and G.STATES.SHOP)) then
-      local missing_shop = (incoming_sig.shop_jokers == nil and incoming_sig.shop_booster == nil and incoming_sig.shop_vouchers == nil and incoming_sig.pack_cards == nil)
-      if missing_shop then
-         should_skip = false
+
+   -- Special handling for Shop "Pack Open" auto-save.
+   -- This save has different Money (pack cost) so signatures_equal returns false,
+   -- but it is effectively the "post-load" state (just with pack animation),
+   -- so we want to consume the skip flag and skip this save.
+   if not should_skip and incoming_sig and incoming_sig.state == (G and G.STATES and G.STATES.SHOP) then
+      if LOADER.skipping_pack_open then
+         should_skip = true
+         if LOADER.debug_log then
+            debug_log("skip", "Forcing skip on Shop Pack Open (flag detected)")
+         end
+         LOADER.skipping_pack_open = nil
+      else
+         local ca = save_table.cardAreas
+         if ca and ca.pack_cards and ca.pack_cards.cards and next(ca.pack_cards.cards) then
+            should_skip = true
+            if LOADER.debug_log then
+               debug_log("skip", "Forcing skip on Shop Pack Open auto-save (fallback)")
+            end
+         end
       end
    end
 
    -- Skip only if the run has not advanced to a different ante/round/state.
    if save_table and should_skip then
       save_table.LOADER_SKIP_BACKUP = true
+      if LOADER._shop_pack_skip_arm and is_shop_signature(incoming_sig) then
+         LOADER._shop_pack_skip_window = true
+         if debug_log then
+            debug_log("skip", "Armed booster-pack skip window for restored shop state")
+         end
+      else
+         LOADER._shop_pack_skip_window = nil
+      end
+      LOADER._shop_pack_skip_arm = nil
+   else
+      LOADER._shop_pack_skip_window = nil
+      LOADER._shop_pack_skip_arm = nil
    end
 
    local label = nil
@@ -236,6 +261,31 @@ function LOADER.consume_skip_on_save(save_table)
    LOADER._loaded_meta = nil
 
    return should_skip
+end
+
+function LOADER.apply_shop_pack_skip(save_table)
+   if not LOADER or not LOADER._shop_pack_skip_window then return false end
+   LOADER._shop_pack_skip_window = nil
+   LOADER._shop_pack_skip_arm = nil
+   if not save_table or type(save_table) ~= "table" then return false end
+
+   local action = save_table.ACTION
+   if not action or action.type ~= "use_card" then return false end
+   local sort_id = tonumber(action.card)
+   if not sort_id then return false end
+
+   local cardAreas = save_table.cardAreas
+   local card, area_name = find_shop_pack_card(cardAreas, sort_id)
+   if not card then return false end
+   local ability = card.ability or {}
+   if ability.set ~= "Booster" then return false end
+
+   save_table.LOADER_SKIP_BACKUP = true
+   if debug_log then
+      local label = card.label or ability.name or area_name or tostring(sort_id)
+      debug_log("skip", "Skipping restored shop booster action; card=" .. tostring(label))
+   end
+   return true
 end
 
 function LOADER.describe_state_label(state)
