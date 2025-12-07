@@ -17,6 +17,7 @@ Saves are stored per‑profile under `PROFILE/FastSaveLoader`.
   - Color-coded round indicators (odd/even rounds)
   - Action type display (e.g., "Selecting Hand (Play)" or "Selecting Hand (Discard)")
   - Pagination with "Jump to current" button
+  - Page-by-page metadata loading to keep the UI responsive
   - "Reload list" and "Delete all" actions
 - Keyboard shortcuts:
   - `S` in a run: delete the latest save and load the most recent previous one (not the current state)
