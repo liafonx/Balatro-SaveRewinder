@@ -104,9 +104,9 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.01 },
                      nodes = {
                         create_toggle({
-                           label = localize and localize("fastsl_debug_backups") or "Debug: show backup notifications",
+                           label = localize and localize("fastsl_debug_saves") or "Debug: show save notifications",
                            ref_table = LOADER.config,
-                           ref_value = "debug_backups",
+                           ref_value = "debug_saves",
                            label_scale = 0.35,
                            w = 3,
                            scale = 0.9,
@@ -119,7 +119,7 @@ if SMODS and SMODS.current_mod then
                      nodes = {
                         UIBox_button({
                            label = { (localize and localize("fastsl_delete_all_saves_button")) or "Delete all saves" },
-                           button = "anti_backup_delete_all",
+                           button = "fastsl_save_delete_all",
                            minw = 3,
                            minh = 0.7,
                            scale = 0.35,

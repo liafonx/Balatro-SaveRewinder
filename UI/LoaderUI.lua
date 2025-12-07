@@ -1,0 +1,440 @@
+--- Fast Save Loader - UI/LoaderUI.lua
+--
+-- In-game UI for listing and restoring saves, plus an Options button.
+
+if not LOADER then LOADER = {} end
+
+-- Get dot color based on round number (odd/even)
+-- Colors chosen for good contrast against blue background (G.C.BLUE)
+function LOADER.get_round_color(round)
+   if round == nil then return G.C.UI.TEXT_LIGHT end
+   
+   -- Use different bright colors for odd and even rounds
+   if round % 2 == 0 then
+      -- Even rounds: bright orange
+      return G.C.ORANGE or {1, 0.7, 0.2, 1}
+   else
+      -- Odd rounds: bright green (good contrast on blue)
+      return G.C.YELLOW
+   end
+end
+
+function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry)
+   -- Use entry as array (no keys, accessed by index)
+   if not entry then return nil end
+
+   -- Build ante/round text
+   local ante_text = ""
+   if entry[LOADER.ENTRY_ANTE] then
+      local ante_label = (localize and localize("fastsl_ante_label")) or "Ante"
+      local round_label = (localize and localize("fastsl_round_label")) or "Round"
+      ante_text = ante_label .. " " .. tostring(entry[LOADER.ENTRY_ANTE])
+      -- Add round number if available
+      if entry[LOADER.ENTRY_ROUND] ~= nil then
+         ante_text = ante_text .. "  " .. round_label .. tostring(entry[LOADER.ENTRY_ROUND])
+      end
+   end
+   
+   -- Build state label text
+   local state_text = ""
+   if entry[LOADER.ENTRY_STATE] ~= nil then
+      -- Use action_type (play/discard) and is_opening_pack (boolean) for label generation
+      local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or "state"
+      if label and label ~= "state" then
+         local label_key = label:gsub(" ", "_"):gsub("%(", ""):gsub("%)", "")
+         if label_key == "opening_pack" then
+            state_text = (localize and localize("fastsl_state_opening_pack")) or label
+         elseif label_key == "start_of_round" then
+            -- Handle start of round (SELECTING_HAND without action)
+            state_text = (localize and localize("fastsl_state_start_round")) or "start of round"
+         elseif label_key:match("selecting_hand") then
+            -- Handle selecting_hand with action type
+            if entry[LOADER.ENTRY_ACTION_TYPE] == "play" then
+               state_text = (localize and localize("fastsl_state_selecting_hand_play")) or "selecting hand (play)"
+            elseif entry[LOADER.ENTRY_ACTION_TYPE] == "discard" then
+               state_text = (localize and localize("fastsl_state_selecting_hand_discard")) or "selecting hand (discard)"
+            else
+               -- Fallback (shouldn't happen, but just in case)
+               state_text = (localize and localize("fastsl_state_start_round")) or "start of round"
+            end
+         else
+            state_text = (localize and localize("fastsl_state_"..label_key)) or label
+         end
+      end
+   end
+
+   -- Build tailing number text (at the end)
+   -- For selecting_hand with action_type, use label_value (discards_used or hands_played)
+   -- For start/end of round, don't show ordinal (they appear once per round)
+   -- For others, use ordinal_suffix
+   local tailing_number_text = ""
+   local st = G and G.STATES
+   local is_selecting_hand_with_action = st and entry[LOADER.ENTRY_STATE] == st.SELECTING_HAND and entry[LOADER.ENTRY_ACTION_TYPE]
+   
+   -- Check if this is start of round or end of round (don't show ordinal for these)
+   local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or ""
+   local is_start_or_end_round = (label == "start of round" or label == "end of round")
+   
+   if is_selecting_hand_with_action and meta and meta.label_value then
+      -- Use label_value (discards_used or hands_played) as tailing number
+      tailing_number_text = tostring(meta.label_value)
+   elseif not is_start_or_end_round and ordinal_suffix and ordinal_suffix ~= "" then
+      -- Use ordinal_suffix for other states (but not start/end of round)
+      tailing_number_text = ordinal_suffix
+   end
+
+   -- Use cached is_current flag (always set by _update_cache_current_flags before UI build)
+   local is_current = (entry[LOADER.ENTRY_IS_CURRENT] == true)
+   
+   -- Background color
+   local button_colour = G.C.BLUE
+   local default_text_colour = G.C.UI.TEXT_LIGHT
+   
+   -- Get dot color for round number (odd/even)
+   local dot_colour = default_text_colour
+   if not is_current and entry[LOADER.ENTRY_ROUND] ~= nil then
+      dot_colour = LOADER.get_round_color(entry[LOADER.ENTRY_ROUND])
+   end
+   
+   if is_current then
+      -- Use orange color for highlight
+      button_colour = G.C.ORANGE or {1, 0.6, 0.2, 1}  -- Fallback orange
+      dot_colour = G.C.WHITE  -- White dot for better contrast on orange
+      default_text_colour = G.C.WHITE
+      -- Add visual indicator prefix to ante text
+      ante_text = "▶ " .. ante_text
+   end
+   
+   -- Build text nodes - separate nodes for text and colored dot
+   local text_nodes = {}
+   
+   if ante_text ~= "" then
+      table.insert(text_nodes, {
+         n = G.UIT.T,
+         config = {
+            text = ante_text,
+            colour = default_text_colour,
+            scale = 0.45,
+         },
+      })
+   end
+   
+   -- Add colored dot separator
+   if state_text ~= "" or tailing_number_text ~= "" then
+      table.insert(text_nodes, {
+         n = G.UIT.T,
+         config = {
+            text = " • ",
+            colour = dot_colour,
+            scale = 0.45,
+         },
+      })
+   end
+   
+   -- Build state and tailing number text
+   local state_tailing_text = ""
+   if state_text ~= "" then
+      state_tailing_text = state_text
+      if tailing_number_text ~= "" then
+         -- Use 0 space for selecting_hand with action, 2 spaces for others
+         local spacing = (is_selecting_hand_with_action and "") or "  "
+         state_tailing_text = state_tailing_text .. spacing .. tailing_number_text
+      end
+   elseif tailing_number_text ~= "" then
+      state_tailing_text = tailing_number_text
+   end
+   
+   if state_tailing_text ~= "" then
+      table.insert(text_nodes, {
+         n = G.UIT.T,
+         config = {
+            text = state_tailing_text,
+            colour = default_text_colour,
+            scale = 0.45,
+         },
+      })
+   end
+   
+   return {
+      n = G.UIT.R,
+      config = { align = "cm", padding = 0.05 },
+      nodes = {
+         {
+            n = G.UIT.R,
+            config = {
+               button = "loader_save_restore",
+               align = "cl",
+               colour = button_colour,
+               minw = 9.6,
+               maxw = 9.6,
+               padding = 0.1,
+               r = 0.1,
+               hover = true,
+               shadow = true,
+               ref_table = { file = entry[LOADER.ENTRY_FILE] },
+            },
+            nodes = text_nodes,
+         },
+      },
+   }
+end
+
+function LOADER.get_saves_page(args)
+   local entries = args.entries or {}
+   local per_page = args.per_page or 8
+   local page_num = args.page_num or 1
+   
+
+   local content
+   if #entries == 0 then
+      content = {
+         n = G.UIT.T,
+         config = {
+            text = (localize and localize("fastsl_no_saves")) or "No saves yet",
+            colour = G.C.UI.TEXT_LIGHT,
+            scale = 0.5,
+         },
+      }
+   else
+      local nodes = {}
+      local offset = (page_num - 1) * per_page
+      local max_index = math.min(#entries - offset, per_page)
+
+      -- First pass: compute labels and find minimum values per state label
+      local label_min_round = {}  -- Track min round per state label (for non-action items)
+      local meta_cache = {}  -- Cache computed labels
+      local st = G and G.STATES
+      
+      for _, entry in ipairs(entries) do
+         -- Ensure metadata is loaded (including action_type detection)
+         if not entry[LOADER.ENTRY_SIGNATURE] and LOADER.get_save_meta then
+            LOADER.get_save_meta(entry)
+         end
+         
+         -- Compute label from state, action_type, and is_opening_pack
+         local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or ""
+         local round = entry[LOADER.ENTRY_ROUND] or 0
+         
+         -- Store in meta_cache (store full label with action type)
+         if not meta_cache[entry] then meta_cache[entry] = {} end
+         meta_cache[entry].label = label
+         meta_cache[entry].action_type = entry[LOADER.ENTRY_ACTION_TYPE]  -- Preserve action_type for later use
+         
+         -- Track minimum round for this label (only for non-action selecting_hand items)
+         if label ~= "" and not (label:match("selecting hand") and entry[LOADER.ENTRY_ACTION_TYPE]) then
+            if label_min_round[label] == nil or round < label_min_round[label] then
+               label_min_round[label] = round
+            end
+         end
+      end
+
+      -- Second pass: assign label_value (sequence number) based on state label
+      -- For selecting_hand with action_type, use discards_used or hands_played
+      -- and count how many saves share each (ante, label_value, label) key
+      local label_totals = {}
+      for _, entry in ipairs(entries) do
+         local meta = meta_cache[entry] or {}
+         local label = meta.label or ""
+         local round = entry[LOADER.ENTRY_ROUND] or 0
+         local ante = entry[LOADER.ENTRY_ANTE] or 0
+         
+         -- Calculate label_value
+         local label_value = 0
+         local is_selecting_hand_with_action = st and entry[LOADER.ENTRY_STATE] == st.SELECTING_HAND and entry[LOADER.ENTRY_ACTION_TYPE]
+         
+         if is_selecting_hand_with_action then
+            -- Use discards_used or hands_played as label_value for selecting_hand with action
+            if entry[LOADER.ENTRY_ACTION_TYPE] == "discard" and entry[LOADER.ENTRY_DISCARDS_USED] ~= nil then
+               label_value = entry[LOADER.ENTRY_DISCARDS_USED]
+            elseif entry[LOADER.ENTRY_ACTION_TYPE] == "play" and entry[LOADER.ENTRY_HANDS_PLAYED] ~= nil then
+               label_value = entry[LOADER.ENTRY_HANDS_PLAYED]
+            else
+               -- Fallback to round-based if values not available
+               local base = (label ~= "" and label_min_round[label]) or round
+               label_value = (round - base) + 1
+            end
+         else
+            -- For other states, use round-based calculation
+            local base = (label ~= "" and label_min_round[label]) or round
+            label_value = (round - base) + 1
+         end
+         
+         -- Store label_value in meta_cache
+         meta.label_value = label_value
+
+         local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
+         label_totals[key] = (label_totals[key] or 0) + 1
+      end
+
+      -- Third pass over all entries (from newest to oldest) to assign
+      -- ordinals where the oldest save for a given label gets "1" and
+      -- newer ones get higher numbers.
+      local label_seen_from_newest = {}
+      local ordinals = {}
+      for idx, entry in ipairs(entries) do
+         local meta = meta_cache[entry] or {}
+         local ante = entry[LOADER.ENTRY_ANTE] or 0
+         local label_value = meta.label_value or 0
+         local label = meta.label or ""
+         local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
+         label_seen_from_newest[key] = (label_seen_from_newest[key] or 0) + 1
+         local total = label_totals[key] or label_seen_from_newest[key]
+         -- Newest gets highest number; oldest (last) gets 1.
+         ordinals[idx] = total - label_seen_from_newest[key] + 1
+      end
+
+      -- Finally, build only the nodes that belong to this page.
+      for i = 1, max_index do
+         local entry = entries[offset + i]
+         local global_index = offset + i
+         local meta = meta_cache[entry] or {}
+         local ordinal_suffix = tostring(ordinals[global_index] or 1)
+         local is_first_entry = (global_index == 1)
+
+         table.insert(nodes, LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry))
+      end
+
+      content = {
+         n = G.UIT.R,
+         config = { align = "tm", padding = 0.05, r = 0.1 },
+         nodes = nodes,
+      }
+   end
+
+   return {
+      n = G.UIT.ROOT,
+      config = {
+         align = (#entries == 0 and "cm" or "tm"),
+         minw = 10,
+         minh = 6,
+         r = 0.1,
+         colour = G.C.CLEAR,
+      },
+      nodes = { content },
+   }
+end
+
+function G.UIDEF.fast_loader_saves()
+   -- get_save_files() updates cache flags automatically
+   local entries = LOADER.get_save_files()
+   local per_page = 8
+
+   local total_pages = math.max(1, math.ceil(#entries / per_page))
+   local page_numbers = {}
+   for i = 1, total_pages do
+      local pattern = (localize and localize("fastsl_page_label")) or "Page %d/%d"
+      page_numbers[i] = string.format(pattern, i, total_pages)
+   end
+
+   -- Find which page contains the current (highlighted) save
+   local initial_page = 1
+   for i, entry in ipairs(entries) do
+      if entry and entry[LOADER.ENTRY_IS_CURRENT] == true then
+         initial_page = math.ceil(i / per_page)
+         break
+      end
+   end
+
+   local saves_box = UIBox({
+      definition = LOADER.get_saves_page({ entries = entries, per_page = per_page, page_num = initial_page }),
+      config = { type = "cm" },
+   })
+
+   -- Store references for jump_to_current functionality
+   if not LOADER._saves_ui_refs then LOADER._saves_ui_refs = {} end
+   LOADER._saves_ui_refs.saves_box = saves_box
+   LOADER._saves_ui_refs.per_page = per_page
+   LOADER._saves_ui_refs.entries = entries
+   LOADER._saves_ui_refs.page_numbers = page_numbers
+   
+   -- Create cycle config and store it for jump_to_current
+   local cycle_config = {
+      options = page_numbers,
+      current_option = initial_page,
+      opt_callback = "loader_save_update_page",
+      opt_args = { ui = saves_box, per_page = per_page, entries = entries },
+   }
+   LOADER._saves_ui_refs.cycle_config = cycle_config
+
+   return create_UIBox_generic_options({
+      back_func = "options",
+      contents = {
+         {
+            n = G.UIT.R,
+            config = { align = "cm" },
+            nodes = {
+               { n = G.UIT.O, config = { id = "loader_saves", object = saves_box } },
+            },
+         },
+         {
+            n = G.UIT.R,
+            config = { align = "cm", colour = G.C.CLEAR },
+            nodes = {
+               create_option_cycle({
+                  options = page_numbers,
+                  current_option = initial_page,
+                  opt_callback = "loader_save_update_page",
+                  opt_args = { ui = saves_box, per_page = per_page, entries = entries },
+                  w = 4.5,
+                  colour = G.C.BLUE,
+                  cycle_shoulders = false,
+                  no_pips = true,
+               }),
+            },
+         },
+         {
+            n = G.UIT.R,
+            config = { align = "cm", colour = G.C.CLEAR },
+            nodes = {
+               {
+                  n = G.UIT.C,
+                  config = { align = "cm", padding = 0.1 },
+                  nodes = {
+                     UIBox_button({
+                        button = "loader_save_jump_to_current",
+                        label = { (localize and localize("fastsl_jump_to_current")) or "Current save" },
+                        minw = 4,
+                        colour = G.C.BLUE,
+                     }),
+                  },
+               },
+               {
+                  n = G.UIT.C,
+                  config = { align = "cm", padding = 0.1 },
+                  nodes = {
+                     UIBox_button({
+                        button = "loader_save_delete_all",
+                        label = { (localize and localize("fastsl_delete_all")) or "Delete all" },
+                        minw = 4,
+                     }),
+                  },
+               },
+            },
+         },
+      },
+   })
+end
+
+-- Inject a "Saves" button into the in-run Options menu.
+LOADER._create_UIBox_options = create_UIBox_options
+
+function create_UIBox_options()
+   local ui = LOADER._create_UIBox_options()
+
+   if G.STAGE == G.STAGES.RUN then
+      local n1 = ui.nodes and ui.nodes[1]
+      local n2 = n1 and n1.nodes and n1.nodes[1]
+      local n3 = n2 and n2.nodes and n2.nodes[1]
+
+      if n3 and n3.nodes then
+         local button = UIBox_button({
+            button = "loader_save_open",
+            label = { (localize and localize("fastsl_saves_button")) or "Saves" },
+            minw = 5,
+         })
+         table.insert(n3.nodes, button)
+      end
+   end
+
+   return ui
+end

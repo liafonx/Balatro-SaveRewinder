@@ -1,26 +1,28 @@
 Fast Save Loader for Balatro
 ============================
 
-Fast Save Loader is a Steamodded/Lovely mod that keeps rolling backups of your current run and lets you jump between recent states directly from inside Balatro.
+Fast Save Loader is a Steamodded/Lovely mod that keeps rolling saves of your current run and lets you jump between recent states directly from inside Balatro.
 
-Backups are stored per‑profile under `PROFILE/FastSaveLoader`.
+Saves are stored per‑profile under `PROFILE/FastSaveLoader`.
 
 ## Features
 
-- In‑run backups for key states:
+- In‑run saves for key states:
   - Choosing blind
   - Selecting hand
   - End of round
   - In shop
-- In‑game backup browser with:
+- In‑game save browser with:
   - Ante / round / state labels
-  - Pagination
-  - “Reload list” and “Delete all” actions
+  - Color-coded round indicators (odd/even rounds)
+  - Action type display (e.g., "Selecting Hand (Play)" or "Selecting Hand (Discard)")
+  - Pagination with "Jump to current" button
+  - "Reload list" and "Delete all" actions
 - Keyboard shortcuts:
-  - `S` in a run: delete the latest backup and load the most recent previous one (not the current state)
-  - `Ctrl + S` in a run: open/close the backups window
+  - `S` in a run: delete the latest save and load the most recent previous one (not the current state)
+  - `Ctrl + S` in a run: open/close the saves window
 - Configurable:
-  - Toggles for which states create backups
+  - Toggles for which states create saves
   - Limit for how many recent antes’ saves are kept
 - Localization:
   - English (`en-us`)
@@ -36,15 +38,18 @@ Backups are stored per‑profile under `PROFILE/FastSaveLoader`.
 ## Usage
 
 1. Start or continue a run with the mod enabled.
-2. As you play, backups are created automatically at the enabled state transitions.
-3. Press `Ctrl + S` during a run to open the **Backups** window:
-   - Click a row to load that backup (the game restarts the run from that state).
+2. As you play, saves are created automatically at the enabled state transitions.
+3. Press `Ctrl + S` during a run to open the **Saves** window:
+   - Click a row to load that save (the game restarts the run from that state).
    - Use the page selector at the bottom to switch pages.
-   - Use **Delete all** to clear all backups for the current profile.
+   - Click **Current save** to jump to the page containing your currently loaded save.
+   - Use **Delete all** to clear all saves for the current profile.
    - Press `Ctrl + S` again to close the window.
-4. Press `S` during a run to quickly step back one backup:
-   - If you haven’t loaded from the list, the most recent backup is deleted and the previous one is loaded.
-   - If you just restored a backup from the list (and haven’t created a new save yet), pressing `S` deletes every newer-or-equal backup so the restored point becomes the branch root, then loads the next older backup after it. This keeps the timeline consistent even before a new save exists.
+4. Press `S` during a run to quickly step back one save:
+   - Loads the previous save in the timeline (one step older than the current state).
+   - Future saves (newer than the loaded save) are marked for deletion but **not immediately removed**.
+   - Future saves will be automatically deleted when you create a new save, keeping the timeline linear.
+   - This deferred pruning allows you to step forward again if you reverted by mistake (by reloading the game before creating a new save).
 
 ## Configuration
 
@@ -56,18 +61,19 @@ In the Steamodded mod config UI for **Fast Save Loader** you can:
   - At end of round
   - In shop
 - Choose **Max saved antes per run** (1, 2, 4, 6, 8, 16, or All).
-- Click **Delete all saves** to purge every backup for the current profile.
+- Click **Delete all saves** to purge every save for the current profile.
 
-Changes take effect immediately for subsequent saves. Existing backups are pruned according to the ante limit. 
+Changes take effect immediately for subsequent saves. Existing saves are pruned according to the ante limit. 
 
 ## Notes and limitations
 
-- Fast Save Loader creates backups at a few safe points (choosing blind, in shop, end of round, etc.).
-- If you trigger a load while Balatro is still saving during an animation/transition, the backup you restore may be slightly behind the save point you expect to be.
-- Because of Balatro’s own saving behaviour and the time it takes to write and read `save.jkr`, the sequence of backups is not guaranteed to include every single intermediate state. During very fast transitions between states/pages, some points that “feel” like they should have been saved may be skipped in the backup list.
+- Fast Save Loader creates saves at a few safe points (choosing blind, in shop, end of round, etc.).
+- If you trigger a load while Balatro is still saving during an animation/transition, the save you restore may be slightly behind the save point you expect to be.
+- Because of Balatro's own saving behaviour and the time it takes to write and read `save.jkr`, the sequence of saves is not guaranteed to include every single intermediate state. During very fast transitions between states/pages, some points that "feel" like they should have been saved may be skipped in the save list.
 
 ### Key behaviours to preserve
-- Branching: loading an older backup records a prune list; the next real save deletes “future” saves so timelines stay linear within a branch.
+- Branching: loading an older save (from list or `S` key) records a prune list; the next real save deletes "future" saves so timelines stay linear within a branch.
+- Deferred pruning: future saves are not deleted immediately when loading an older save; they are deleted only when a new save is created. This makes revert operations non-destructive.
 - Post-restore skip: duplicates of the just-restored state are skipped once; flags clear afterward so new actions are saved.
-- Quick revert (`S`): always steps to the immediate previous backup in the active branch; `current_index` resets on new saves.
+- Quick revert (`S`): always steps to the immediate previous save in the active branch; uses the same deferred pruning as loading from the list.
 - Shop restores: ensure shop CardAreas exist or defer via `G.load_shop_*`; let the shop builder load saved shop areas to keep pack-open state without instantiation warnings.

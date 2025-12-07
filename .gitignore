@@ -1,12 +1,20 @@
+# macOS
 .DS_Store
+
+# Build directories
 /.build
 /Packages
 xcuserdata/
 DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+
+# IDE/Editor
 .netrc
 Balatro.antihypertensive.code-workspace
+*.code-workspace
+
+# Dependencies
 lovely/
 !lovely/README.md
 Steamodded/
@@ -15,6 +23,20 @@ Balatro-History/
 Contents/
 jkrs/
 AGENT.md
+CACHE_ENTRY_EXAMPLE.md
+CLICK_LOAD_FLOW.md
 save.*
 balatro_src/
+save_decoder.py
+
+# Generated/Cache files
+*.meta
+trace.txt
+
+# Save files and test data
+save.*
+jkrs/
+Contents/
+
+# Documentation (if auto-generated)
 MCP_SUGGESTIONS.md/
