@@ -200,87 +200,87 @@ function LOADER.get_saves_page(args)
       local offset = (page_num - 1) * per_page
       local max_index = math.min(#entries - offset, per_page)
 
-      -- First pass: compute labels and find minimum values per state label
-      local label_min_round = {}  -- Track min round per state label (for non-action items)
-      local meta_cache = {}  -- Cache computed labels
-      local st = G and G.STATES
-      
-      for _, entry in ipairs(entries) do
-         -- Ensure metadata is loaded (including action_type detection)
-         if not entry[LOADER.ENTRY_SIGNATURE] and LOADER.get_save_meta then
+      -- Collect the entries for the current page and ensure their metadata is loaded.
+      local page_entries = {}
+      for i = 1, max_index do
+         local entry = entries[offset + i]
+         page_entries[i] = entry
+         if entry and not entry[LOADER.ENTRY_SIGNATURE] and LOADER.get_save_meta then
             LOADER.get_save_meta(entry)
          end
-         
-         -- Compute label from state, action_type, and is_opening_pack
-         local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or ""
-         local round = entry[LOADER.ENTRY_ROUND] or 0
-         
-         -- Store in meta_cache (store full label with action type)
-         if not meta_cache[entry] then meta_cache[entry] = {} end
-         meta_cache[entry].label = label
-         meta_cache[entry].action_type = entry[LOADER.ENTRY_ACTION_TYPE]  -- Preserve action_type for later use
-         
-         -- Track minimum round for this label (only for non-action selecting_hand items)
-         if label ~= "" and not (label:match("selecting hand") and entry[LOADER.ENTRY_ACTION_TYPE]) then
-            if label_min_round[label] == nil or round < label_min_round[label] then
-               label_min_round[label] = round
+      end
+
+      -- First pass: compute labels for entries that already have metadata and
+      -- track minimum round per state label. This avoids force-loading
+      -- off-page entries.
+      local label_min_round = {}
+      local meta_cache = {}
+      local st = G and G.STATES
+
+      for _, entry in ipairs(entries) do
+         if entry and entry[LOADER.ENTRY_SIGNATURE] then
+            local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or ""
+            local round = entry[LOADER.ENTRY_ROUND] or 0
+
+            if not meta_cache[entry] then meta_cache[entry] = {} end
+            meta_cache[entry].label = label
+            meta_cache[entry].action_type = entry[LOADER.ENTRY_ACTION_TYPE]
+
+            if label ~= "" and not (label:match("selecting hand") and entry[LOADER.ENTRY_ACTION_TYPE]) then
+               if label_min_round[label] == nil or round < label_min_round[label] then
+                  label_min_round[label] = round
+               end
             end
          end
       end
 
-      -- Second pass: assign label_value (sequence number) based on state label
-      -- For selecting_hand with action_type, use discards_used or hands_played
-      -- and count how many saves share each (ante, label_value, label) key
+      -- Second pass: assign label_value for entries with metadata.
       local label_totals = {}
       for _, entry in ipairs(entries) do
-         local meta = meta_cache[entry] or {}
-         local label = meta.label or ""
-         local round = entry[LOADER.ENTRY_ROUND] or 0
-         local ante = entry[LOADER.ENTRY_ANTE] or 0
-         
-         -- Calculate label_value
-         local label_value = 0
-         local is_selecting_hand_with_action = st and entry[LOADER.ENTRY_STATE] == st.SELECTING_HAND and entry[LOADER.ENTRY_ACTION_TYPE]
-         
-         if is_selecting_hand_with_action then
-            -- Use discards_used or hands_played as label_value for selecting_hand with action
-            if entry[LOADER.ENTRY_ACTION_TYPE] == "discard" and entry[LOADER.ENTRY_DISCARDS_USED] ~= nil then
-               label_value = entry[LOADER.ENTRY_DISCARDS_USED]
-            elseif entry[LOADER.ENTRY_ACTION_TYPE] == "play" and entry[LOADER.ENTRY_HANDS_PLAYED] ~= nil then
-               label_value = entry[LOADER.ENTRY_HANDS_PLAYED]
+         if entry and entry[LOADER.ENTRY_SIGNATURE] then
+            local meta = meta_cache[entry] or {}
+            local label = meta.label or ""
+            local round = entry[LOADER.ENTRY_ROUND] or 0
+            local ante = entry[LOADER.ENTRY_ANTE] or 0
+
+            local label_value = 0
+            local is_selecting_hand_with_action = st and entry[LOADER.ENTRY_STATE] == st.SELECTING_HAND and entry[LOADER.ENTRY_ACTION_TYPE]
+
+            if is_selecting_hand_with_action then
+               if entry[LOADER.ENTRY_ACTION_TYPE] == "discard" and entry[LOADER.ENTRY_DISCARDS_USED] ~= nil then
+                  label_value = entry[LOADER.ENTRY_DISCARDS_USED]
+               elseif entry[LOADER.ENTRY_ACTION_TYPE] == "play" and entry[LOADER.ENTRY_HANDS_PLAYED] ~= nil then
+                  label_value = entry[LOADER.ENTRY_HANDS_PLAYED]
+               else
+                  local base = (label ~= "" and label_min_round[label]) or round
+                  label_value = (round - base) + 1
+               end
             else
-               -- Fallback to round-based if values not available
                local base = (label ~= "" and label_min_round[label]) or round
                label_value = (round - base) + 1
             end
-         else
-            -- For other states, use round-based calculation
-            local base = (label ~= "" and label_min_round[label]) or round
-            label_value = (round - base) + 1
-         end
-         
-         -- Store label_value in meta_cache
-         meta.label_value = label_value
 
-         local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
-         label_totals[key] = (label_totals[key] or 0) + 1
+            meta.label_value = label_value
+
+            local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
+            label_totals[key] = (label_totals[key] or 0) + 1
+         end
       end
 
-      -- Third pass over all entries (from newest to oldest) to assign
-      -- ordinals where the oldest save for a given label gets "1" and
-      -- newer ones get higher numbers.
+      -- Third pass: assign ordinals for entries with metadata (newest -> oldest).
       local label_seen_from_newest = {}
       local ordinals = {}
       for idx, entry in ipairs(entries) do
-         local meta = meta_cache[entry] or {}
-         local ante = entry[LOADER.ENTRY_ANTE] or 0
-         local label_value = meta.label_value or 0
-         local label = meta.label or ""
-         local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
-         label_seen_from_newest[key] = (label_seen_from_newest[key] or 0) + 1
-         local total = label_totals[key] or label_seen_from_newest[key]
-         -- Newest gets highest number; oldest (last) gets 1.
-         ordinals[idx] = total - label_seen_from_newest[key] + 1
+         if entry and entry[LOADER.ENTRY_SIGNATURE] then
+            local meta = meta_cache[entry] or {}
+            local ante = entry[LOADER.ENTRY_ANTE] or 0
+            local label_value = meta.label_value or 0
+            local label = meta.label or ""
+            local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
+            label_seen_from_newest[key] = (label_seen_from_newest[key] or 0) + 1
+            local total = label_totals[key] or label_seen_from_newest[key]
+            ordinals[idx] = total - label_seen_from_newest[key] + 1
+         end
       end
 
       -- Finally, build only the nodes that belong to this page.
