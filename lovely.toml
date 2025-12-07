@@ -6,19 +6,32 @@ priority = 5
 # Fast Save Loader mod for Balatro.
 # Folder layout:
 # FastSaveLoaderMod/
-# ├─ lovely.toml
-# ├─ Init.lua
-# ├─ SaveManager.lua
-# ├─ Keybinds.lua
-# └─ UI/
-#    ├─ BackupsUI.lua
-#    └─ ButtonCallbacks.lua
+#     lovely.toml
+#     Core/
+#       Init.lua
+#       SaveManager.lua
+#       StateSignature.lua
+#       GamePatches.lua
+#     Utils/
+#       Utils.lua
+#       EntryConstants.lua
+#       MetaFile.lua
+#       FileIO.lua
+#       ActionDetector.lua
+#       CacheManager.lua
+#       Pruning.lua
+#       DuplicateDetector.lua
+#     UI/
+#       LoaderUI.lua
+#       ButtonCallbacks.lua
+#     Keybinds.lua
+#     main.lua (Steamodded config)
 
 [[patches]]
 [patches.copy]
 target = "globals.lua"
 position = "append"
-sources = [ "Init.lua" ]
+sources = [ "Core/Init.lua" ]
 
 [[patches]]
 [patches.copy]
@@ -30,7 +43,7 @@ sources = [ "Keybinds.lua" ]
 [patches.copy]
 target = "functions/UI_definitions.lua"
 position = "append"
-sources = [ "UI/BackupsUI.lua" ]
+sources = [ "UI/LoaderUI.lua" ]
 
 [[patches]]
 [patches.copy]
@@ -41,11 +54,11 @@ sources = [ "UI/ButtonCallbacks.lua" ]
 [[patches]]
 [patches.regex]
 target = "functions/button_callbacks.lua"
-pattern = "func = function\\(\\)\\n      delay\\(0.3\\)"
+pattern = "func = function\\(\\)\\n      delay\\(0.1\\)"
 position = "at"
 payload = """func = function()
       if not G.screenwipe or not G.screenwipe.children or not G.screenwipe.children.particles then return true end
-      delay(0.3)"""
+      delay(0.1)"""
 match_indent = true
 
 [[patches]]
@@ -69,86 +82,97 @@ payload = """func = function()
 match_indent = true
 
 [[patches]]
+[patches.copy] # GamePatches is not a module; it's a set of global overrides.
+target = "globals.lua"
+position = "append"
+sources = [ "Core/GamePatches.lua" ] # Appended after Init.lua (which is also appended to globals.lua)
+
+
+[[patches]]
 [patches.module]
-source = "SaveManager.lua"
-before = "engine/save_manager.lua"
-name = "ANTIHYP"
+name = "Utils"
+source = "Utils/Utils.lua"
 load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "EntryConstants"
+source = "Utils/EntryConstants.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "MetaFile"
+source = "Utils/MetaFile.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "FileIO"
+source = "Utils/FileIO.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "ActionDetector"
+source = "Utils/ActionDetector.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "CacheManager"
+source = "Utils/CacheManager.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "Pruning"
+source = "Utils/Pruning.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "DuplicateDetector"
+source = "Utils/DuplicateDetector.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "StateSignature"
+source = "Core/StateSignature.lua"
+load_now = true # Load immediately so Init.lua can require it
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManager"
+source = "Core/SaveManager.lua"
+load_now = true # Load immediately so Init.lua can require it
+before = "globals.lua"
 
 [[patches]]
 [patches.pattern]
-target = "engine/save_manager.lua"
-pattern = "compress_and_save(prefix_profile..'save.jkr', request.save_table)"
+target = "card.lua"
+pattern = "function Card:open()"
 position = "after"
 match_indent = true
-overwrite = false
-payload = "ANTIHYP.execute_save_manager(request)"
+payload = "if LOADER and LOADER._SaveManager then LOADER._SaveManager.skipping_pack_open = true end"
 
 [[patches]]
-[patches.pattern]
-target = "game.lua"
-pattern = "if G.FILE_HANDLER.run then"
+[patches.regex]
+target = "functions/misc_functions.lua"
+pattern = "G.ARGS.save_run = G.culled_table"
 position = "after"
 match_indent = true
-overwrite = false
-payload = '''
-   if ANTIHYP and G.ARGS and G.ARGS.save_run then
-      local save = G.ARGS.save_run
-      local state = G.STATE or (save and save.STATE)
-      if ANTIHYP.cache_live_save then
-         ANTIHYP.cache_live_save(save, state)
-      end
-
-      -- One-shot skip used when loading a run so we do not
-      -- immediately back up the exact same state again.
-      if ANTIHYP.skip_next_backup then
-         save.ANTIHYP_SKIP_BACKUP = true
-         ANTIHYP.skip_next_backup = false
-      else
-         -- Optional filtering based on game state and the mod's
-         -- configuration. These booleans live in the mod config
-         -- and control whether a backup is kept at each key
-         -- transition (blind select, selecting hand, end of round,
-         -- shop). If a state is recognized but disabled, we mark
-         -- this save to be skipped by the backup thread while
-         -- still allowing the normal save.jkr to be written.
-         local cfg = ANTIHYP.config or {}
-         local st = G.STATES
-         if state and st then
-            local recognized = false
-            local allow = false
-
-            if state == st.BLIND_SELECT then
-               recognized = true
-               allow = (cfg.save_on_blind ~= false)
-            elseif state == st.SELECTING_HAND then
-               recognized = true
-               allow = (cfg.save_on_selecting_hand ~= false)
-            elseif state == st.ROUND_EVAL or state == st.HAND_PLAYED then
-               recognized = true
-               allow = (cfg.save_on_round_end ~= false)
-            elseif state == st.SHOP then
-               recognized = true
-               allow = (cfg.save_on_shop ~= false)
-            end
-
-            if recognized and not allow then
-               save.ANTIHYP_SKIP_BACKUP = true
-            end
-         end
-      end
-
-      -- Pass the per-round retention hint through to the save manager
-      -- thread so it can prune older saves for this ante/round.
-      do
-         local cfg = ANTIHYP.config or {}
-         local idx = cfg.keep_antes or 7
-         local map = {1, 2, 4, 6, 8, 16, 0}
-         save.ANTIHYP_KEEP_ANTES = map[idx] or 0
-      end
-
-      -- Tag the save with the trigger state so dedupe can keep
-      -- same-content saves that happened at different transitions.
-      save.ANTIHYP_TRIGGER = state or ""
-   end
-   '''
+payload = """
+   if LOADER and LOADER.defer_save_creation then
+      LOADER.defer_save_creation()
+   end"""

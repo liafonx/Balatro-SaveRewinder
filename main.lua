@@ -2,11 +2,11 @@
 --
 -- Steamodded entry point (for config UI only).
 
-ANTIHYP = ANTIHYP or {}
+LOADER = LOADER or {}
 
 if SMODS and SMODS.current_mod then
-   ANTIHYP.mod = SMODS.current_mod
-   ANTIHYP.config = ANTIHYP.mod.config or {}
+   LOADER.mod = SMODS.current_mod
+   LOADER.config = LOADER.mod.config or {}
 
    SMODS.current_mod.config_tab = function()
       return {
@@ -23,7 +23,7 @@ if SMODS and SMODS.current_mod then
                      nodes = {
                         create_toggle({
                            label = localize and localize("fastsl_save_on_blind") or "Save when choosing blind",
-                           ref_table = ANTIHYP.config,
+                           ref_table = LOADER.config,
                            ref_value = "save_on_blind",
                            label_scale = 0.35,
                            w = 3,
@@ -37,7 +37,7 @@ if SMODS and SMODS.current_mod then
                      nodes = {
                         create_toggle({
                            label = localize and localize("fastsl_save_on_selecting_hand") or "Save when selecting hand",
-                           ref_table = ANTIHYP.config,
+                           ref_table = LOADER.config,
                            ref_value = "save_on_selecting_hand",
                            label_scale = 0.35,
                            w = 3,
@@ -51,7 +51,7 @@ if SMODS and SMODS.current_mod then
                      nodes = {
                         create_toggle({
                            label = localize and localize("fastsl_save_on_round_end") or "Save at end of round",
-                           ref_table = ANTIHYP.config,
+                           ref_table = LOADER.config,
                            ref_value = "save_on_round_end",
                            label_scale = 0.35,
                            w = 3,
@@ -65,7 +65,7 @@ if SMODS and SMODS.current_mod then
                      nodes = {
                         create_toggle({
                            label = localize and localize("fastsl_save_on_shop") or "Save in shop",
-                           ref_table = ANTIHYP.config,
+                           ref_table = LOADER.config,
                            ref_value = "save_on_shop",
                            label_scale = 0.35,
                            w = 3,
@@ -88,12 +88,12 @@ if SMODS and SMODS.current_mod then
                               "16",
                               (localize and localize("fastsl_all_label")) or "All",
                            },
-                           current_option = ANTIHYP.config.keep_antes or 7,
+                           current_option = LOADER.config.keep_antes or 7,
                            colour = G.C.BOOSTER,
                            w = 4,
                            text_scale = 0.42,
                            scale = 0.75,
-                           ref_table = ANTIHYP.config,
+                           ref_table = LOADER.config,
                            ref_value = "keep_antes",
                            opt_callback = "fastsl_config_change",
                         }),
@@ -103,9 +103,23 @@ if SMODS and SMODS.current_mod then
                      n = G.UIT.R,
                      config = { align = "cm", padding = 0.01 },
                      nodes = {
+                        create_toggle({
+                           label = localize and localize("fastsl_debug_saves") or "Debug: show save notifications",
+                           ref_table = LOADER.config,
+                           ref_value = "debug_saves",
+                           label_scale = 0.35,
+                           w = 3,
+                           scale = 0.9,
+                        }),
+                     },
+                  },
+                  {
+                     n = G.UIT.R,
+                     config = { align = "cm", padding = 0.01 },
+                     nodes = {
                         UIBox_button({
                            label = { (localize and localize("fastsl_delete_all_saves_button")) or "Delete all saves" },
-                           button = "anti_backup_delete_all",
+                           button = "fastsl_save_delete_all",
                            minw = 3,
                            minh = 0.7,
                            scale = 0.35,
