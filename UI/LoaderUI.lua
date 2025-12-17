@@ -216,19 +216,19 @@ function LOADER.get_saves_page(args)
       local label_min_round = {}
       local meta_cache = {}
       local st = G and G.STATES
-
+      
       for _, entry in ipairs(entries) do
          if entry and entry[LOADER.ENTRY_SIGNATURE] then
-            local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or ""
-            local round = entry[LOADER.ENTRY_ROUND] or 0
-
-            if not meta_cache[entry] then meta_cache[entry] = {} end
-            meta_cache[entry].label = label
+         local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or ""
+         local round = entry[LOADER.ENTRY_ROUND] or 0
+         
+         if not meta_cache[entry] then meta_cache[entry] = {} end
+         meta_cache[entry].label = label
             meta_cache[entry].action_type = entry[LOADER.ENTRY_ACTION_TYPE]
-
-            if label ~= "" and not (label:match("selecting hand") and entry[LOADER.ENTRY_ACTION_TYPE]) then
-               if label_min_round[label] == nil or round < label_min_round[label] then
-                  label_min_round[label] = round
+         
+         if label ~= "" and not (label:match("selecting hand") and entry[LOADER.ENTRY_ACTION_TYPE]) then
+            if label_min_round[label] == nil or round < label_min_round[label] then
+               label_min_round[label] = round
                end
             end
          end
@@ -238,32 +238,32 @@ function LOADER.get_saves_page(args)
       local label_totals = {}
       for _, entry in ipairs(entries) do
          if entry and entry[LOADER.ENTRY_SIGNATURE] then
-            local meta = meta_cache[entry] or {}
-            local label = meta.label or ""
-            local round = entry[LOADER.ENTRY_ROUND] or 0
-            local ante = entry[LOADER.ENTRY_ANTE] or 0
-
-            local label_value = 0
-            local is_selecting_hand_with_action = st and entry[LOADER.ENTRY_STATE] == st.SELECTING_HAND and entry[LOADER.ENTRY_ACTION_TYPE]
-
-            if is_selecting_hand_with_action then
-               if entry[LOADER.ENTRY_ACTION_TYPE] == "discard" and entry[LOADER.ENTRY_DISCARDS_USED] ~= nil then
-                  label_value = entry[LOADER.ENTRY_DISCARDS_USED]
-               elseif entry[LOADER.ENTRY_ACTION_TYPE] == "play" and entry[LOADER.ENTRY_HANDS_PLAYED] ~= nil then
-                  label_value = entry[LOADER.ENTRY_HANDS_PLAYED]
-               else
-                  local base = (label ~= "" and label_min_round[label]) or round
-                  label_value = (round - base) + 1
-               end
+         local meta = meta_cache[entry] or {}
+         local label = meta.label or ""
+         local round = entry[LOADER.ENTRY_ROUND] or 0
+         local ante = entry[LOADER.ENTRY_ANTE] or 0
+         
+         local label_value = 0
+         local is_selecting_hand_with_action = st and entry[LOADER.ENTRY_STATE] == st.SELECTING_HAND and entry[LOADER.ENTRY_ACTION_TYPE]
+         
+         if is_selecting_hand_with_action then
+            if entry[LOADER.ENTRY_ACTION_TYPE] == "discard" and entry[LOADER.ENTRY_DISCARDS_USED] ~= nil then
+               label_value = entry[LOADER.ENTRY_DISCARDS_USED]
+            elseif entry[LOADER.ENTRY_ACTION_TYPE] == "play" and entry[LOADER.ENTRY_HANDS_PLAYED] ~= nil then
+               label_value = entry[LOADER.ENTRY_HANDS_PLAYED]
             else
                local base = (label ~= "" and label_min_round[label]) or round
                label_value = (round - base) + 1
             end
+         else
+            local base = (label ~= "" and label_min_round[label]) or round
+            label_value = (round - base) + 1
+         end
+         
+         meta.label_value = label_value
 
-            meta.label_value = label_value
-
-            local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
-            label_totals[key] = (label_totals[key] or 0) + 1
+         local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
+         label_totals[key] = (label_totals[key] or 0) + 1
          end
       end
 
@@ -272,14 +272,14 @@ function LOADER.get_saves_page(args)
       local ordinals = {}
       for idx, entry in ipairs(entries) do
          if entry and entry[LOADER.ENTRY_SIGNATURE] then
-            local meta = meta_cache[entry] or {}
-            local ante = entry[LOADER.ENTRY_ANTE] or 0
-            local label_value = meta.label_value or 0
-            local label = meta.label or ""
-            local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
-            label_seen_from_newest[key] = (label_seen_from_newest[key] or 0) + 1
-            local total = label_totals[key] or label_seen_from_newest[key]
-            ordinals[idx] = total - label_seen_from_newest[key] + 1
+         local meta = meta_cache[entry] or {}
+         local ante = entry[LOADER.ENTRY_ANTE] or 0
+         local label_value = meta.label_value or 0
+         local label = meta.label or ""
+         local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
+         label_seen_from_newest[key] = (label_seen_from_newest[key] or 0) + 1
+         local total = label_totals[key] or label_seen_from_newest[key]
+         ordinals[idx] = total - label_seen_from_newest[key] + 1
          end
       end
 
