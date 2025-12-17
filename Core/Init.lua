@@ -25,6 +25,7 @@ LOADER.StateSignature = StateSignature -- Expose StateSignature module itself fo
 LOADER.get_save_dir = SaveManager.get_save_dir
 LOADER.get_save_files = SaveManager.get_save_files
 LOADER.get_save_meta = SaveManager.get_save_meta
+LOADER.preload_all_metadata = SaveManager.preload_all_metadata
 LOADER.load_save = SaveManager.load_save_file
 LOADER.load_and_start_from_file = SaveManager.load_and_start_from_file
 LOADER.revert_to_previous_save = SaveManager.revert_to_previous_save
@@ -95,9 +96,13 @@ if G and G.E_MANAGER and Event then
       delay = 0.1,  -- Small delay to let game finish initializing
       func = function()
          if SaveManager and SaveManager.get_save_files then
-            -- Force reload to build complete meta list with action_type detection
-            -- This ensures all saves are loaded from files and action_type is detected
-            SaveManager.get_save_files(true)  -- force_reload = true
+            -- Fully preload metadata during boot so the saves UI never triggers
+            -- `.meta` reads or `.jkr` decodes later.
+            if SaveManager.preload_all_metadata then
+               SaveManager.preload_all_metadata(true)
+            else
+               SaveManager.get_save_files(true)  -- fallback
+            end
             -- Also update current file flags
             if SaveManager._update_cache_current_flags then
                SaveManager._update_cache_current_flags()

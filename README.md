@@ -22,6 +22,8 @@ Saves are stored per‑profile under `PROFILE/FastSaveLoader`.
 - Keyboard shortcuts:
   - `S` in a run: delete the latest save and load the most recent previous one (not the current state)
   - `Ctrl + S` in a run: open/close the saves window
+  - Controller: click left stick (`L3`) in a run: same as `S` (step back one save)
+  - Controller: click right stick (`R3`) in a run: same as `Ctrl + S` (open/close saves window)
 - Configurable:
   - Toggles for which states create saves
   - Limit for how many recent antes’ saves are kept
@@ -46,6 +48,7 @@ Saves are stored per‑profile under `PROFILE/FastSaveLoader`.
    - Click **Current save** to jump to the page containing your currently loaded save.
    - Use **Delete all** to clear all saves for the current profile.
    - Press `Ctrl + S` again to close the window.
+   - Controller: `LB/RB` pages, `Y` jumps to **Current save**, and `B` goes back.
 4. Press `S` during a run to quickly step back one save:
    - Loads the previous save in the timeline (one step older than the current state).
    - Future saves (newer than the loaded save) are marked for deletion but **not immediately removed**.

@@ -4,6 +4,33 @@
 
 if not LOADER then LOADER = {} end
 
+local function _snap_saves_focus_to_current()
+   if not (G and G.CONTROLLER and LOADER and LOADER._saves_ui_refs and LOADER._saves_ui_refs.saves_box) then return end
+
+   local entries = LOADER.get_save_files and LOADER.get_save_files() or {}
+   local idx = nil
+   if LOADER._SaveManager and LOADER._SaveManager.get_index_by_file and LOADER._SaveManager._last_loaded_file then
+      idx = LOADER._SaveManager.get_index_by_file(LOADER._SaveManager._last_loaded_file)
+   end
+   if not idx then
+      for i, entry in ipairs(entries) do
+         if entry and entry[LOADER.ENTRY_IS_CURRENT] == true then
+            idx = i
+            break
+         end
+      end
+   end
+   if not idx then return end
+
+   local node = LOADER._saves_ui_refs.saves_box:get_UIE_by_ID("fastsl_save_entry_" .. tostring(idx))
+   if node then
+      G.CONTROLLER:snap_to({ node = node })
+      if G.CONTROLLER.update_cursor then
+         G.CONTROLLER:update_cursor()
+      end
+   end
+end
+
 function G.FUNCS.loader_save_open(e)
    if not G.FUNCS or not G.FUNCS.overlay_menu then return end
    
@@ -12,6 +39,19 @@ function G.FUNCS.loader_save_open(e)
       definition = G.UIDEF.fast_loader_saves(),
    })
    LOADER.saves_open = true
+
+   if G and G.E_MANAGER and Event then
+      G.E_MANAGER:add_event(Event({
+         trigger = "after",
+         delay = 0,
+         func = function()
+            _snap_saves_focus_to_current()
+            return true
+         end,
+      }))
+   else
+      _snap_saves_focus_to_current()
+   end
 end
 
 function G.FUNCS.loader_save_jump_to_current(e)
@@ -58,10 +98,25 @@ function G.FUNCS.loader_save_jump_to_current(e)
       cycle_config = cycle_config,
       to_key = target_page,
    })
+
+   if G and G.E_MANAGER and Event then
+      G.E_MANAGER:add_event(Event({
+         trigger = "after",
+         delay = 0,
+         func = function()
+            _snap_saves_focus_to_current()
+            return true
+         end,
+      }))
+   else
+      _snap_saves_focus_to_current()
+   end
 end
 
 function G.FUNCS.loader_save_reload(e)
-   if LOADER and LOADER.get_save_files then
+   if LOADER and LOADER.preload_all_metadata then
+      LOADER.preload_all_metadata(true) -- Force a full reload + meta preload
+   elseif LOADER and LOADER.get_save_files then
       LOADER.get_save_files(true) -- Force a reload from the filesystem
    end
    if not G.FUNCS or not G.FUNCS.exit_overlay_menu or not G.FUNCS.overlay_menu or not G.E_MANAGER then return end
@@ -103,16 +158,25 @@ function G.FUNCS.loader_save_restore(e)
 
    -- Set pending_index so that start_from_file can use it for timeline consistency
    if LOADER and LOADER.get_save_files then
-      local entries = LOADER.get_save_files()
-      for i, entry in ipairs(entries) do
-         if entry[LOADER.ENTRY_FILE] == file then
-            -- Use setter or direct module access since scalars are copied by value
-            if LOADER.set_pending_index then
-               LOADER.set_pending_index(i)
-            elseif LOADER._SaveManager then
-               LOADER._SaveManager.pending_index = i
+      local idx = nil
+      if LOADER._SaveManager and LOADER._SaveManager.get_index_by_file then
+         idx = LOADER._SaveManager.get_index_by_file(file)
+      end
+      if not idx then
+         local entries = LOADER.get_save_files()
+         for i, entry in ipairs(entries) do
+            if entry[LOADER.ENTRY_FILE] == file then
+               idx = i
+               break
             end
-            break
+         end
+      end
+      if idx then
+         -- Use setter or direct module access since scalars are copied by value
+         if LOADER.set_pending_index then
+            LOADER.set_pending_index(idx)
+         elseif LOADER._SaveManager then
+            LOADER._SaveManager.pending_index = idx
          end
       end
    end

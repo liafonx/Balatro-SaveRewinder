@@ -14,13 +14,6 @@ local deepcopy = Utils.deepcopy
 
 -- Assume LOADER is already defined and populated by Init.lua
 
--- Global Shim for ensure_shop_areas.
--- Some patched versions of the game's globals call a global ensure_shop_areas(run_data) helper before starting a run from saved data.
--- This is a no-op since shop areas are handled in Game:start_run wrapper.
-function ensure_shop_areas(run_data)
-   return run_data
-end
-
 -- LOADER.hook_key_hold from Init.lua, now defined here.
 function LOADER.hook_key_hold()
    -- Previously used to hook long-press behaviour; kept as a no-op
@@ -82,29 +75,23 @@ function Game:start_run(args)
       end
    end
 
-   -- 2. Fix Shop Card Areas (deferred loading)
-   if args.savetext and args.savetext.cardAreas then
+   -- 2. Suppress noisy "Card area 'shop_*' not instantiated" logs on shop restores.
+   -- In vanilla `Game:start_run`, missing areas are moved to `G.load_shop_*` and later
+   -- consumed in `Game:update_shop`, but it prints an error-level log while doing so.
+   -- We pre-stash these areas into `G.load_*` and remove them from `cardAreas` so the
+   -- vanilla loader doesn't emit the warning.
+   if args.savetext and args.savetext.cardAreas and G then
       local cardAreas = args.savetext.cardAreas
-      local is_opening_pack = args.savetext.ACTION and args.savetext.STATE == (G and G.STATES and G.STATES.SHOP)
-      -- Preserve shop areas even when opening a pack so the ACTION card exists and can be replayed.
-      -- Always defer their creation to avoid eager instantiation during start_run.
-      if cardAreas.shop_jokers then
-         self.load_shop_jokers = cardAreas.shop_jokers
-         cardAreas.shop_jokers = nil
-      end
-      if cardAreas.shop_booster then
-         self.load_shop_booster = cardAreas.shop_booster
-         cardAreas.shop_booster = nil
-      end
-      if cardAreas.shop_vouchers then
-         self.load_shop_vouchers = cardAreas.shop_vouchers
-         cardAreas.shop_vouchers = nil
+      local function stash_if_missing(area_key)
+         if not cardAreas[area_key] then return end
+         if G[area_key] then return end
+         G["load_" .. area_key] = cardAreas[area_key]
+         cardAreas[area_key] = nil
       end
 
-      if cardAreas.pack_cards then
-         self.load_pack_cards = cardAreas.pack_cards
-         cardAreas.pack_cards = nil
-      end
+      stash_if_missing("shop_jokers")
+      stash_if_missing("shop_booster")
+      stash_if_missing("shop_vouchers")
    end
 
    -- 3. Reset Loader State for new run
@@ -178,37 +165,6 @@ function Game:start_run(args)
 
    LOADER._start_run(self, args)
 
-   -- 4. Rebuild deferred pack cards
-   if self.load_pack_cards then
-      local ca = self.load_pack_cards
-      local count = #(ca.cards or {})
-      local size = (ca.config and ca.config.card_limit) or (self.GAME and self.GAME.pack_size) or count or 3
-      size = math.max(size or 3, count or 0)
-      
-      local w = (size or 3) * G.CARD_W
-      local h = 1.05 * G.CARD_H
-      local x = G.ROOM.T.x + 9 + G.hand.T.x
-      local y = G.hand.T.y
-      
-      G.pack_cards = CardArea(x, y, w, h, { card_limit = size, type = "consumeable", highlight_limit = 1 })
-      G.pack_cards:load(ca)
-      self.load_pack_cards = nil
-      G.load_pack_cards = nil
-   elseif G.load_pack_cards then
-       -- Fallback
-      local ca = G.load_pack_cards
-      local count = #(ca.cards or {})
-      local size = (ca.config and ca.config.card_limit) or (self.GAME and self.GAME.pack_size) or count or 3
-      size = math.max(size or 3, count or 0)
-      local w = (size or 3) * G.CARD_W
-      local h = 1.05 * G.CARD_H
-      local x = G.ROOM.T.x + 9 + G.hand.T.x
-      local y = G.hand.T.y
-      G.pack_cards = CardArea(x, y, w, h, { card_limit = size, type = "consumeable", highlight_limit = 1 })
-      G.pack_cards:load(ca)
-      G.load_pack_cards = nil
-   end
-
    -- Call the LOADER.hook_key_hold defined in this file.
    LOADER.hook_key_hold()
 end
@@ -228,17 +184,11 @@ function LOADER.defer_save_creation()
       -- We must create a deep copy of the data, because G.culled_table is ephemeral
       -- and will likely be gone or changed by the next frame.
       local run_data_copy = deepcopy(G.culled_table)
-
-      -- Add a small delay for shop saves to avoid sharing the same frame as shop UI build.
-      local save_delay = 0
-      if run_data_copy and run_data_copy.STATE and G and G.STATES and run_data_copy.STATE == G.STATES.SHOP then
-         save_delay = 0.12
-      end
       
       if G and G.E_MANAGER and Event then
          G.E_MANAGER:add_event(Event({
             trigger = 'after',
-            delay = save_delay,
+            delay = 0,
             func = function()
                -- require here since this runs in a new context
                require("SaveManager").create_save(run_data_copy)
@@ -251,5 +201,3 @@ function LOADER.defer_save_creation()
       end
    end
 end
-
-
