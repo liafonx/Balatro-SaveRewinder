@@ -14,6 +14,8 @@ local Pruning = require("Pruning")
 local DuplicateDetector = require("DuplicateDetector")
 
 local save_cache = nil -- In-memory cache for save files
+local save_cache_by_file = nil -- Map: filename -> entry
+local save_index_by_file = nil -- Map: filename -> 1-based index in save_cache
 
 -- Re-export constants for backward compatibility
 M.ENTRY_FILE = EntryConstants.ENTRY_FILE
@@ -72,6 +74,36 @@ M._meta_task = nil          -- Background metadata loading task
 -- Tunables to reduce main-thread I/O
 local META_FIRST_PASS_COUNT = 12   -- Load this many entries eagerly (covers first UI page)
 local META_CHUNK_SIZE = 8          -- Entries to process per background slice
+
+local function _rebuild_file_index()
+   if not save_cache then
+      save_cache_by_file = nil
+      save_index_by_file = nil
+      return
+   end
+
+   save_cache_by_file = {}
+   save_index_by_file = {}
+   for i, entry in ipairs(save_cache) do
+      local file = entry and entry[ENTRY_FILE]
+      if file then
+         save_cache_by_file[file] = entry
+         save_index_by_file[file] = i
+      end
+   end
+end
+
+function M.get_entry_by_file(file)
+   if not file then return nil end
+   if not save_cache_by_file then _rebuild_file_index() end
+   return save_cache_by_file and save_cache_by_file[file] or nil
+end
+
+function M.get_index_by_file(file)
+   if not file then return nil end
+   if not save_index_by_file then _rebuild_file_index() end
+   return save_index_by_file and save_index_by_file[file] or nil
+end
 
 -- Debug logging helper (injected or default)
 M.debug_log = function(tag, msg)
@@ -173,6 +205,7 @@ function M.clear_all_saves()
         end
     end
     save_cache = {} -- Reset cache to an empty table
+    _rebuild_file_index()
     -- M.debug_log("prune", "Cleared all saves and reset cache.") -- This log can cause recursion with other mods (e.g. debugplus) during a new run.
 end
 
@@ -245,6 +278,9 @@ function M.get_save_files(force_reload)
    if save_cache and not force_reload then
       -- Always update current flags even when returning cached entries
       M._update_cache_current_flags()
+      if not save_cache_by_file or not save_index_by_file then
+         _rebuild_file_index()
+      end
       return save_cache
    end
    local dir = M.get_save_dir()
@@ -293,6 +329,7 @@ function M.get_save_files(force_reload)
    end)
 
    save_cache = entries
+   _rebuild_file_index()
   
    -- First pass: load metadata for the newest entries (covers first UI page)
    local preload = math.min(META_FIRST_PASS_COUNT, #entries)
@@ -314,6 +351,27 @@ function M.get_save_files(force_reload)
       M._update_cache_current_flags()
    end
    
+   return entries
+end
+
+-- Fully preload metadata for all entries synchronously.
+-- This is intended to run during boot so no further `.meta` reads / `.jkr` decodes
+-- occur later when opening the UI.
+function M.preload_all_metadata(force_reload)
+   local entries = M.get_save_files(force_reload == true)
+
+   -- Cancel any queued background task for metadata loading.
+   M._meta_task = nil
+
+   for i = 1, #entries do
+      if entries[i] and not entries[i][ENTRY_SIGNATURE] then
+         M.get_save_meta(entries[i])
+      end
+   end
+
+   ActionDetector.detect_action_types_for_entries(entries, entries, M.get_save_meta, EntryConstants)
+   M._update_cache_current_flags()
+   _rebuild_file_index()
    return entries
 end
 
@@ -357,19 +415,17 @@ function M.describe_save(opts)
 
    -- 2. Good case: Find the entry in the cache using the filename.
    if file then
-      local entries = M.get_save_files() -- Uses cache if available
-      for _, e in ipairs(entries) do
-         if e[ENTRY_FILE] == file and e[ENTRY_STATE] ~= nil then
-            local sig = {
-               ante = e[ENTRY_ANTE],
-               round = e[ENTRY_ROUND],
-               state = e[ENTRY_STATE],
-               action_type = e[ENTRY_ACTION_TYPE],
-               is_opening_pack = e[ENTRY_IS_OPENING_PACK] or false,
-               money = e[ENTRY_MONEY],
-            }
-            return StateSignature.describe_signature(sig) or "Save"
-         end
+      local e = M.get_entry_by_file(file)
+      if e and e[ENTRY_STATE] ~= nil then
+         local sig = {
+            ante = e[ENTRY_ANTE],
+            round = e[ENTRY_ROUND],
+            state = e[ENTRY_STATE],
+            action_type = e[ENTRY_ACTION_TYPE],
+            is_opening_pack = e[ENTRY_IS_OPENING_PACK] or false,
+            money = e[ENTRY_MONEY],
+         }
+         return StateSignature.describe_signature(sig) or "Save"
       end
    end
    
@@ -426,14 +482,27 @@ local function start_from_file(file)
    if LOADER then LOADER.saves_open = false end
 
    -- Copy save file directly to save.jkr (fast path, no decode needed)
-   if not M.copy_save_to_main(file) then
+   local copied_ok = M.copy_save_to_main(file)
+   if not copied_ok then
       M.debug_log("error", "Failed to copy save to save.jkr")
       return false
    end
 
-   -- Load the file to get run_data for start_run
-   -- (We still need run_data for Game:start_run hook)
-   local run_data = M.load_save_file(file)
+   -- Load run data from save.jkr (QuickLoad-style).
+   -- This keeps the in-memory savetext consistent with what's on disk after copy.
+   local run_data = nil
+   if get_compressed and STR_UNPACK then
+      local ok, packed = pcall(get_compressed, M.get_profile() .. "/save.jkr")
+      if ok and packed then
+         local ok_unpack, unpacked = pcall(STR_UNPACK, packed)
+         if ok_unpack then run_data = unpacked end
+      end
+   end
+
+   -- Fallback: unpack directly from the target file.
+   if not run_data then
+      run_data = M.load_save_file(file)
+   end
    if not run_data then
       M.debug_log("error", "Failed to load save file for start_run")
       return false
@@ -756,6 +825,7 @@ function M.create_save(run_data)
 
     -- Prune any divergent timelines before creating the new save
     Pruning.prune_future_saves(dir, M.pending_future_prune, save_cache, EntryConstants)
+    _rebuild_file_index()
 
     -- Generate a unique filename. Using a high-precision timer for the unique part
     -- to prevent collisions if multiple saves occur within the same second.
@@ -830,6 +900,7 @@ function M.create_save(run_data)
 
     -- Update cache and state
     table.insert(save_cache, 1, new_entry)
+    _rebuild_file_index()
     run_data._file = filename
     M.current_index = 1
     
@@ -852,6 +923,7 @@ function M.create_save(run_data)
     -- Timing disabled (kept hook for future use)
 
     Pruning.apply_retention_policy(dir, save_cache, EntryConstants)
+    _rebuild_file_index()
 end
 
 return M

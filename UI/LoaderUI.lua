@@ -4,6 +4,8 @@
 
 if not LOADER then LOADER = {} end
 
+local SAVE_ENTRY_W = 8.8
+
 -- Get dot color based on round number (odd/even)
 -- Colors chosen for good contrast against blue background (G.C.BLUE)
 function LOADER.get_round_color(round)
@@ -19,9 +21,10 @@ function LOADER.get_round_color(round)
    end
 end
 
-function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry)
+function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opts)
    -- Use entry as array (no keys, accessed by index)
    if not entry then return nil end
+   opts = opts or {}
 
    -- Build ante/round text
    local ante_text = ""
@@ -162,15 +165,18 @@ function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry)
          {
             n = G.UIT.R,
             config = {
+               id = opts.id,
                button = "loader_save_restore",
                align = "cl",
                colour = button_colour,
-               minw = 9.6,
-               maxw = 9.6,
+               minw = SAVE_ENTRY_W,
+               maxw = SAVE_ENTRY_W,
                padding = 0.1,
                r = 0.1,
                hover = true,
+               can_collide = true,
                shadow = true,
+               focus_args = { snap_to = opts.snap_to == true },
                ref_table = { file = entry[LOADER.ENTRY_FILE] },
             },
             nodes = text_nodes,
@@ -289,9 +295,12 @@ function LOADER.get_saves_page(args)
          local global_index = offset + i
          local meta = meta_cache[entry] or {}
          local ordinal_suffix = tostring(ordinals[global_index] or 1)
-         local is_first_entry = (global_index == 1)
+      local is_first_entry = (global_index == 1)
 
-         table.insert(nodes, LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry))
+         table.insert(nodes, LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, {
+            id = "fastsl_save_entry_" .. tostring(global_index),
+            snap_to = (entry and entry[LOADER.ENTRY_IS_CURRENT] == true),
+         }))
       end
 
       content = {
@@ -305,7 +314,7 @@ function LOADER.get_saves_page(args)
       n = G.UIT.ROOT,
       config = {
          align = (#entries == 0 and "cm" or "tm"),
-         minw = 10,
+         minw = SAVE_ENTRY_W,
          minh = 6,
          r = 0.1,
          colour = G.C.CLEAR,
@@ -358,6 +367,8 @@ function G.UIDEF.fast_loader_saves()
 
    return create_UIBox_generic_options({
       back_func = "options",
+      minw = SAVE_ENTRY_W,
+      back_id = "fastsl_back",
       contents = {
          {
             n = G.UIT.R,
@@ -371,14 +382,16 @@ function G.UIDEF.fast_loader_saves()
             config = { align = "cm", colour = G.C.CLEAR },
             nodes = {
                create_option_cycle({
+                  id = "fastsl_page_cycle",
                   options = page_numbers,
                   current_option = initial_page,
                   opt_callback = "loader_save_update_page",
                   opt_args = { ui = saves_box, per_page = per_page, entries = entries },
                   w = 4.5,
                   colour = G.C.BLUE,
-                  cycle_shoulders = false,
+                  cycle_shoulders = true,
                   no_pips = true,
+                  focus_args = { nav = "wide" },
                }),
             },
          },
@@ -391,11 +404,14 @@ function G.UIDEF.fast_loader_saves()
                   config = { align = "cm", padding = 0.1 },
                   nodes = {
                      UIBox_button({
+                        id = "fastsl_btn_current",
                         button = "loader_save_jump_to_current",
                         label = { (localize and localize("fastsl_jump_to_current")) or "Current save" },
-                        minw = 4,
+                        minw = 3.6,
+                        scale = 0.42,
                         colour = G.C.BLUE,
-                     }),
+                        focus_args = { nav = "wide", button = "y", set_button_pip = true },
+                      }),
                   },
                },
                {
@@ -403,10 +419,13 @@ function G.UIDEF.fast_loader_saves()
                   config = { align = "cm", padding = 0.1 },
                   nodes = {
                      UIBox_button({
+                        id = "fastsl_btn_delete",
                         button = "loader_save_delete_all",
                         label = { (localize and localize("fastsl_delete_all")) or "Delete all" },
-                        minw = 4,
-                     }),
+                        minw = 3.6,
+                        scale = 0.42,
+                        focus_args = { nav = "wide" },
+                      }),
                   },
                },
             },

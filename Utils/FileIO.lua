@@ -49,7 +49,7 @@ function M.copy_save_to_main(file, save_dir)
         return false
     end
     
-    -- Read save file
+    -- Read save file (compressed bytes)
     local save_data = love.filesystem.read(source_path)
     if not save_data then
         M.debug_log("error", "Failed to read: " .. source_path)
@@ -125,4 +125,3 @@ function M.sync_to_main_save(run_data)
 end
 
 return M
-
