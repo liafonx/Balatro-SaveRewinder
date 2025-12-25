@@ -8,7 +8,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 
 - 🎯 **Undo misplays** — Accidentally discarded the wrong card? Go back and try again
 - 🧪 **Experiment freely** — Test risky strategies without committing
-- 📸 **Automatic snapshots** — Saves happen in the background at key moments
+- 📸 **Automatic snapshots** — Creates a save whenever the game saves (blind selection, hand play/discard, shop, etc.)
 - ⚡ **Instant restore** — Press `S` to step back, no menus needed
 - 🎮 **Full controller support** — Works great with gamepad
 
@@ -17,8 +17,9 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 ### Installation
 
 1. Install [Steamodded](https://github.com/Steamopollys/Steamodded) for Balatro
-2. Copy this folder to your `Mods` directory
-3. Launch Balatro — you'll see **Save Rewinder** in the mods list
+2. Download the latest release (`SaveRewinder-[version].zip`) from the [Releases](../../releases) page
+3. Extract and put the `SaveRewinder` folder (not the zip itself) into your game's `Mods` folder
+4. Launch Balatro — you'll see **Save Rewinder** in the mods list
 
 ### Controls
 
