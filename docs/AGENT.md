@@ -167,8 +167,8 @@
 
 - **`config.lua`**  
   - 默认配置值，例如：
-    - 各状态下的保存开关（默认 `nil`，表示全部开启）。  
-    - `keep_antes = 7`（对应 "All"）。  
+    - 各状态下的保存开关（默认 `true`，表示全部开启）。  
+    - `keep_antes = 3`（对应保留 4 个 Ante 的存档；索引映射：1=1, 2=2, 3=4, 4=6, 5=8, 6=16, 7=All）。  
     - `debug_saves = false`。  
 
 - **`lovely.toml`**  
@@ -200,6 +200,26 @@
     - `AGENT.md`：本文档，项目架构和设计说明。  
     - `CACHE_ENTRY_EXAMPLE.md`：缓存条目数组结构详解，包含字段索引常量、`action_type` 与 `is_opening_pack` 的区别、签名编码格式、以及条目生命周期说明。  
     - `CLICK_LOAD_FLOW.md`：点击存档加载的完整流程文档，从 UI 按钮点击到游戏重启的 6 个步骤、关键状态变量、时间线修剪策略、以及序列图。  
+
+### 2.2.1 开发脚本（本地开发用）
+
+- **`scripts/`**（已加入 `.gitignore`，不会提交到仓库）  
+  - `sync_to_mods.sh`：将 Mod 文件同步到游戏 Mods 目录的脚本。  
+    - **背景**：开发目录包含参考文件夹（`balatro_src/`、`Steamodded/` 等），直接软链接整个目录会导致游戏加载非 Mod 文件并报错。Love2D 也不能正确跟随软链接。  
+    - **解决方案**：使用 `rsync` 将仅 Mod 相关的文件/文件夹复制到游戏 Mods 目录。  
+    - **用法**：
+      ```bash
+      # 一次性同步
+      ./scripts/sync_to_mods.sh
+      
+      # 监听文件变化并自动同步（需要 brew install fswatch）
+      ./scripts/sync_to_mods.sh --watch
+      
+      # 指定自定义 Mods 路径
+      ./scripts/sync_to_mods.sh /path/to/Balatro/Mods
+      ```
+    - **同步内容**：`main.lua`, `config.lua`, `Keybinds.lua`, `lovely.toml`, `FasterSaveLoader.json`, `Core/`, `UI/`, `Utils/`, `localization/`。  
+    - **排除内容**：`balatro_src/`, `Steamodded/`, `Brainstorm-Rerolled/`, `scripts/`, `docs/`, `lovely/` 等参考/开发目录。  
 
 ### 2.3 外部 / 参考目录
 

@@ -45,7 +45,7 @@ In the Steamodded config menu for Fast Save Loader:
   - Selecting hand (after play/discard)
   - End of round
   - In shop
-- **Limit saves** — Keep only recent antes (1, 2, 4, 6, 8, 16, or All)
+- **Limit saves** — Keep only recent antes (1, 2, 4, 6, 8, 16, or All; default: 4)
 - **Delete all** — Clear all saves for current profile
 
 ## Languages
