@@ -60,13 +60,6 @@ sources = [ "Core/GamePatches.lua" ] # Appended after Init.lua (which is also ap
 
 [[patches]]
 [patches.module]
-name = "Utils"
-source = "Utils/Utils.lua"
-load_now = true
-before = "globals.lua"
-
-[[patches]]
-[patches.module]
 name = "Logger"
 source = "Utils/Logger.lua"
 load_now = true

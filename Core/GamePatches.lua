@@ -8,9 +8,15 @@ if not REWINDER then REWINDER = {} end
 if REWINDER._game_patches_loaded then return end
 REWINDER._game_patches_loaded = true
 
--- Use centralized deepcopy utility
-local Utils = require("Utils")
-local deepcopy = Utils.deepcopy
+-- Local deepcopy utility for safely copying tables
+local function deepcopy(orig)
+    if type(orig) ~= 'table' then return orig end
+    local copy = {}
+    for k, v in pairs(orig) do
+        copy[deepcopy(k)] = deepcopy(v)
+    end
+    return copy
+end
 
 -- Assume REWINDER is already defined and populated by Init.lua
 

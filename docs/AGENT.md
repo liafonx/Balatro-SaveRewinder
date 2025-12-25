@@ -73,14 +73,10 @@
     - 加载 Shop 存档时：使用动态前缀匹配（`^shop_`）将尚未实例化的 shop CardArea 预先写入 `G.load_shop_*` 并从 `cardAreas` 移除，避免原版打印 `ERROR LOADING GAME: Card area ... not instantiated before load` 噪音日志；后续由原版 `Game:update_shop` 加载。此方式对游戏版本更新更具兼容性。  
     - 重置新 run 的状态，清理旧存档（新 run 时）。  
   - `REWINDER.defer_save_creation()`：
-    - 使用 `Utils.deepcopy` 对 `G.culled_table` 进行深拷贝。  
+    - 使用本地 `deepcopy` 函数对 `G.culled_table` 进行深拷贝。  
     - 使用 `G.E_MANAGER` 将 `SaveManager.create_save` 调度到**下一帧**执行。  
 
 #### Utils/ - 工具模块
-
-- **`Utils/Utils.lua`**  
-  - 共享工具函数。  
-  - `deepcopy(orig)`：深拷贝表结构，用于安全传递存档数据。  
 
 - **`Utils/Logger.lua`**  
   - 集中化日志工具模块。  
@@ -192,7 +188,7 @@
 
 ### 2.1.5 依赖关系速览
 
-- `Core/GamePatches.lua`：依赖 `SaveManager`（创建/加载存档）、`Utils.deepcopy`、`G.E_MANAGER`/`Event`；由 `lovely.toml` 注入触发，接管 `start_run` 与延迟保存。
+- `Core/GamePatches.lua`：依赖 `SaveManager`（创建/加载存档）、`G.E_MANAGER`/`Event`；由 `lovely.toml` 注入触发，接管 `start_run` 与延迟保存。内置 `deepcopy` 函数。
 - `Core/SaveManager.lua`：依赖 `StateSignature`、`EntryConstants`、`MetaFile`、`FileIO`、`ActionDetector`、`CacheManager`、`Pruning`、`DuplicateDetector`；被 `GamePatches.defer_save_creation`、UI (`RewinderUI`/`ButtonCallbacks`) 与 `Keybinds` 调用。
 - `Utils/FileIO.lua`：封装 pack/压缩/写入与读取；被 `SaveManager` 复用；依赖 `love.filesystem`/`love.data`。
 - `Utils/MetaFile.lua`：`.meta` 读写；被 `SaveManager` 复用。
