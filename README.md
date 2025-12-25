@@ -12,6 +12,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - 🧪 **Experiment freely** — Test risky strategies without committing
 - 📸 **Automatic snapshots** — Creates a save whenever the game saves (blind selection, hand play/discard, shop, etc.)
 - ⚡ **Instant restore** — Press `S` to step back, no menus needed
+- 🔄 **Undo your undo** — Stepped back too far? rewinded saves stay in the list until you make a new move
 - 🎮 **Full controller support** — Works great with gamepad
 
 ## Quick Start
@@ -62,6 +63,8 @@ Saves are stored in your Balatro profile folder:
 - **`.meta` files** — Cached metadata for faster loading.
 
 > ⚠️ **Note**: Saves are only kept for your **current run**. If you exit mid-run, saves persist. Starting a **new run** will delete all previous saves.
+
+> 💡 **Tip**: When you step back (`S`) or load an older save, "future" saves aren't deleted immediately — they're only removed when you make a new action that triggers a save. This lets you undo your undo if you change your mind!
 
 ## Languages
 
