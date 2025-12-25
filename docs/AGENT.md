@@ -1,4 +1,4 @@
-# FastSaveLoader 项目说明文档
+# SaveRewinder 项目说明文档
 
 > 基于工程笔记（A.md）与 Agent 设计文档（AGENT.md）整理的综合说明。
 
@@ -6,7 +6,7 @@
 
 ## 1. 项目目标与整体功能
 
-**FastSaveLoader** 是一款面向 *Balatro* 的存档/回溯 Mod，核心目标是：
+**SaveRewinder** 是一款面向 *Balatro* 的存档/回溯 Mod，核心目标是：
 
 - 在游戏过程中自动生成多份存档（按 Ante 轮次时间线排序）；
 - 允许玩家从任意存档点恢复当前 run，相当于提供「撤销 / 步进回退」功能；
@@ -24,9 +24,9 @@
 #### Core/ - 核心功能模块
 
 - **`Core/Init.lua`**  
-  - Mod 的入口点，负责加载核心模块并设置全局 `LOADER` 命名空间。  
+  - Mod 的入口点，负责加载核心模块并设置全局 `REWINDER` 命名空间。  
   - 加载 `StateSignature` 和 `SaveManager` 模块。  
-  - 将模块功能导出到 `LOADER` 命名空间，供其他脚本使用。  
+  - 将模块功能导出到 `REWINDER` 命名空间，供其他脚本使用。  
   - 提供统一的 `debug_log` 函数，支持标签分类和配置开关。  
   - 在游戏启动时**同步**预加载存档列表与元数据（包含 `action_type` 检测），保证打开存档 UI 时不会再触发额外的 `.meta` 读取或 `.jkr` 解包。  
   - 提供 `show_save_debug` 函数，用于显示存档通知的 UI 提示框。  
@@ -72,7 +72,7 @@
     - 标记加载状态（调用 `mark_loaded_state`）。  
     - 加载 Shop 存档时：使用动态前缀匹配（`^shop_`）将尚未实例化的 shop CardArea 预先写入 `G.load_shop_*` 并从 `cardAreas` 移除，避免原版打印 `ERROR LOADING GAME: Card area ... not instantiated before load` 噪音日志；后续由原版 `Game:update_shop` 加载。此方式对游戏版本更新更具兼容性。  
     - 重置新 run 的状态，清理旧存档（新 run 时）。  
-  - `LOADER.defer_save_creation()`：
+  - `REWINDER.defer_save_creation()`：
     - 使用 `Utils.deepcopy` 对 `G.culled_table` 进行深拷贝。  
     - 使用 `G.E_MANAGER` 将 `SaveManager.create_save` 调度到**下一帧**执行。  
 
@@ -81,6 +81,13 @@
 - **`Utils/Utils.lua`**  
   - 共享工具函数。  
   - `deepcopy(orig)`：深拷贝表结构，用于安全传递存档数据。  
+
+- **`Utils/Logger.lua`**  
+  - 集中化日志工具模块。  
+  - `Logger.create(module_name)`：创建模块专用的日志函数，返回 `debug_log(tag, msg)`。  
+  - `Logger.log(tag, msg)`：简单日志函数（无模块名）。  
+  - 自动处理 `debug_saves` 配置检查和 `pcall` 保护。  
+  - 统一日志前缀：`[Rewinder][ModuleName][tag] message`。  
 
 - **`Utils/EntryConstants.lua`**  
   - 定义缓存条目数组索引常量。  
@@ -125,9 +132,9 @@
 
 #### UI/ - 用户界面
 
-- **`UI/LoaderUI.lua`**  
+- **`UI/RewinderUI.lua`**  
   - 构建并渲染存档列表 overlay。  
-  - `G.UIDEF.fast_loader_saves()`：主 UI 定义函数。  
+  - `G.UIDEF.rewinder_saves()`：主 UI 定义函数。  
   - `build_save_node()`：构建单个存档项的 UI 节点（带高亮当前存档）。  
     - 根据奇偶轮次为分隔符点着色（提高可读性）。  
     - 显示动作类型（如 "Selecting Hand (Play)" 或 "Selecting Hand (Discard)"）。  
@@ -139,11 +146,11 @@
 
 - **`UI/ButtonCallbacks.lua`**  
   - 绑定 UI 中按钮操作：
-    - `loader_save_restore`：加载选中的存档。  
-    - `loader_save_update_page`：切换分页（更新存储的 `cycle_config` 引用）。  
-    - `loader_save_jump_to_current`：跳转到当前存档所在页（使用存储的 `cycle_config` 引用）。  
-    - `loader_save_delete_all`：删除所有存档。  
-    - `loader_save_reload`：强制刷新存档列表。  
+    - `rewinder_save_restore`：加载选中的存档。  
+    - `rewinder_save_update_page`：切换分页（更新存储的 `cycle_config` 引用）。  
+    - `rewinder_save_jump_to_current`：跳转到当前存档所在页（使用存储的 `cycle_config` 引用）。  
+    - `rewinder_save_delete_all`：删除所有存档。  
+    - `rewinder_save_reload`：强制刷新存档列表。  
   - 打开存档列表时将手柄焦点吸附到当前存档项，保证初始高亮与导航稳定。  
 
 #### 根目录文件
@@ -172,11 +179,11 @@
     - `debug_saves = false`。  
 
 - **`lovely.toml`**  
-  - Lovely Loader 的补丁配置文件。  
+  - Lovely REWINDER 的补丁配置文件。  
   - 使用 **正则 patch** 在游戏原版 `functions/misc_functions.lua` 中，定位 `G.ARGS.save_run = G.culled_table` 的位置，并在其后插入：  
     ```lua
-    if LOADER and LOADER.defer_save_creation then
-       LOADER.defer_save_creation()
+    if REWINDER and REWINDER.defer_save_creation then
+       REWINDER.defer_save_creation()
     end
     ```  
   - 使用 **pattern patch** 在 `card.lua` 的 `Card:open()` 函数中设置 `skipping_pack_open` 标记。  
@@ -186,7 +193,7 @@
 ### 2.1.5 依赖关系速览
 
 - `Core/GamePatches.lua`：依赖 `SaveManager`（创建/加载存档）、`Utils.deepcopy`、`G.E_MANAGER`/`Event`；由 `lovely.toml` 注入触发，接管 `start_run` 与延迟保存。
-- `Core/SaveManager.lua`：依赖 `StateSignature`、`EntryConstants`、`MetaFile`、`FileIO`、`ActionDetector`、`CacheManager`、`Pruning`、`DuplicateDetector`；被 `GamePatches.defer_save_creation`、UI (`LoaderUI`/`ButtonCallbacks`) 与 `Keybinds` 调用。
+- `Core/SaveManager.lua`：依赖 `StateSignature`、`EntryConstants`、`MetaFile`、`FileIO`、`ActionDetector`、`CacheManager`、`Pruning`、`DuplicateDetector`；被 `GamePatches.defer_save_creation`、UI (`RewinderUI`/`ButtonCallbacks`) 与 `Keybinds` 调用。
 - `Utils/FileIO.lua`：封装 pack/压缩/写入与读取；被 `SaveManager` 复用；依赖 `love.filesystem`/`love.data`。
 - `Utils/MetaFile.lua`：`.meta` 读写；被 `SaveManager` 复用。
 - `Utils/ActionDetector.lua`：动作类型推断；被 `SaveManager` 复用；依赖 `EntryConstants` 和 `G.STATES`。
@@ -218,7 +225,7 @@
       # 指定自定义 Mods 路径
       ./scripts/sync_to_mods.sh /path/to/Balatro/Mods
       ```
-    - **同步内容**：`main.lua`, `config.lua`, `Keybinds.lua`, `lovely.toml`, `FasterSaveLoader.json`, `Core/`, `UI/`, `Utils/`, `localization/`。  
+    - **同步内容**：`main.lua`, `config.lua`, `Keybinds.lua`, `lovely.toml`, `SaveRewinder.json`, `Core/`, `UI/`, `Utils/`, `localization/`。  
     - **排除内容**：`balatro_src/`, `Steamodded/`, `Brainstorm-Rerolled/`, `scripts/`, `docs/`, `lovely/` 等参考/开发目录。  
 
 ### 2.3 外部 / 参考目录
@@ -226,11 +233,11 @@
 以下目录为参考用途，不属于本 Mod 的核心代码：  
 
 - **`lovely/`**  
-  - 本地 Lovely Loader 相关文件（包括自身日志目录 `lovely/log/`）。  
+  - 本地 Lovely REWINDER 相关文件（包括自身日志目录 `lovely/log/`）。  
   - 可用于调试补丁是否正确应用、查看崩溃信息。  
 
 - **`Steamodded/`**  
-  - Steamodded Loader 的脚本和配置，作为参考或与本 Mod 的联动环境。  
+  - Steamodded REWINDER 的脚本和配置，作为参考或与本 Mod 的联动环境。  
 
 - **`balatro_src/`**  
   - 解包后的原版 Balatro 源文件，用于：
@@ -252,7 +259,7 @@
 ### 2.3.1 balatro_src 快速定位（与本 Mod 相关）
 
 - **`functions/misc_functions.lua`**  
-  - `save_run()` 构造 `G.culled_table` 并设置 `G.ARGS.save_run`；我们在此处用 `lovely.toml` 插入 `LOADER.defer_save_creation()`。  
+  - `save_run()` 构造 `G.culled_table` 并设置 `G.ARGS.save_run`；我们在此处用 `lovely.toml` 插入 `REWINDER.defer_save_creation()`。  
 - **`functions/button_callbacks.lua`**  
   - `G.FUNCS.start_run` 负责完整的 wipe 流程（`wipe_on` → `delete_run` → `start_run` → `wipe_off`）。  
   - `G.FUNCS.wipe_on` / `wipe_off` 的定义也在此文件。  
@@ -273,7 +280,7 @@
 1. 游戏在关键节点执行原版 `save_run`：  
    - 在 `functions/misc_functions.lua` 中构造 `G.culled_table`。  
 2. 通过 `lovely.toml` 静态注入的代码调用：  
-   - `LOADER.defer_save_creation()`（在 `G.ARGS.save_run = G.culled_table` 之后）。  
+   - `REWINDER.defer_save_creation()`（在 `G.ARGS.save_run = G.culled_table` 之后）。  
 3. `GamePatches.lua` 中的 `defer_save_creation` 函数：  
    - 对 `G.culled_table` 进行深拷贝（因为原数据是临时的）。  
    - 使用 `G.E_MANAGER` 将存档任务延后到**下一帧**执行，打断与其他 Mod 钩子共享的同步调用栈，避免递归崩溃。  
@@ -284,7 +291,7 @@
    - 使用 `Pruning.prune_future_saves` 执行时间线修剪（删除 `pending_future_prune` 中的「未来」存档）。  
    - 使用 `ActionDetector.detect_action_type` 对于 `SELECTING_HAND` 状态检测动作类型（play/discard）。  
    - 生成唯一文件名：`<ante>-<round>-<unique_timestamp>.jkr`。  
-   - 序列化、压缩并写入文件系统：`PROFILE/FastSaveLoader/<filename>.jkr`。  
+   - 序列化、压缩并写入文件系统：`PROFILE/SaveRewinder/<filename>.jkr`。  
    - 使用 `MetaFile.write_meta_file` 写入 `.meta` 文件以加速后续元数据读取。  
    - 更新内存缓存（`save_cache`，数组结构）并使用 `CacheManager.set_cache_current_file` 标记当前存档。  
    - 使用 `Pruning.apply_retention_policy` 应用保留策略（根据配置的 `keep_antes` 删除旧 Ante 的存档）。  
@@ -380,7 +387,7 @@
 
 - 方法：  
   1. 在 `lovely.toml` 中通过正则定位原版 `functions/misc_functions.lua` 里 `G.ARGS.save_run = G.culled_table` 的位置。  
-  2. 紧接其后插入 `LOADER.defer_save_creation()` 调用。  
+  2. 紧接其后插入 `REWINDER.defer_save_creation()` 调用。  
   3. 在 `GamePatches.lua` 中实现 `defer_save_creation`：  
      - 对 `G.culled_table` 进行深拷贝（因为原数据是临时的，会在当前帧结束后被修改或销毁）。  
      - 使用 `G.E_MANAGER:add_event` 把真正的存档创建 (`SaveManager.create_save`) 延后到下一帧执行。  
@@ -446,7 +453,7 @@
 
 1. **缓存失效与刷新机制**  
    - 实现文件系统监听（如果 Love2D 支持）或定期检查存档目录的修改时间。  
-   - 在 UI 打开时自动验证缓存有效性，或提供「强制刷新」按钮（当前已有 `loader_save_reload`，但可优化体验）。  
+   - 在 UI 打开时自动验证缓存有效性，或提供「强制刷新」按钮（当前已有 `rewinder_save_reload`，但可优化体验）。  
    - 考虑在每次 `create_save` 后广播事件，通知其他组件更新缓存。  
 
 2. **改进日志文案与分级**  
@@ -554,7 +561,7 @@
 
 ### 7.1 存档时机与限制
 
-- Fast Save Loader 在以下安全点创建存档：选盲注、商店、回合结束、选牌出牌/弃牌后。
+- Save Rewinder 在以下安全点创建存档：选盲注、商店、回合结束、选牌出牌/弃牌后。
 - 如果在动画/转场过程中触发加载，恢复的状态可能略早于预期的存档点。
 - 由于 Balatro 自身的保存行为和 `save.jkr` 读写耗时，快速切换状态/页面时，部分「感觉应该被保存」的中间状态可能不在存档列表中。
 

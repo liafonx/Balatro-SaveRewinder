@@ -1,4 +1,4 @@
---- Fast Save Loader - SaveManager.lua
+--- Save Rewinder - SaveManager.lua
 --
 -- Manages the lifecycle of save files: listing, pruning, loading, and metadata.
 -- Decoupled from UI code to improve performance and testability.
@@ -49,7 +49,7 @@ local ENTRY_IS_CURRENT = EntryConstants.ENTRY_IS_CURRENT
 
 -- Configuration for file paths
 M.PATHS = {
-    SAVES = "FastSaveLoader",
+    SAVES = "SaveRewinder",
 }
 
 -- Internal state
@@ -120,23 +120,9 @@ function M.find_current_index()
    return nil
 end
 
--- Debug logging helper (injected or default)
-M.debug_log = function(tag, msg)
-    if LOADER and LOADER.debug_log then
-        LOADER.debug_log(tag, msg)
-    else
-        -- Fallback logger for when called before Init.lua runs
-        print("[FastSL][SaveManager][" .. tostring(tag) .. "] " .. tostring(msg))
-    end
-end
-
--- Inject debug loggers into modules
-MetaFile.debug_log = M.debug_log
-FileIO.debug_log = M.debug_log
-ActionDetector.debug_log = M.debug_log
-CacheManager.debug_log = M.debug_log
-Pruning.debug_log = M.debug_log
-DuplicateDetector.debug_log = M.debug_log
+-- Debug logging (centralized via Logger module)
+local Logger = require("Logger")
+M.debug_log = Logger.create("SaveManager")
 
 -- Schedule background metadata loading to avoid long stalls
 local function _schedule_meta_load(entries, start_idx)
@@ -495,7 +481,7 @@ local function start_from_file(file, opts)
    M.current_index = M.pending_index or idx_from_list or 1
    M.pending_index = nil
 
-   if LOADER then LOADER.saves_open = false end
+   if REWINDER then REWINDER.saves_open = false end
 
    -- Copy save file directly to save.jkr (fast path, no decode needed)
    local copied_ok = M.copy_save_to_main(file)
@@ -746,7 +732,7 @@ function M.consume_skip_on_save(save_table)
    M.skipping_pack_open = nil
 
    if save_table and should_skip then
-      save_table.LOADER_SKIP_SAVE = true
+      save_table.REWINDER_SKIP_SAVE = true
    end
 
    -- Only log when NOT skipping (actual saves are more important to track)
@@ -789,7 +775,7 @@ function M.create_save(run_data)
 
     -- Check config filters for different state types
     local st = G and G.STATES
-    local config = LOADER and LOADER.config
+    local config = REWINDER and REWINDER.config
     
     if st then
         -- Check filter for end of round (ROUND_EVAL or HAND_PLAYED states)

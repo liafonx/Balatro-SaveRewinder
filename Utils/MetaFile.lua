@@ -1,17 +1,11 @@
---- Fast Save Loader - MetaFile.lua
+--- Save Rewinder - MetaFile.lua
 --
 -- Handles reading and writing .meta files for fast metadata loading.
 
+local Logger = require("Logger")
 local M = {}
 
--- Debug logging helper (injected by Init.lua)
-M.debug_log = function(tag, msg)
-    if LOADER and LOADER.debug_log then
-        LOADER.debug_log(tag, msg)
-    else
-        print("[FastSL][MetaFile][" .. tostring(tag) .. "] " .. tostring(msg))
-    end
-end
+M.debug_log = Logger.create("MetaFile")
 
 -- Reads metadata from .meta file (fast path)
 function M.read_meta_file(meta_path)

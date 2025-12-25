@@ -1,37 +1,37 @@
---- Fast Save Loader - GamePatches.lua
+--- Save Rewinder - GamePatches.lua
 --
 -- Contains the overrides for Game:start_run and Game:write_save_file.
 -- These functions are injected into the game via lovely.toml.
-if not LOADER then LOADER = {} end
+if not REWINDER then REWINDER = {} end
 
 -- Guard against double-execution (e.g., if this file is patched multiple times)
-if LOADER._game_patches_loaded then return end
-LOADER._game_patches_loaded = true
+if REWINDER._game_patches_loaded then return end
+REWINDER._game_patches_loaded = true
 
 -- Use centralized deepcopy utility
 local Utils = require("Utils")
 local deepcopy = Utils.deepcopy
 
--- Assume LOADER is already defined and populated by Init.lua
+-- Assume REWINDER is already defined and populated by Init.lua
 
--- LOADER.hook_key_hold from Init.lua, now defined here.
-function LOADER.hook_key_hold()
+-- REWINDER.hook_key_hold from Init.lua, now defined here.
+function REWINDER.hook_key_hold()
    -- Previously used to hook long-press behaviour; kept as a no-op
    -- initializer so existing calls from Game:start_run remain safe.
-   if LOADER._key_hold_hooked then return end
-   LOADER._key_hold_hooked = true
+   if REWINDER._key_hold_hooked then return end
+   REWINDER._key_hold_hooked = true
 end
 
-LOADER._start_run = Game.start_run
-LOADER._update_shop = Game.update_shop
+REWINDER._start_run = Game.start_run
+REWINDER._update_shop = Game.update_shop
 
 function Game:start_run(args)
    args = args or {}
 
    -- 1. Mark the loaded state
-   if args and args.savetext and LOADER.mark_loaded_state then
+   if args and args.savetext and REWINDER.mark_loaded_state then
       -- Access SaveManager directly for internal state (scalars are copied by value)
-      local BM = LOADER._SaveManager
+      local BM = REWINDER._SaveManager
       
       -- If continuing from system UI, try to find matching save file
       if args.savetext and not args.savetext._file and BM then
@@ -39,20 +39,20 @@ function Game:start_run(args)
          if entries and #entries > 0 then
             local matched = false
             -- Try to match by signature
-            local current_sig = LOADER.StateSignature and LOADER.StateSignature.get_signature(args.savetext)
+            local current_sig = REWINDER.StateSignature and REWINDER.StateSignature.get_signature(args.savetext)
             if current_sig then
                for i, entry in ipairs(entries) do
                   -- Ensure metadata is loaded for this entry (async loading may not have reached it)
-                  if not entry[LOADER.ENTRY_SIGNATURE] and BM.get_save_meta then
+                  if not entry[REWINDER.ENTRY_SIGNATURE] and BM.get_save_meta then
                      BM.get_save_meta(entry)
                   end
                   -- Compare using signature string for fast comparison
-                  if entry[LOADER.ENTRY_SIGNATURE] and current_sig.signature and entry[LOADER.ENTRY_SIGNATURE] == current_sig.signature then
-                     args.savetext._file = entry[LOADER.ENTRY_FILE]
+                  if entry[REWINDER.ENTRY_SIGNATURE] and current_sig.signature and entry[REWINDER.ENTRY_SIGNATURE] == current_sig.signature then
+                     args.savetext._file = entry[REWINDER.ENTRY_FILE]
                      BM.current_index = i
                      -- Update cache flags using helper function
                      if BM._set_cache_current_file then
-                        BM._set_cache_current_file(entry[LOADER.ENTRY_FILE])
+                        BM._set_cache_current_file(entry[REWINDER.ENTRY_FILE])
                      end
                      matched = true
                      break
@@ -60,11 +60,11 @@ function Game:start_run(args)
                end
             end
             -- Fallback: if no signature match, use the newest save (most likely current)
-            if not matched and entries[1] and entries[1][LOADER.ENTRY_FILE] then
-               args.savetext._file = entries[1][LOADER.ENTRY_FILE]
+            if not matched and entries[1] and entries[1][REWINDER.ENTRY_FILE] then
+               args.savetext._file = entries[1][REWINDER.ENTRY_FILE]
                BM.current_index = 1
                if BM._set_cache_current_file then
-                  BM._set_cache_current_file(entries[1][LOADER.ENTRY_FILE])
+                  BM._set_cache_current_file(entries[1][REWINDER.ENTRY_FILE])
                end
             end
          end
@@ -73,7 +73,7 @@ function Game:start_run(args)
       local need_mark = BM and (not BM._loaded_mark_applied)
       if need_mark then
          local pending_reason = BM and BM._pending_skip_reason or "continue"
-         LOADER.mark_loaded_state(args.savetext, {
+         REWINDER.mark_loaded_state(args.savetext, {
             reason = pending_reason,
             last_loaded_file = args.savetext._file or "save.jkr",
             set_skip = true,
@@ -85,7 +85,7 @@ function Game:start_run(args)
    -- In vanilla `Game:start_run`, missing areas are moved to `G.load_shop_*` and later
    -- consumed in `Game:update_shop`, but it prints an error-level log while doing so.
    -- We pre-stash shop areas into `G.load_*` and remove them from `cardAreas` so the
-   -- vanilla loader doesn't emit the warning.
+   -- vanilla REWINDER doesn't emit the warning.
    -- Using dynamic prefix match for resilience to future game updates.
    if args.savetext and args.savetext.cardAreas and G then
       local cardAreas = args.savetext.cardAreas
@@ -97,14 +97,14 @@ function Game:start_run(args)
       end
    end
 
-   -- 3. Reset Loader State for new run
-   LOADER.saves_open = false
-   LOADER._save_counter = 0
-   LOADER._debug_alert = nil
+   -- 3. Reset REWINDER State for new run
+   REWINDER.saves_open = false
+   REWINDER._save_counter = 0
+   REWINDER._debug_alert = nil
 
    if not args or not args.savetext then
       -- Brand new run - reset SaveManager internal state directly
-      local BM = LOADER._SaveManager
+      local BM = REWINDER._SaveManager
       if BM then
          BM._pending_skip_reason = nil
          BM._loaded_mark_applied = nil
@@ -112,8 +112,8 @@ function Game:start_run(args)
          BM.current_index = nil
          BM._restore_active = nil
          BM._last_loaded_file = nil
-         if LOADER.debug_log then
-            LOADER.debug_log("cache", "Reset _last_loaded_file (new run)")
+         if REWINDER.debug_log then
+            REWINDER.debug_log("cache", "Reset _last_loaded_file (new run)")
          end
          BM.skip_next_save = false
          BM.pending_future_prune = {}
@@ -123,7 +123,7 @@ function Game:start_run(args)
       end
       
       -- Prune all saves (new run destroys future of previous run)
-      if LOADER.clear_all_saves then
+      if REWINDER.clear_all_saves then
           -- Defer the cleanup to the next frame to avoid recursive crashes
           -- caused by other mods hooking filesystem operations. This breaks the
           -- synchronous call chain (start_run -> clear -> getInfo -> hook -> start_run).
@@ -132,19 +132,19 @@ function Game:start_run(args)
                   trigger = 'after',
                   delay = 0,
                   func = function()
-                      LOADER.clear_all_saves()
+                      REWINDER.clear_all_saves()
                       return true
                   end
               }))
           else
               -- Fallback for safety, though G.E_MANAGER should exist here.
-              LOADER.clear_all_saves()
+              REWINDER.clear_all_saves()
           end
       end
    else
       -- Preserve _last_loaded_file if savetext has _file set
       -- This ensures highlight works after restore
-      local BM = LOADER._SaveManager
+      local BM = REWINDER._SaveManager
       if BM and args.savetext then
          if args.savetext._file then
             -- Ensure _last_loaded_file is set from savetext._file
@@ -159,26 +159,26 @@ function Game:start_run(args)
             -- If savetext exists but _file is not set, preserve existing _last_loaded_file
             -- This handles cases where start_run is called multiple times
             -- Only reset if it's truly a new run (handled above)
-            if LOADER.debug_log then
-               LOADER.debug_log("cache", string.format("preserving _last_loaded_file=%s", BM._last_loaded_file))
+            if REWINDER.debug_log then
+               REWINDER.debug_log("cache", string.format("preserving _last_loaded_file=%s", BM._last_loaded_file))
             end
          end
       end
    end
 
-   LOADER._start_run(self, args)
+   REWINDER._start_run(self, args)
 
-   -- Call the LOADER.hook_key_hold defined in this file.
-   LOADER.hook_key_hold()
+   -- Call the REWINDER.hook_key_hold defined in this file.
+   REWINDER.hook_key_hold()
 end
 
 -- The Game:write_save_file patch is no longer needed with the new save_run hook.
 -- The original function will be called automatically.
--- You can remove the LOADER._Game_write_save_file and the function override.
+-- You can remove the REWINDER._Game_write_save_file and the function override.
  
 -- This function is called via a regex patch in lovely.toml,
 -- injecting it directly into the game's save_run function.
-function LOADER.defer_save_creation()
+function REWINDER.defer_save_creation()
    if G.culled_table then
       -- To prevent recursive crashes with other mods that hook filesystem
       -- operations, we defer the save creation to the next frame.

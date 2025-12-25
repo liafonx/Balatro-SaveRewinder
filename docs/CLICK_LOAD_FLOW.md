@@ -16,7 +16,7 @@ This document describes the complete flow when a user clicks on a save entry in 
 
 ### Step 1: UI Button Click (`UI/ButtonCallbacks.lua`)
 
-**Function**: `G.FUNCS.loader_save_restore(e)`
+**Function**: `G.FUNCS.rewinder_save_restore(e)`
 
 ```lua
 -- User clicks on a save entry
@@ -31,7 +31,7 @@ This document describes the complete flow when a user clicks on a save entry in 
 3. Find entry index in save list and set `pending_index`
    - Used for timeline stepping consistency
 4. Log: `"restore -> loading <description>"`
-5. Call `LOADER.load_and_start_from_file(file)`
+5. Call `REWINDER.load_and_start_from_file(file)`
 
 ---
 
@@ -73,7 +73,7 @@ This document describes the complete flow when a user clicks on a save entry in 
    end
    ```
 3. **Set current index**: `M.current_index = pending_index or idx_from_list or 1`
-4. **Close saves UI**: `LOADER.saves_open = false`
+4. **Close saves UI**: `REWINDER.saves_open = false`
 5. **Copy save file directly** (fast path):
    ```lua
    M.copy_save_to_main(file)  -- Copies file directly to save.jkr, no decode
@@ -107,7 +107,7 @@ This document describes the complete flow when a user clicks on a save entry in 
    - Fallback: use newest save if no signature match
 2. **Mark loaded state** (if not already marked):
    ```lua
-   LOADER.mark_loaded_state(args.savetext, {
+   REWINDER.mark_loaded_state(args.savetext, {
       reason = "restore",  -- or "continue" or "step"
       last_loaded_file = args.savetext._file,
       set_skip = true,
@@ -117,7 +117,7 @@ This document describes the complete flow when a user clicks on a save entry in 
    - Extract `shop_jokers`, `shop_booster`, `shop_vouchers`, `pack_cards` from `cardAreas`
    - Store in `self.load_*` temporary variables
    - Remove from `cardAreas` to prevent conflicts during restore
-4. **Call original `start_run`**: `LOADER._start_run(self, args)`
+4. **Call original `start_run`**: `REWINDER._start_run(self, args)`
 5. **Rebuild pack cards** (if `load_pack_cards` exists):
    - Create `CardArea` and load cards
    - Handles "opening pack" state restoration
@@ -156,7 +156,7 @@ This document describes the complete flow when a user clicks on a save entry in 
    - If equal → skip save (duplicate)
 2. **Shop pack open special case**:
    - If shop with `is_opening_pack` and `pack_cards` exists → skip
-3. **Set skip flag**: `save_table.LOADER_SKIP_SAVE = true` if should skip
+3. **Set skip flag**: `save_table.REWINDER_SKIP_SAVE = true` if should skip
 4. **Reset flags** (but preserve `_last_loaded_file` for UI)
 
 ---
@@ -168,7 +168,7 @@ This document describes the complete flow when a user clicks on a save entry in 
 | Variable | Set In | Purpose |
 |----------|--------|---------|
 | `_last_loaded_file` | `load_and_start_from_file` | Tracks current save file for UI highlighting |
-| `pending_index` | `loader_save_restore` | Save index for timeline consistency |
+| `pending_index` | `rewinder_save_restore` | Save index for timeline consistency |
 | `pending_future_prune` | `start_from_file` | List of "future" saves to delete on next save |
 | `skip_next_save` | `load_and_start_from_file` | Flag to skip duplicate save |
 | `_loaded_meta` | `mark_loaded_state` | Signature of loaded state for comparison |
@@ -222,7 +222,7 @@ This document describes the complete flow when a user clicks on a save entry in 
 ```
 User Click
     ↓
-loader_save_restore (ButtonCallbacks)
+rewinder_save_restore (ButtonCallbacks)
     ↓ update cache flags, set pending_index
 load_and_start_from_file (SaveManager)
     ↓ reset state, log

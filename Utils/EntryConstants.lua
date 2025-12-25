@@ -1,4 +1,4 @@
---- Fast Save Loader - EntryConstants.lua
+--- Save Rewinder - EntryConstants.lua
 --
 -- Constants for cache entry array indices.
 -- Cache entries are stored as arrays to reduce memory usage.

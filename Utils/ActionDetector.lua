@@ -1,17 +1,11 @@
---- Fast Save Loader - ActionDetector.lua
+--- Save Rewinder - ActionDetector.lua
 --
 -- Detects action types (play/discard) by comparing saves in the same round.
 
+local Logger = require("Logger")
 local M = {}
 
--- Debug logging helper (injected by Init.lua)
-M.debug_log = function(tag, msg)
-    if LOADER and LOADER.debug_log then
-        LOADER.debug_log(tag, msg)
-    else
-        print("[FastSL][ActionDetector][" .. tostring(tag) .. "] " .. tostring(msg))
-    end
-end
+M.debug_log = Logger.create("ActionDetector")
 
 -- Detects action type (play/discard) for a SELECTING_HAND entry by comparing with previous save
 -- Returns "play", "discard", or nil

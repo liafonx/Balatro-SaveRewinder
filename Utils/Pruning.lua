@@ -1,17 +1,11 @@
---- Fast Save Loader - Pruning.lua
+--- Save Rewinder - Pruning.lua
 --
 -- Handles pruning of old saves and future timeline cleanup.
 
+local Logger = require("Logger")
 local M = {}
 
--- Debug logging helper (injected by Init.lua)
-M.debug_log = function(tag, msg)
-    if LOADER and LOADER.debug_log then
-        LOADER.debug_log(tag, msg)
-    else
-        print("[FastSL][Pruning][" .. tostring(tag) .. "] " .. tostring(msg))
-    end
-end
+M.debug_log = Logger.create("Pruning")
 
 -- Config index to actual ante count mapping (matches main.lua options order)
 local KEEP_ANTES_VALUES = { 1, 2, 4, 6, 8, 16 }  -- Index 7 = "All" (nil)
@@ -24,7 +18,7 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
     local ENTRY_FILE = entry_constants.ENTRY_FILE
     
     -- Read retention policy from config (1-7, where 7 = "All")
-    local keep_antes_config = (LOADER and LOADER.config and LOADER.config.keep_antes) or 7
+    local keep_antes_config = (REWINDER and REWINDER.config and REWINDER.config.keep_antes) or 7
     local keep_antes = KEEP_ANTES_VALUES[keep_antes_config]  -- nil if index 7 ("All")
 
     if not keep_antes or keep_antes <= 0 then return end -- "All" selected or invalid

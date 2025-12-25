@@ -1,14 +1,14 @@
---- Fast Save Loader - UI/LoaderUI.lua
+--- Save Rewinder - UI/RewinderUI.lua
 --
 -- In-game UI for listing and restoring saves, plus an Options button.
 
-if not LOADER then LOADER = {} end
+if not REWINDER then REWINDER = {} end
 
 local SAVE_ENTRY_W = 8.8
 
 -- Get dot color based on round number (odd/even)
 -- Colors chosen for good contrast against blue background (G.C.BLUE)
-function LOADER.get_round_color(round)
+function REWINDER.get_round_color(round)
    if round == nil then return G.C.UI.TEXT_LIGHT end
    
    -- Use different bright colors for odd and even rounds
@@ -21,47 +21,47 @@ function LOADER.get_round_color(round)
    end
 end
 
-function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opts)
+function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opts)
    -- Use entry as array (no keys, accessed by index)
    if not entry then return nil end
    opts = opts or {}
 
    -- Build ante/round text
    local ante_text = ""
-   if entry[LOADER.ENTRY_ANTE] then
-      local ante_label = (localize and localize("fastsl_ante_label")) or "Ante"
-      local round_label = (localize and localize("fastsl_round_label")) or "Round"
-      ante_text = ante_label .. " " .. tostring(entry[LOADER.ENTRY_ANTE])
+   if entry[REWINDER.ENTRY_ANTE] then
+      local ante_label = (localize and localize("rewinder_ante_label")) or "Ante"
+      local round_label = (localize and localize("rewinder_round_label")) or "Round"
+      ante_text = ante_label .. " " .. tostring(entry[REWINDER.ENTRY_ANTE])
       -- Add round number if available
-      if entry[LOADER.ENTRY_ROUND] ~= nil then
-         ante_text = ante_text .. "  " .. round_label .. tostring(entry[LOADER.ENTRY_ROUND])
+      if entry[REWINDER.ENTRY_ROUND] ~= nil then
+         ante_text = ante_text .. "  " .. round_label .. tostring(entry[REWINDER.ENTRY_ROUND])
       end
    end
    
    -- Build state label text
    local state_text = ""
-   if entry[LOADER.ENTRY_STATE] ~= nil then
+   if entry[REWINDER.ENTRY_STATE] ~= nil then
       -- Use action_type (play/discard) and is_opening_pack (boolean) for label generation
-      local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or "state"
+      local label = (REWINDER.StateSignature and REWINDER.StateSignature.get_label_from_state(entry[REWINDER.ENTRY_STATE], entry[REWINDER.ENTRY_ACTION_TYPE], entry[REWINDER.ENTRY_IS_OPENING_PACK])) or "state"
       if label and label ~= "state" then
          local label_key = label:gsub(" ", "_"):gsub("%(", ""):gsub("%)", "")
          if label_key == "opening_pack" then
-            state_text = (localize and localize("fastsl_state_opening_pack")) or label
+            state_text = (localize and localize("rewinder_state_opening_pack")) or label
          elseif label_key == "start_of_round" then
             -- Handle start of round (SELECTING_HAND without action)
-            state_text = (localize and localize("fastsl_state_start_round")) or "start of round"
+            state_text = (localize and localize("rewinder_state_start_round")) or "start of round"
          elseif label_key:match("selecting_hand") then
             -- Handle selecting_hand with action type
-            if entry[LOADER.ENTRY_ACTION_TYPE] == "play" then
-               state_text = (localize and localize("fastsl_state_selecting_hand_play")) or "selecting hand (play)"
-            elseif entry[LOADER.ENTRY_ACTION_TYPE] == "discard" then
-               state_text = (localize and localize("fastsl_state_selecting_hand_discard")) or "selecting hand (discard)"
+            if entry[REWINDER.ENTRY_ACTION_TYPE] == "play" then
+               state_text = (localize and localize("rewinder_state_selecting_hand_play")) or "selecting hand (play)"
+            elseif entry[REWINDER.ENTRY_ACTION_TYPE] == "discard" then
+               state_text = (localize and localize("rewinder_state_selecting_hand_discard")) or "selecting hand (discard)"
             else
                -- Fallback (shouldn't happen, but just in case)
-               state_text = (localize and localize("fastsl_state_start_round")) or "start of round"
+               state_text = (localize and localize("rewinder_state_start_round")) or "start of round"
             end
          else
-            state_text = (localize and localize("fastsl_state_"..label_key)) or label
+            state_text = (localize and localize("rewinder_state_"..label_key)) or label
          end
       end
    end
@@ -72,10 +72,10 @@ function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opt
    -- For others, use ordinal_suffix
    local tailing_number_text = ""
    local st = G and G.STATES
-   local is_selecting_hand_with_action = st and entry[LOADER.ENTRY_STATE] == st.SELECTING_HAND and entry[LOADER.ENTRY_ACTION_TYPE]
+   local is_selecting_hand_with_action = st and entry[REWINDER.ENTRY_STATE] == st.SELECTING_HAND and entry[REWINDER.ENTRY_ACTION_TYPE]
    
    -- Check if this is start of round or end of round (don't show ordinal for these)
-   local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or ""
+   local label = (REWINDER.StateSignature and REWINDER.StateSignature.get_label_from_state(entry[REWINDER.ENTRY_STATE], entry[REWINDER.ENTRY_ACTION_TYPE], entry[REWINDER.ENTRY_IS_OPENING_PACK])) or ""
    local is_start_or_end_round = (label == "start of round" or label == "end of round")
    
    if is_selecting_hand_with_action and meta and meta.label_value then
@@ -87,7 +87,7 @@ function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opt
    end
 
    -- Use cached is_current flag (always set by _update_cache_current_flags before UI build)
-   local is_current = (entry[LOADER.ENTRY_IS_CURRENT] == true)
+   local is_current = (entry[REWINDER.ENTRY_IS_CURRENT] == true)
    
    -- Background color
    local button_colour = G.C.BLUE
@@ -95,8 +95,8 @@ function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opt
    
    -- Get dot color for round number (odd/even)
    local dot_colour = default_text_colour
-   if not is_current and entry[LOADER.ENTRY_ROUND] ~= nil then
-      dot_colour = LOADER.get_round_color(entry[LOADER.ENTRY_ROUND])
+   if not is_current and entry[REWINDER.ENTRY_ROUND] ~= nil then
+      dot_colour = REWINDER.get_round_color(entry[REWINDER.ENTRY_ROUND])
    end
    
    if is_current then
@@ -166,7 +166,7 @@ function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opt
             n = G.UIT.R,
             config = {
                id = opts.id,
-               button = "loader_save_restore",
+               button = "rewinder_save_restore",
                align = "cl",
                colour = button_colour,
                minw = SAVE_ENTRY_W,
@@ -177,7 +177,7 @@ function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opt
                can_collide = true,
                shadow = true,
                focus_args = { snap_to = opts.snap_to == true },
-               ref_table = { file = entry[LOADER.ENTRY_FILE] },
+               ref_table = { file = entry[REWINDER.ENTRY_FILE] },
             },
             nodes = text_nodes,
          },
@@ -185,7 +185,7 @@ function LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, opt
    }
 end
 
-function LOADER.get_saves_page(args)
+function REWINDER.get_saves_page(args)
    local entries = args.entries or {}
    local per_page = args.per_page or 8
    local page_num = args.page_num or 1
@@ -196,7 +196,7 @@ function LOADER.get_saves_page(args)
       content = {
          n = G.UIT.T,
          config = {
-            text = (localize and localize("fastsl_no_saves")) or "No saves yet",
+            text = (localize and localize("rewinder_no_saves")) or "No saves yet",
             colour = G.C.UI.TEXT_LIGHT,
             scale = 0.5,
          },
@@ -211,8 +211,8 @@ function LOADER.get_saves_page(args)
       for i = 1, max_index do
          local entry = entries[offset + i]
          page_entries[i] = entry
-         if entry and not entry[LOADER.ENTRY_SIGNATURE] and LOADER.get_save_meta then
-            LOADER.get_save_meta(entry)
+         if entry and not entry[REWINDER.ENTRY_SIGNATURE] and REWINDER.get_save_meta then
+            REWINDER.get_save_meta(entry)
          end
       end
 
@@ -224,15 +224,15 @@ function LOADER.get_saves_page(args)
       local st = G and G.STATES
       
       for _, entry in ipairs(entries) do
-         if entry and entry[LOADER.ENTRY_SIGNATURE] then
-         local label = (LOADER.StateSignature and LOADER.StateSignature.get_label_from_state(entry[LOADER.ENTRY_STATE], entry[LOADER.ENTRY_ACTION_TYPE], entry[LOADER.ENTRY_IS_OPENING_PACK])) or ""
-         local round = entry[LOADER.ENTRY_ROUND] or 0
+         if entry and entry[REWINDER.ENTRY_SIGNATURE] then
+         local label = (REWINDER.StateSignature and REWINDER.StateSignature.get_label_from_state(entry[REWINDER.ENTRY_STATE], entry[REWINDER.ENTRY_ACTION_TYPE], entry[REWINDER.ENTRY_IS_OPENING_PACK])) or ""
+         local round = entry[REWINDER.ENTRY_ROUND] or 0
          
          if not meta_cache[entry] then meta_cache[entry] = {} end
          meta_cache[entry].label = label
-            meta_cache[entry].action_type = entry[LOADER.ENTRY_ACTION_TYPE]
+            meta_cache[entry].action_type = entry[REWINDER.ENTRY_ACTION_TYPE]
          
-         if label ~= "" and not (label:match("selecting hand") and entry[LOADER.ENTRY_ACTION_TYPE]) then
+         if label ~= "" and not (label:match("selecting hand") and entry[REWINDER.ENTRY_ACTION_TYPE]) then
             if label_min_round[label] == nil or round < label_min_round[label] then
                label_min_round[label] = round
                end
@@ -243,20 +243,20 @@ function LOADER.get_saves_page(args)
       -- Second pass: assign label_value for entries with metadata.
       local label_totals = {}
       for _, entry in ipairs(entries) do
-         if entry and entry[LOADER.ENTRY_SIGNATURE] then
+         if entry and entry[REWINDER.ENTRY_SIGNATURE] then
          local meta = meta_cache[entry] or {}
          local label = meta.label or ""
-         local round = entry[LOADER.ENTRY_ROUND] or 0
-         local ante = entry[LOADER.ENTRY_ANTE] or 0
+         local round = entry[REWINDER.ENTRY_ROUND] or 0
+         local ante = entry[REWINDER.ENTRY_ANTE] or 0
          
          local label_value = 0
-         local is_selecting_hand_with_action = st and entry[LOADER.ENTRY_STATE] == st.SELECTING_HAND and entry[LOADER.ENTRY_ACTION_TYPE]
+         local is_selecting_hand_with_action = st and entry[REWINDER.ENTRY_STATE] == st.SELECTING_HAND and entry[REWINDER.ENTRY_ACTION_TYPE]
          
          if is_selecting_hand_with_action then
-            if entry[LOADER.ENTRY_ACTION_TYPE] == "discard" and entry[LOADER.ENTRY_DISCARDS_USED] ~= nil then
-               label_value = entry[LOADER.ENTRY_DISCARDS_USED]
-            elseif entry[LOADER.ENTRY_ACTION_TYPE] == "play" and entry[LOADER.ENTRY_HANDS_PLAYED] ~= nil then
-               label_value = entry[LOADER.ENTRY_HANDS_PLAYED]
+            if entry[REWINDER.ENTRY_ACTION_TYPE] == "discard" and entry[REWINDER.ENTRY_DISCARDS_USED] ~= nil then
+               label_value = entry[REWINDER.ENTRY_DISCARDS_USED]
+            elseif entry[REWINDER.ENTRY_ACTION_TYPE] == "play" and entry[REWINDER.ENTRY_HANDS_PLAYED] ~= nil then
+               label_value = entry[REWINDER.ENTRY_HANDS_PLAYED]
             else
                local base = (label ~= "" and label_min_round[label]) or round
                label_value = (round - base) + 1
@@ -277,9 +277,9 @@ function LOADER.get_saves_page(args)
       local label_seen_from_newest = {}
       local ordinals = {}
       for idx, entry in ipairs(entries) do
-         if entry and entry[LOADER.ENTRY_SIGNATURE] then
+         if entry and entry[REWINDER.ENTRY_SIGNATURE] then
          local meta = meta_cache[entry] or {}
-         local ante = entry[LOADER.ENTRY_ANTE] or 0
+         local ante = entry[REWINDER.ENTRY_ANTE] or 0
          local label_value = meta.label_value or 0
          local label = meta.label or ""
          local key = tostring(ante) .. ":" .. tostring(label_value) .. ":" .. label
@@ -297,9 +297,9 @@ function LOADER.get_saves_page(args)
          local ordinal_suffix = tostring(ordinals[global_index] or 1)
       local is_first_entry = (global_index == 1)
 
-         table.insert(nodes, LOADER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, {
-            id = "fastsl_save_entry_" .. tostring(global_index),
-            snap_to = (entry and entry[LOADER.ENTRY_IS_CURRENT] == true),
+         table.insert(nodes, REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, {
+            id = "rewinder_save_entry_" .. tostring(global_index),
+            snap_to = (entry and entry[REWINDER.ENTRY_IS_CURRENT] == true),
          }))
       end
 
@@ -323,58 +323,58 @@ function LOADER.get_saves_page(args)
    }
 end
 
-function G.UIDEF.fast_loader_saves()
+function G.UIDEF.rewinder_saves()
    -- get_save_files() updates cache flags automatically
-   local entries = LOADER.get_save_files()
+   local entries = REWINDER.get_save_files()
    local per_page = 8
 
    local total_pages = math.max(1, math.ceil(#entries / per_page))
    local page_numbers = {}
    for i = 1, total_pages do
-      local pattern = (localize and localize("fastsl_page_label")) or "Page %d/%d"
+      local pattern = (localize and localize("rewinder_page_label")) or "Page %d/%d"
       page_numbers[i] = string.format(pattern, i, total_pages)
    end
 
    -- Find which page contains the current (highlighted) save
    local initial_page = 1
    for i, entry in ipairs(entries) do
-      if entry and entry[LOADER.ENTRY_IS_CURRENT] == true then
+      if entry and entry[REWINDER.ENTRY_IS_CURRENT] == true then
          initial_page = math.ceil(i / per_page)
          break
       end
    end
 
    local saves_box = UIBox({
-      definition = LOADER.get_saves_page({ entries = entries, per_page = per_page, page_num = initial_page }),
+      definition = REWINDER.get_saves_page({ entries = entries, per_page = per_page, page_num = initial_page }),
       config = { type = "cm" },
    })
 
    -- Store references for jump_to_current functionality
-   if not LOADER._saves_ui_refs then LOADER._saves_ui_refs = {} end
-   LOADER._saves_ui_refs.saves_box = saves_box
-   LOADER._saves_ui_refs.per_page = per_page
-   LOADER._saves_ui_refs.entries = entries
-   LOADER._saves_ui_refs.page_numbers = page_numbers
+   if not REWINDER._saves_ui_refs then REWINDER._saves_ui_refs = {} end
+   REWINDER._saves_ui_refs.saves_box = saves_box
+   REWINDER._saves_ui_refs.per_page = per_page
+   REWINDER._saves_ui_refs.entries = entries
+   REWINDER._saves_ui_refs.page_numbers = page_numbers
    
    -- Create cycle config and store it for jump_to_current
    local cycle_config = {
       options = page_numbers,
       current_option = initial_page,
-      opt_callback = "loader_save_update_page",
+      opt_callback = "rewinder_save_update_page",
       opt_args = { ui = saves_box, per_page = per_page, entries = entries },
    }
-   LOADER._saves_ui_refs.cycle_config = cycle_config
+   REWINDER._saves_ui_refs.cycle_config = cycle_config
 
    return create_UIBox_generic_options({
       back_func = "options",
       minw = SAVE_ENTRY_W,
-      back_id = "fastsl_back",
+      back_id = "rewinder_back",
       contents = {
          {
             n = G.UIT.R,
             config = { align = "cm" },
             nodes = {
-               { n = G.UIT.O, config = { id = "loader_saves", object = saves_box } },
+               { n = G.UIT.O, config = { id = "rewinder_saves", object = saves_box } },
             },
          },
          {
@@ -382,10 +382,10 @@ function G.UIDEF.fast_loader_saves()
             config = { align = "cm", colour = G.C.CLEAR },
             nodes = {
                create_option_cycle({
-                  id = "fastsl_page_cycle",
+                  id = "rewinder_page_cycle",
                   options = page_numbers,
                   current_option = initial_page,
-                  opt_callback = "loader_save_update_page",
+                  opt_callback = "rewinder_save_update_page",
                   opt_args = { ui = saves_box, per_page = per_page, entries = entries },
                   w = 4.5,
                   colour = G.C.BLUE,
@@ -404,9 +404,9 @@ function G.UIDEF.fast_loader_saves()
                   config = { align = "cm", padding = 0.1 },
                   nodes = {
                      UIBox_button({
-                        id = "fastsl_btn_current",
-                        button = "loader_save_jump_to_current",
-                        label = { (localize and localize("fastsl_jump_to_current")) or "Current save" },
+                        id = "rewinder_btn_current",
+                        button = "rewinder_save_jump_to_current",
+                        label = { (localize and localize("rewinder_jump_to_current")) or "Current save" },
                         minw = 3.6,
                         scale = 0.42,
                         colour = G.C.BLUE,
@@ -419,9 +419,9 @@ function G.UIDEF.fast_loader_saves()
                   config = { align = "cm", padding = 0.1 },
                   nodes = {
                      UIBox_button({
-                        id = "fastsl_btn_delete",
-                        button = "loader_save_delete_all",
-                        label = { (localize and localize("fastsl_delete_all")) or "Delete all" },
+                        id = "rewinder_btn_delete",
+                        button = "rewinder_save_delete_all",
+                        label = { (localize and localize("rewinder_delete_all")) or "Delete all" },
                         minw = 3.6,
                         scale = 0.42,
                         focus_args = { nav = "wide" },
@@ -435,10 +435,10 @@ function G.UIDEF.fast_loader_saves()
 end
 
 -- Inject a "Saves" button into the in-run Options menu.
-LOADER._create_UIBox_options = create_UIBox_options
+REWINDER._create_UIBox_options = create_UIBox_options
 
 function create_UIBox_options()
-   local ui = LOADER._create_UIBox_options()
+   local ui = REWINDER._create_UIBox_options()
 
    if G.STAGE == G.STAGES.RUN then
       local n1 = ui.nodes and ui.nodes[1]
@@ -447,8 +447,8 @@ function create_UIBox_options()
 
       if n3 and n3.nodes then
          local button = UIBox_button({
-            button = "loader_save_open",
-            label = { (localize and localize("fastsl_saves_button")) or "Saves" },
+            button = "rewinder_save_open",
+            label = { (localize and localize("rewinder_saves_button")) or "Saves" },
             minw = 5,
          })
          table.insert(n3.nodes, button)

@@ -1,17 +1,11 @@
---- Fast Save Loader - CacheManager.lua
+--- Save Rewinder - CacheManager.lua
 --
 -- Manages cache entry flags and current file tracking.
 
+local Logger = require("Logger")
 local M = {}
 
--- Debug logging helper (injected by Init.lua)
-M.debug_log = function(tag, msg)
-    if LOADER and LOADER.debug_log then
-        LOADER.debug_log(tag, msg)
-    else
-        print("[FastSL][CacheManager][" .. tostring(tag) .. "] " .. tostring(msg))
-    end
-end
+M.debug_log = Logger.create("CacheManager")
 
 -- Helper to update cache flags for a specific file (more efficient than full update)
 function M.set_cache_current_file(save_cache, file, entry_constants, last_loaded_file_ref)

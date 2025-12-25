@@ -1,17 +1,11 @@
---- Fast Save Loader - DuplicateDetector.lua
+--- Save Rewinder - DuplicateDetector.lua
 --
 -- Detects and prevents duplicate saves.
 
+local Logger = require("Logger")
 local M = {}
 
--- Debug logging helper (injected by Init.lua)
-M.debug_log = function(tag, msg)
-    if LOADER and LOADER.debug_log then
-        LOADER.debug_log(tag, msg)
-    else
-        print("[FastSL][DuplicateDetector][" .. tostring(tag) .. "] " .. tostring(msg))
-    end
-end
+M.debug_log = Logger.create("DuplicateDetector")
 
 -- Checks if a save should be skipped due to being a duplicate
 -- Returns true if save should be skipped

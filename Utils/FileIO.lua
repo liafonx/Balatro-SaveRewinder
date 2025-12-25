@@ -1,17 +1,11 @@
---- Fast Save Loader - FileIO.lua
+--- Save Rewinder - FileIO.lua
 --
 -- Handles file I/O operations for save files.
 
+local Logger = require("Logger")
 local M = {}
 
--- Debug logging helper (injected by Init.lua)
-M.debug_log = function(tag, msg)
-    if LOADER and LOADER.debug_log then
-        LOADER.debug_log(tag, msg)
-    else
-        print("[FastSL][FileIO][" .. tostring(tag) .. "] " .. tostring(msg))
-    end
-end
+M.debug_log = Logger.create("FileIO")
 
 -- Get profile directory
 function M.get_profile()
@@ -23,7 +17,7 @@ end
 
 -- Get save directory path
 function M.get_save_dir(saves_path)
-    saves_path = saves_path or "FastSaveLoader"
+    saves_path = saves_path or "SaveRewinder"
     local profile = M.get_profile()
     local dir = profile .. "/" .. saves_path
 

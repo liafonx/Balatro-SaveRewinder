@@ -1,8 +1,8 @@
-# Fast Save Loader
+# Save Rewinder
 
 **Undo mistakes. Experiment freely. Never lose progress.**
 
-Fast Save Loader automatically creates save points as you play Balatro, letting you jump back to any recent moment with a single keystroke.
+Save Rewinder automatically creates save points as you play Balatro, letting you rewind to any recent moment with a single keystroke.
 
 ## Why Use This Mod?
 
@@ -18,7 +18,7 @@ Fast Save Loader automatically creates save points as you play Balatro, letting 
 
 1. Install [Steamodded](https://github.com/Steamopollys/Steamodded) for Balatro
 2. Copy this folder to your `Mods` directory
-3. Launch Balatro — you'll see **Fast Save Loader** in the mods list
+3. Launch Balatro — you'll see **Save Rewinder** in the mods list
 
 ### Controls
 
@@ -38,7 +38,7 @@ Press `Ctrl+S` (or click Right Stick) during a run to open the saves browser:
 
 ## Configuration
 
-In the Steamodded config menu for Fast Save Loader:
+In the Steamodded config menu for Save Rewinder:
 
 - **Toggle save points** — Choose which moments create saves:
   - Choosing blind
@@ -47,6 +47,15 @@ In the Steamodded config menu for Fast Save Loader:
   - In shop
 - **Limit saves** — Keep only recent antes (1, 2, 4, 6, 8, 16, or All; default: 4)
 - **Delete all** — Clear all saves for current profile
+
+## Save Data Location
+
+Saves are stored in your Balatro profile folder:
+```
+[Balatro Save Path]/[Profile]/SaveRewinder/
+```
+
+Each save is a `.jkr` file named `<ante>-<round>-<timestamp>.jkr`.
 
 ## Languages
 

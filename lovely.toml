@@ -3,9 +3,9 @@ version = "1.0"
 dump_lua = true
 priority = 5
 
-# Fast Save Loader mod for Balatro.
+# Save Rewinder mod for Balatro.
 # Folder layout:
-# FastSaveLoaderMod/
+# SaveRewinderMod/
 #     lovely.toml
 #     Core/
 #       Init.lua
@@ -22,7 +22,7 @@ priority = 5
 #       Pruning.lua
 #       DuplicateDetector.lua
 #     UI/
-#       LoaderUI.lua
+#       RewinderUI.lua
 #       ButtonCallbacks.lua
 #     Keybinds.lua
 #     main.lua (Steamodded config)
@@ -43,7 +43,7 @@ sources = [ "Keybinds.lua" ]
 [patches.copy]
 target = "functions/UI_definitions.lua"
 position = "append"
-sources = [ "UI/LoaderUI.lua" ]
+sources = [ "UI/RewinderUI.lua" ]
 
 [[patches]]
 [patches.copy]
@@ -62,6 +62,13 @@ sources = [ "Core/GamePatches.lua" ] # Appended after Init.lua (which is also ap
 [patches.module]
 name = "Utils"
 source = "Utils/Utils.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "Logger"
+source = "Utils/Logger.lua"
 load_now = true
 before = "globals.lua"
 
@@ -134,7 +141,7 @@ target = "card.lua"
 pattern = "function Card:open()"
 position = "after"
 match_indent = true
-payload = "if LOADER and LOADER._SaveManager then LOADER._SaveManager.skipping_pack_open = true end"
+payload = "if REWINDER and REWINDER._SaveManager then REWINDER._SaveManager.skipping_pack_open = true end"
 
 [[patches]]
 [patches.regex]
@@ -143,6 +150,6 @@ pattern = "G.ARGS.save_run = G.culled_table"
 position = "after"
 match_indent = true
 payload = """
-   if LOADER and LOADER.defer_save_creation then
-      LOADER.defer_save_creation()
+   if REWINDER and REWINDER.defer_save_creation then
+      REWINDER.defer_save_creation()
    end"""

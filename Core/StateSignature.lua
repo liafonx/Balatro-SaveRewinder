@@ -1,19 +1,12 @@
---- Fast Save Loader - StateSignature.lua
+--- Save Rewinder - StateSignature.lua
 --
 -- Helper module for analyzing and comparing game state signatures.
 -- Used to determine if a save should be skipped or kept.
 
+local Logger = require("Logger")
 local M = {}
 
--- Debug logging helper (will be replaced by Init.lua)
-M.debug_log = function(tag, msg)
-    if LOADER and LOADER.debug_log then
-        LOADER.debug_log(tag, msg)
-    else
-        -- Fallback logger for when called before Init.lua runs
-        print("[FastSL][StateSignature][" .. tostring(tag) .. "] " .. tostring(msg))
-    end
-end
+M.debug_log = Logger.create("StateSignature")
 
 function M.describe_state_label(state)
    if not state then return nil end

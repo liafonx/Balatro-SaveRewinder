@@ -1,10 +1,10 @@
 # Cache Entry Structure
 
-This document shows the structure of cache entries used in FastSaveLoader.
+This document shows the structure of cache entries used in Save Rewinder.
 
 ## Entry Array Format
 
-Cache entries are stored as **arrays** (not key-value tables) to reduce memory. Access fields using index constants from `LOADER.ENTRY_*`:
+Cache entries are stored as **arrays** (not key-value tables) to reduce memory. Access fields using index constants from `REWINDER.ENTRY_*`:
 
 ```lua
 -- Array format: {file, ante, round, index, modtime, state, action_type, is_opening_pack, money, signature, discards_used, hands_played, is_current}
@@ -27,9 +27,9 @@ local entry = {
 }
 
 -- Access example:
--- entry[LOADER.ENTRY_FILE] = "2-3-1609430.jkr"
--- entry[LOADER.ENTRY_STATE] = 5
--- entry[LOADER.ENTRY_IS_OPENING_PACK] = true
+-- entry[REWINDER.ENTRY_FILE] = "2-3-1609430.jkr"
+-- entry[REWINDER.ENTRY_STATE] = 5
+-- entry[REWINDER.ENTRY_IS_OPENING_PACK] = true
 ```
 
 ## Index Constants
