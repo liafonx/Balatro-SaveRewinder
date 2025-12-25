@@ -56,7 +56,8 @@ Saves are stored in your Balatro profile folder:
 [Balatro Save Path]/[Profile]/SaveRewinder/
 ```
 
-Each save is a `.jkr` file named `<ante>-<round>-<timestamp>.jkr`.
+- **`.jkr` files** — The actual save data, named `<ante>-<round>-<timestamp>.jkr`
+- **`.meta` files** — Cached metadata for faster loading.
 
 ## Languages
 
