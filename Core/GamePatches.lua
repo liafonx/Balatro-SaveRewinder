@@ -55,9 +55,9 @@ function Game:start_run(args)
                   -- Compare using signature string for fast comparison
                   if entry[REWINDER.ENTRY_SIGNATURE] and current_sig.signature and entry[REWINDER.ENTRY_SIGNATURE] == current_sig.signature then
                      args.savetext._file = entry[REWINDER.ENTRY_FILE]
-                     BM.current_index = i
-                     -- Update cache flags using helper function
-                     if BM._set_cache_current_file then
+                              BM.current_index = i
+                        -- Update cache flags using helper function
+                        if BM._set_cache_current_file then
                         BM._set_cache_current_file(entry[REWINDER.ENTRY_FILE])
                      end
                      matched = true
@@ -98,8 +98,8 @@ function Game:start_run(args)
       for area_key, area_data in pairs(cardAreas) do
          if area_key:match("^shop_") and not G[area_key] then
             G["load_" .. area_key] = area_data
-            cardAreas[area_key] = nil
-         end
+         cardAreas[area_key] = nil
+      end
       end
    end
 

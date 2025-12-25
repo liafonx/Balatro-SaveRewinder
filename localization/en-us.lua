@@ -29,9 +29,13 @@ return {
             rewinder_all_saves_deleted = 'All saves deleted',
 
             rewinder_ante_label = 'Ante',
+            rewinder_ante_round_spacing = ' ',
+            rewinder_card_number_spacing = ' ',
+            rewinder_tailing_number_spacing = ' ',
             rewinder_round_label = 'Round',
             rewinder_page_label = 'Page %d/%d',
-            rewinder_all_label = 'All'
+            rewinder_all_label = 'All',
+            rewinder_separator = ' | '
         },
     },
 }

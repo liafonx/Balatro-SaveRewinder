@@ -29,9 +29,13 @@ return {
             rewinder_all_saves_deleted = '所有存档已删除',
 
             rewinder_ante_label = '底注',
+            rewinder_ante_round_spacing = '  ',
+            rewinder_card_number_spacing = '',
+            rewinder_tailing_number_spacing = '  ',
             rewinder_round_label = '回合',
             rewinder_page_label = '第 %d/%d 页',
             rewinder_all_label = '全部',
+            rewinder_separator = ' • ',
         },
     },
 }

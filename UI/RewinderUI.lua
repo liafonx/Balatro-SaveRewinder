@@ -34,7 +34,8 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
       ante_text = ante_label .. " " .. tostring(entry[REWINDER.ENTRY_ANTE])
       -- Add round number if available
       if entry[REWINDER.ENTRY_ROUND] ~= nil then
-         ante_text = ante_text .. "  " .. round_label .. tostring(entry[REWINDER.ENTRY_ROUND])
+         local ante_round_spacing = (localize and localize("rewinder_ante_round_spacing")) or " "
+         ante_text = ante_text .. ante_round_spacing .. round_label .. " " .. tostring(entry[REWINDER.ENTRY_ROUND])
       end
    end
    
@@ -45,24 +46,31 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
       local label = (REWINDER.StateSignature and REWINDER.StateSignature.get_label_from_state(entry[REWINDER.ENTRY_STATE], entry[REWINDER.ENTRY_ACTION_TYPE], entry[REWINDER.ENTRY_IS_OPENING_PACK])) or "state"
       if label and label ~= "state" then
          local label_key = label:gsub(" ", "_"):gsub("%(", ""):gsub("%)", "")
+         local localized = nil
          if label_key == "opening_pack" then
-            state_text = (localize and localize("rewinder_state_opening_pack")) or label
+            localized = localize and localize("rewinder_state_opening_pack")
          elseif label_key == "start_of_round" then
-            -- Handle start of round (SELECTING_HAND without action)
-            state_text = (localize and localize("rewinder_state_start_round")) or "start of round"
+            localized = localize and localize("rewinder_state_start_round")
          elseif label_key:match("selecting_hand") then
             -- Handle selecting_hand with action type
             if entry[REWINDER.ENTRY_ACTION_TYPE] == "play" then
-               state_text = (localize and localize("rewinder_state_selecting_hand_play")) or "selecting hand (play)"
+               localized = localize and localize("rewinder_state_selecting_hand_play")
             elseif entry[REWINDER.ENTRY_ACTION_TYPE] == "discard" then
-               state_text = (localize and localize("rewinder_state_selecting_hand_discard")) or "selecting hand (discard)"
+               localized = localize and localize("rewinder_state_selecting_hand_discard")
             else
-               -- Fallback (shouldn't happen, but just in case)
-               state_text = (localize and localize("rewinder_state_start_round")) or "start of round"
+               localized = localize and localize("rewinder_state_start_round")
             end
+         elseif label_key == "end_of_round" then
+            localized = localize and localize("rewinder_state_end_of_round")
+         elseif label_key == "choose_blind" then
+            localized = localize and localize("rewinder_state_choose_blind")
+         elseif label_key == "shop" then
+            localized = localize and localize("rewinder_state_shop")
          else
-            state_text = (localize and localize("rewinder_state_"..label_key)) or label
+            localized = localize and localize("rewinder_state_"..label_key)
          end
+         -- Use localized text if available, otherwise use the raw label
+         state_text = (localized and localized ~= "") and localized or label
       end
    end
 
@@ -122,12 +130,13 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
       })
    end
    
-   -- Add colored dot separator
-   if state_text ~= "" or tailing_number_text ~= "" then
+   -- Add colored separator (always show if we have ante text)
+   local separator = (localize and localize("rewinder_separator")) or " | "
+   if ante_text ~= "" then
       table.insert(text_nodes, {
          n = G.UIT.T,
          config = {
-            text = " • ",
+            text = separator,
             colour = dot_colour,
             scale = 0.45,
          },
@@ -139,12 +148,21 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
    if state_text ~= "" then
       state_tailing_text = state_text
       if tailing_number_text ~= "" then
-         -- Use 0 space for selecting_hand with action, 2 spaces for others
-         local spacing = (is_selecting_hand_with_action and "") or "  "
+         -- Use different spacing for selecting_hand with action vs other states
+         local spacing
+         if is_selecting_hand_with_action then
+            spacing = localize and localize("rewinder_card_number_spacing")
+            if spacing == nil then spacing = " " end
+         else
+            spacing = localize and localize("rewinder_tailing_number_spacing")
+            if spacing == nil then spacing = " " end
+         end
          state_tailing_text = state_tailing_text .. spacing .. tailing_number_text
       end
    elseif tailing_number_text ~= "" then
-      state_tailing_text = tailing_number_text
+      local spacing = localize and localize("rewinder_tailing_number_spacing")
+      if spacing == nil then spacing = " " end
+      state_tailing_text = spacing .. tailing_number_text
    end
    
    if state_tailing_text ~= "" then
