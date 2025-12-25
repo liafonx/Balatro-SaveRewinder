@@ -64,4 +64,5 @@ Each save is a `.jkr` file named `<ante>-<round>-<timestamp>.jkr`.
 
 ---
 
-*Made for Balatro players who want to learn, experiment, and have fun without fear.*
+> 🤖 **Developers**: Working with LLM/AI? See [`docs/AGENT.md`](docs/AGENT.md) for architecture and design details.
+
