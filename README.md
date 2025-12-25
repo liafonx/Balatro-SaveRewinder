@@ -1,5 +1,7 @@
 # Save Rewinder
 
+English | [简体中文](README_zh.md)
+
 **Undo mistakes. Experiment freely. Never lose progress.**
 
 Save Rewinder automatically creates save points as you play Balatro, letting you rewind to any recent moment with a single keystroke.
@@ -58,6 +60,8 @@ Saves are stored in your Balatro profile folder:
 
 - **`.jkr` files** — The actual save data, named `<ante>-<round>-<timestamp>.jkr`
 - **`.meta` files** — Cached metadata for faster loading.
+
+> ⚠️ **Note**: Saves are only kept for your **current run**. If you exit mid-run, saves persist. Starting a **new run** will delete all previous saves.
 
 ## Languages
 
