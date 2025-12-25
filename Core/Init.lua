@@ -31,6 +31,7 @@ LOADER.load_and_start_from_file = SaveManager.load_and_start_from_file
 LOADER.revert_to_previous_save = SaveManager.revert_to_previous_save
 LOADER.load_save_at_index = SaveManager.load_save_at_index
 LOADER.clear_all_saves = SaveManager.clear_all_saves
+LOADER.find_current_index = SaveManager.find_current_index
 
 -- Internal State Access (via module reference, since scalars are copied by value)
 -- Expose the SaveManager module itself so callbacks can access/modify internal state
@@ -89,24 +90,19 @@ StateSignature.debug_log = LOADER.debug_log
 
 -- Initialize cache during game loading (deferred to avoid blocking startup)
 -- This pre-builds the save list so UI opens instantly
--- Force reload to ensure all metadata (including action_type) is loaded from files
+-- Uses get_save_files which loads first page eagerly, then background-loads the rest
 if G and G.E_MANAGER and Event then
    G.E_MANAGER:add_event(Event({
       trigger = 'after',
       delay = 0.1,  -- Small delay to let game finish initializing
       func = function()
          if SaveManager and SaveManager.get_save_files then
-            -- Fully preload metadata during boot so the saves UI never triggers
-            -- `.meta` reads or `.jkr` decodes later.
-            if SaveManager.preload_all_metadata then
-               SaveManager.preload_all_metadata(true)
-            else
-               SaveManager.get_save_files(true)  -- fallback
-            end
-            -- Also update current file flags
-            if SaveManager._update_cache_current_flags then
-               SaveManager._update_cache_current_flags()
-            end
+            -- Force reload to scan directory, but let background loading handle metadata
+            -- get_save_files loads META_FIRST_PASS_COUNT (12) entries eagerly for UI,
+            -- then schedules remaining entries in chunks via _schedule_meta_load
+            local entries = SaveManager.get_save_files(true)
+            local count = entries and #entries or 0
+            LOADER.debug_log("", "Initialized with " .. count .. " save(s)")
          end
          return true
       end
@@ -189,6 +185,20 @@ G.FUNCS = G.FUNCS or {}
 G.FUNCS.fastsl_config_change = function(args)
    args = args or {}
    if args.cycle_config and args.cycle_config.ref_table and args.cycle_config.ref_value then
-      args.cycle_config.ref_table[args.cycle_config.ref_value] = args.to_key
+      local ref_value = args.cycle_config.ref_value
+      args.cycle_config.ref_table[ref_value] = args.to_key
+      
+      -- If keep_antes changed, immediately apply retention policy
+      if ref_value == "keep_antes" and SaveManager then
+         local Pruning = require("Pruning")
+         local EntryConstants = require("EntryConstants")
+         local dir = SaveManager.get_save_dir()
+         local entries = SaveManager.get_save_files()
+         if entries and #entries > 0 then
+            Pruning.apply_retention_policy(dir, entries, EntryConstants)
+            -- Force reload to rebuild cache index after pruning
+            SaveManager.get_save_files(true)
+         end
+      end
    end
 end

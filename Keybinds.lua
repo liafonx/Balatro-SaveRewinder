@@ -13,6 +13,17 @@ local function revert_to_previous_save()
    end
 end
 
+local _last_quick_revert_time = nil
+local function can_trigger_quick_revert()
+   if not love or not love.timer then return true end
+   local now = love.timer.getTime()
+   if _last_quick_revert_time and (now - _last_quick_revert_time) < 0.25 then
+      return false
+   end
+   _last_quick_revert_time = now
+   return true
+end
+
 local function toggle_saves_window()
    if not (G and G.FUNCS) then return end
    if not G.STAGE or G.STAGE ~= G.STAGES.RUN then return end
@@ -43,7 +54,9 @@ local function hook_controller_leftstick()
    Controller._fastsl_button_press = Controller.button_press
    function Controller:button_press(button)
       if button == "leftstick" and G and G.STAGE and G.STAGE == G.STAGES.RUN and not G.SETTINGS.paused then
-         revert_to_previous_save()
+         if can_trigger_quick_revert() then
+            revert_to_previous_save()
+         end
       end
       if button == "rightstick" and G and G.STAGE and G.STAGE == G.STAGES.RUN and not G.SETTINGS.paused then
          toggle_saves_window()
@@ -84,20 +97,8 @@ local function hook_controller_navigate_focus()
    end
 
    local function snap_to_current_save_entry(self)
-      if not (LOADER and LOADER.get_save_files and G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return end
-      local entries = LOADER.get_save_files() or {}
-      local idx = nil
-      if LOADER._SaveManager and LOADER._SaveManager.get_index_by_file and LOADER._SaveManager._last_loaded_file then
-         idx = LOADER._SaveManager.get_index_by_file(LOADER._SaveManager._last_loaded_file)
-      end
-      if not idx then
-         for i, entry in ipairs(entries) do
-            if entry and entry[LOADER.ENTRY_IS_CURRENT] == true then
-               idx = i
-               break
-            end
-         end
-      end
+      if not (LOADER and LOADER.find_current_index and G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return end
+      local idx = LOADER.find_current_index()
       if not idx then return end
       local node = G.OVERLAY_MENU:get_UIE_by_ID("fastsl_save_entry_" .. tostring(idx))
       if node then
@@ -226,7 +227,9 @@ function love.keypressed(key, scancode, isrepeat)
       else
          -- Plain 'S': step back to the previous save in the timeline
          if not isrepeat then
-            revert_to_previous_save()
+            if can_trigger_quick_revert() then
+               revert_to_previous_save()
+            end
             return
          end
       end

@@ -13,6 +13,9 @@ M.debug_log = function(tag, msg)
     end
 end
 
+-- Config index to actual ante count mapping (matches main.lua options order)
+local KEEP_ANTES_VALUES = { 1, 2, 4, 6, 8, 16 }  -- Index 7 = "All" (nil)
+
 -- Applies retention policy based on max antes per run
 function M.apply_retention_policy(save_dir, all_entries, entry_constants)
     if not all_entries then return end
@@ -20,12 +23,11 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
     local ENTRY_ANTE = entry_constants.ENTRY_ANTE
     local ENTRY_FILE = entry_constants.ENTRY_FILE
     
-    -- Read retention policy from config
+    -- Read retention policy from config (1-7, where 7 = "All")
     local keep_antes_config = (LOADER and LOADER.config and LOADER.config.keep_antes) or 7
-    local option_text = (G.OPTION_CYCLE_TEXT and G.OPTION_CYCLE_TEXT["fastsl_max_antes_per_run"]) or {}
-    local keep_antes = (keep_antes_config < 7 and tonumber(option_text[keep_antes_config])) or nil
+    local keep_antes = KEEP_ANTES_VALUES[keep_antes_config]  -- nil if index 7 ("All")
 
-    if not keep_antes or keep_antes <= 0 then return end -- "All" selected
+    if not keep_antes or keep_antes <= 0 then return end -- "All" selected or invalid
 
     -- Find all unique antes
     local ante_set = {}
@@ -48,11 +50,12 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
 
     -- Remove files from older antes
     -- Iterate backwards to safely remove items from the table we are iterating
+    local removed_count = 0
     local i = #all_entries
     while i >= 1 do
         local e = all_entries[i]
         if e[ENTRY_ANTE] and not allowed[e[ENTRY_ANTE]] then
-            -- Silently remove old saves per retention policy
+            -- Remove old saves per retention policy
             pcall(love.filesystem.remove, save_dir .. "/" .. e[ENTRY_FILE])
             -- Also remove .meta file if it exists
             if e[ENTRY_FILE] and e[ENTRY_FILE]:match("%.jkr$") then
@@ -60,8 +63,14 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
                 pcall(love.filesystem.remove, save_dir .. "/" .. meta_file)
             end
             table.remove(all_entries, i)
+            removed_count = removed_count + 1
         end
         i = i - 1
+    end
+    
+    if removed_count > 0 then
+        M.debug_log("prune", string.format("Removed %d saves from old antes (keeping antes: %s)", 
+            removed_count, table.concat(antes, ", ", 1, limit)))
     end
 end
 

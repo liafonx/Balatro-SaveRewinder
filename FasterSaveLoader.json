@@ -3,7 +3,7 @@
   "name": "Fast Save Loader",
   "display_name": "Fast Save Loader",
   "author": ["liafonx"],
-  "description": "Fast in-run save browser and quick loader (best with 4x+ game speed; see README for caveats).",
+  "description": "Undo mistakes, experiment freely. Auto-saves at key moments, press S to step back instantly.",
   "prefix": "fastsl",
   "main_file": "main.lua",
   "priority": 0,

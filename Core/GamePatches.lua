@@ -37,28 +37,34 @@ function Game:start_run(args)
       if args.savetext and not args.savetext._file and BM then
          local entries = BM.get_save_files and BM.get_save_files() or {}
          if entries and #entries > 0 then
+            local matched = false
             -- Try to match by signature
             local current_sig = LOADER.StateSignature and LOADER.StateSignature.get_signature(args.savetext)
             if current_sig then
-               for _, entry in ipairs(entries) do
+               for i, entry in ipairs(entries) do
+                  -- Ensure metadata is loaded for this entry (async loading may not have reached it)
+                  if not entry[LOADER.ENTRY_SIGNATURE] and BM.get_save_meta then
+                     BM.get_save_meta(entry)
+                  end
                   -- Compare using signature string for fast comparison
                   if entry[LOADER.ENTRY_SIGNATURE] and current_sig.signature and entry[LOADER.ENTRY_SIGNATURE] == current_sig.signature then
                      args.savetext._file = entry[LOADER.ENTRY_FILE]
-                     if BM then
-                        -- Find index and update cache flags
-                        for i, e in ipairs(entries) do
-                           if e[LOADER.ENTRY_FILE] == entry[LOADER.ENTRY_FILE] then
-                              BM.current_index = i
-                              break
-                           end
-                        end
-                        -- Update cache flags using helper function
-                        if BM._set_cache_current_file then
-                           BM._set_cache_current_file(entry[LOADER.ENTRY_FILE])
-                        end
+                     BM.current_index = i
+                     -- Update cache flags using helper function
+                     if BM._set_cache_current_file then
+                        BM._set_cache_current_file(entry[LOADER.ENTRY_FILE])
                      end
+                     matched = true
                      break
                   end
+               end
+            end
+            -- Fallback: if no signature match, use the newest save (most likely current)
+            if not matched and entries[1] and entries[1][LOADER.ENTRY_FILE] then
+               args.savetext._file = entries[1][LOADER.ENTRY_FILE]
+               BM.current_index = 1
+               if BM._set_cache_current_file then
+                  BM._set_cache_current_file(entries[1][LOADER.ENTRY_FILE])
                end
             end
          end
@@ -78,20 +84,17 @@ function Game:start_run(args)
    -- 2. Suppress noisy "Card area 'shop_*' not instantiated" logs on shop restores.
    -- In vanilla `Game:start_run`, missing areas are moved to `G.load_shop_*` and later
    -- consumed in `Game:update_shop`, but it prints an error-level log while doing so.
-   -- We pre-stash these areas into `G.load_*` and remove them from `cardAreas` so the
+   -- We pre-stash shop areas into `G.load_*` and remove them from `cardAreas` so the
    -- vanilla loader doesn't emit the warning.
+   -- Using dynamic prefix match for resilience to future game updates.
    if args.savetext and args.savetext.cardAreas and G then
       local cardAreas = args.savetext.cardAreas
-      local function stash_if_missing(area_key)
-         if not cardAreas[area_key] then return end
-         if G[area_key] then return end
-         G["load_" .. area_key] = cardAreas[area_key]
-         cardAreas[area_key] = nil
+      for area_key, area_data in pairs(cardAreas) do
+         if area_key:match("^shop_") and not G[area_key] then
+            G["load_" .. area_key] = area_data
+            cardAreas[area_key] = nil
+         end
       end
-
-      stash_if_missing("shop_jokers")
-      stash_if_missing("shop_booster")
-      stash_if_missing("shop_vouchers")
    end
 
    -- 3. Reset Loader State for new run
@@ -201,3 +204,4 @@ function LOADER.defer_save_creation()
       end
    end
 end
+

@@ -50,7 +50,7 @@ function M.update_cache_current_flags(save_cache, last_loaded_file_ref, entry_co
     if last_loaded_file_ref and last_loaded_file_ref[1] then
         current_file = last_loaded_file_ref[1]
         -- Don't check other sources if _last_loaded_file is set - it's the most authoritative
-        -- This prevents old G.SAVED_GAME._file or save.jkr from overriding newly created saves
+        -- This prevents old G.SAVED_GAME._file from overriding newly created saves
     else
         -- Only check other sources if _last_loaded_file is not set
         -- Priority 2: G.SAVED_GAME._file (set when game is running)
@@ -62,25 +62,9 @@ function M.update_cache_current_flags(save_cache, last_loaded_file_ref, entry_co
         end
     end
     
-    -- Priority 3: Check save.jkr (for continue from system UI or initial load)
-    -- Only check if we don't have a current_file yet (i.e., _last_loaded_file was not set)
-    if not current_file and G and G.SETTINGS and G.SETTINGS.profile then
-        local profile = tostring(G.SETTINGS.profile)
-        local save_path = profile .. "/save.jkr"
-        local info = love.filesystem.getInfo(save_path)
-        if info then
-            local data = get_compressed(save_path)
-            if data then
-                local success, run_data = pcall(STR_UNPACK, data)
-                if success and run_data and run_data._file then
-                    current_file = run_data._file
-                    if last_loaded_file_ref then
-                        last_loaded_file_ref[1] = current_file  -- Cache it
-                    end
-                end
-            end
-        end
-    end
+    -- Note: Removed expensive save.jkr decompression fallback.
+    -- The _last_loaded_file and G.SAVED_GAME._file sources are sufficient.
+    -- If neither is set, we simply have no current file to highlight.
     
     -- Update flags in cache - ensure ALL entries are updated
     local marked_count = 0

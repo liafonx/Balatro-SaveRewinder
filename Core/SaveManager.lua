@@ -66,9 +66,6 @@ M.current_index = nil
 M.pending_index = nil
 M._last_save_sig = nil  -- Track last save signature to prevent duplicates
 M._last_save_time = nil  -- Track when last save was created
-M._last_tracked_round = nil  -- Track last round for resetting action tracking
-M._last_discards_used = nil  -- Track discards_used from previous save in same round
-M._last_hands_played = nil  -- Track hands_played from previous save in same round
 M._meta_task = nil          -- Background metadata loading task
 
 -- Tunables to reduce main-thread I/O
@@ -103,6 +100,24 @@ function M.get_index_by_file(file)
    if not file then return nil end
    if not save_index_by_file then _rebuild_file_index() end
    return save_index_by_file and save_index_by_file[file] or nil
+end
+
+-- Helper: find index of current save (by _last_loaded_file or is_current flag)
+function M.find_current_index()
+   -- Fast path: use _last_loaded_file with index lookup
+   if M._last_loaded_file then
+      local idx = M.get_index_by_file(M._last_loaded_file)
+      if idx then return idx end
+   end
+   -- Fallback: scan for is_current flag
+   if save_cache then
+      for i, entry in ipairs(save_cache) do
+         if entry and entry[ENTRY_IS_CURRENT] == true then
+            return i
+         end
+      end
+   end
+   return nil
 end
 
 -- Debug logging helper (injected or default)
@@ -455,7 +470,8 @@ function M.load_save_file(file)
     return FileIO.load_save_file(file, M.get_save_dir())
 end
 
-local function start_from_file(file)
+local function start_from_file(file, opts)
+   opts = opts or {}
    -- Sync index with save list to maintain stepping history
    local idx_from_list = nil
    local entries = M.get_save_files()
@@ -520,33 +536,34 @@ local function start_from_file(file)
    -- Update current file tracking and cache flags
    M._set_cache_current_file(file)
 
-   -- Clear any existing screenwipe that might block the new wipe
-   if G.screenwipe then
-      if G.screenwipe.remove then pcall(function() G.screenwipe:remove() end) end
-      G.screenwipe = nil
-   end
-   if G.screenwipecard then
-      if G.screenwipecard.remove then pcall(function() G.screenwipecard:remove() end) end
-      G.screenwipecard = nil
-   end
-
    -- Start the run
-   if G and G.FUNCS and G.FUNCS.start_run then
+   if opts.no_wipe and G and G.delete_run and G.start_run then
+      -- Brainstorm-style: direct delete_run + start_run avoids loading wipe.
       local ok, err = pcall(function()
-         G.FUNCS.start_run(nil, { savetext = G.SAVED_GAME })
-      end)
-      if not ok then
-         M.debug_log("error", "start_run failed: " .. tostring(err))
-      end
-   elseif G and G.start_run then
-      local ok, err = pcall(function()
+         G:delete_run()
          G:start_run({ savetext = G.SAVED_GAME })
       end)
       if not ok then
          M.debug_log("error", "start_run failed: " .. tostring(err))
       end
    else
-      M.debug_log("error", "start_run not found!")
+      if G and G.FUNCS and G.FUNCS.start_run then
+         local ok, err = pcall(function()
+            G.FUNCS.start_run(nil, { savetext = G.SAVED_GAME })
+         end)
+         if not ok then
+            M.debug_log("error", "start_run failed: " .. tostring(err))
+         end
+      elseif G and G.start_run then
+         local ok, err = pcall(function()
+            G:start_run({ savetext = G.SAVED_GAME })
+         end)
+         if not ok then
+            M.debug_log("error", "start_run failed: " .. tostring(err))
+         end
+      else
+         M.debug_log("error", "start_run not found!")
+      end
    end
 
    return true
@@ -578,7 +595,7 @@ function M.load_and_start_from_file(file, opts)
    end
    
    -- Use fast path: copy file directly, then load for start_run
-   start_from_file(file)
+   start_from_file(file, opts)
 end
 
 function M.revert_to_previous_save()
@@ -632,7 +649,7 @@ function M.revert_to_previous_save()
    -- call `start_from_file`, which correctly identifies the index from the file list.
    local label = M.describe_save({ entry = target_entry })
    M.debug_log("step", "hotkey S -> loading " .. label)
-   M.load_and_start_from_file(target_entry[ENTRY_FILE], { skip_restore_identical = true })
+   M.load_and_start_from_file(target_entry[ENTRY_FILE], { skip_restore_identical = true, no_wipe = true })
 end
 
 function M.load_save_at_index(index)
@@ -900,7 +917,6 @@ function M.create_save(run_data)
 
     -- Update cache and state
     table.insert(save_cache, 1, new_entry)
-    _rebuild_file_index()
     run_data._file = filename
     M.current_index = 1
     

@@ -11,15 +11,20 @@ DerivedData/
 
 # IDE/Editor
 .netrc
+.vscode/
+.idea/
+.cursor/
 Balatro.antihypertensive.code-workspace
 *.code-workspace
 
-# Dependencies
+# Reference/Development folders (not part of released mod)
+# These are kept locally for development but excluded from git and game Mods folder
 lovely/
 !lovely/README.md
 Steamodded/
 !Steamodded/README.md
 Balatro-History/
+Brainstorm-Rerolled/
 BetterMouseandGamepad/
 QuickLoad/
 HandyBalatro/
@@ -28,6 +33,9 @@ jkrs/
 save.*
 balatro_src/
 save_decoder.py
+
+# Development scripts (local only)
+scripts/
 
 # Generated/Cache files
 *.meta

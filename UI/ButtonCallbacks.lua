@@ -7,19 +7,7 @@ if not LOADER then LOADER = {} end
 local function _snap_saves_focus_to_current()
    if not (G and G.CONTROLLER and LOADER and LOADER._saves_ui_refs and LOADER._saves_ui_refs.saves_box) then return end
 
-   local entries = LOADER.get_save_files and LOADER.get_save_files() or {}
-   local idx = nil
-   if LOADER._SaveManager and LOADER._SaveManager.get_index_by_file and LOADER._SaveManager._last_loaded_file then
-      idx = LOADER._SaveManager.get_index_by_file(LOADER._SaveManager._last_loaded_file)
-   end
-   if not idx then
-      for i, entry in ipairs(entries) do
-         if entry and entry[LOADER.ENTRY_IS_CURRENT] == true then
-            idx = i
-            break
-         end
-      end
-   end
+   local idx = LOADER.find_current_index and LOADER.find_current_index()
    if not idx then return end
 
    local node = LOADER._saves_ui_refs.saves_box:get_UIE_by_ID("fastsl_save_entry_" .. tostring(idx))
@@ -67,12 +55,10 @@ function G.FUNCS.loader_save_jump_to_current(e)
    local per_page = refs.per_page or 8
    local target_page = 1
    
-   for i, entry in ipairs(entries) do
-      if entry and entry[LOADER.ENTRY_IS_CURRENT] == true then
-         target_page = math.ceil(i / per_page)
-         LOADER.debug_log("UI", string.format("jump_to_current: Found current at index %d, target_page=%d", i, target_page))
-         break
-      end
+   local idx = LOADER.find_current_index and LOADER.find_current_index()
+   if idx then
+      target_page = math.ceil(idx / per_page)
+      LOADER.debug_log("UI", string.format("jump_to_current: Found current at index %d, target_page=%d", idx, target_page))
    end
    
    -- Use stored cycle_config or reconstruct it
@@ -157,20 +143,8 @@ function G.FUNCS.loader_save_restore(e)
    end
 
    -- Set pending_index so that start_from_file can use it for timeline consistency
-   if LOADER and LOADER.get_save_files then
-      local idx = nil
-      if LOADER._SaveManager and LOADER._SaveManager.get_index_by_file then
-         idx = LOADER._SaveManager.get_index_by_file(file)
-      end
-      if not idx then
-         local entries = LOADER.get_save_files()
-         for i, entry in ipairs(entries) do
-            if entry[LOADER.ENTRY_FILE] == file then
-               idx = i
-               break
-            end
-         end
-      end
+   if LOADER and LOADER._SaveManager then
+      local idx = LOADER._SaveManager.get_index_by_file and LOADER._SaveManager.get_index_by_file(file)
       if idx then
          -- Use setter or direct module access since scalars are copied by value
          if LOADER.set_pending_index then
@@ -285,3 +259,4 @@ function G.FUNCS.fastsl_save_delete_all(e)
       })
    end
 end
+

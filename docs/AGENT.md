@@ -54,7 +54,7 @@
     - `create_save(run_data)`：创建存档文件（序列化、压缩、写入文件系统）。  
       - 支持配置过滤（`save_on_blind`, `save_on_selecting_hand`, `save_on_round_end`, `save_on_shop`）。  
       - 通过 `ActionDetector` 模块检测动作类型（play/discard）。  
-    - `load_and_start_from_file(file)`：加载存档并重启游戏 run（使用 `FileIO.copy_save_to_main` 直接复制到 `save.jkr` 优化性能）。  
+    - `load_and_start_from_file(file)`：加载存档并重启游戏 run（先复制到 `save.jkr`，再用 `get_compressed + STR_UNPACK` 解包，避免重复 I/O）。  
     - `revert_to_previous_save()`：时间线向后退一步。  
     - `load_save_at_index(index)`：按索引加载存档。  
     - `get_save_files(force_reload)`：获取存档列表（带缓存，支持强制重新加载）。  
@@ -70,7 +70,7 @@
   - 提供游戏函数的覆盖和补丁。  
   - `Game:start_run` 覆盖：
     - 标记加载状态（调用 `mark_loaded_state`）。  
-    - 加载 Shop 存档时：将尚未实例化的 `shop_*` CardArea 预先写入 `G.load_shop_*` 并从 `cardAreas` 移除，避免原版打印 `ERROR LOADING GAME: Card area ... not instantiated before load` 噪音日志；后续由原版 `Game:update_shop` 加载。  
+    - 加载 Shop 存档时：使用动态前缀匹配（`^shop_`）将尚未实例化的 shop CardArea 预先写入 `G.load_shop_*` 并从 `cardAreas` 移除，避免原版打印 `ERROR LOADING GAME: Card area ... not instantiated before load` 噪音日志；后续由原版 `Game:update_shop` 加载。此方式对游戏版本更新更具兼容性。  
     - 重置新 run 的状态，清理旧存档（新 run 时）。  
   - `LOADER.defer_save_creation()`：
     - 使用 `Utils.deepcopy` 对 `G.culled_table` 进行深拷贝。  
@@ -198,12 +198,12 @@
 - **`docs/`**  
   - 项目文档：
     - `AGENT.md`：本文档，项目架构和设计说明。  
-    - `CACHE_ENTRY_EXAMPLE.md`：缓存条目结构示例文档。  
-    - `CLICK_LOAD_FLOW.md`：点击加载流程说明文档。  
+    - `CACHE_ENTRY_EXAMPLE.md`：缓存条目数组结构详解，包含字段索引常量、`action_type` 与 `is_opening_pack` 的区别、签名编码格式、以及条目生命周期说明。  
+    - `CLICK_LOAD_FLOW.md`：点击存档加载的完整流程文档，从 UI 按钮点击到游戏重启的 6 个步骤、关键状态变量、时间线修剪策略、以及序列图。  
 
 ### 2.3 外部 / 参考目录
 
-来自工程笔记中的目录说明：  
+以下目录为参考用途，不属于本 Mod 的核心代码：  
 
 - **`lovely/`**  
   - 本地 Lovely Loader 相关文件（包括自身日志目录 `lovely/log/`）。  
@@ -218,8 +218,31 @@
     - 编写 `lovely.toml` 正则时的文本依据。  
 
 - **`Balatro-History/`**  
-  - 另一个 Mod（或版本历史）作为参考：  
-    - 可查看之前如何处理备份、时间线等逻辑，方便对照演进。  
+  - 另一个存档历史 Mod，参考其备份、时间线逻辑实现。  
+
+- **`Brainstorm-Rerolled/`**  
+  - Brainstorm Mod 的参考实现，本 Mod 借鉴了其快速恢复路径（`G:delete_run()` → `G:start_run()`）以实现无加载界面的快速回退。  
+
+- **`QuickLoad/`**  
+  - QuickLoad Mod 的参考实现，本 Mod 借鉴了其 `get_compressed + STR_UNPACK` 流程来快速解包 `save.jkr`。  
+
+- **`BetterMouseandGamepad/`**  
+  - 鼠标与手柄增强 Mod，参考其控制器导航和焦点管理实现。  
+
+### 2.3.1 balatro_src 快速定位（与本 Mod 相关）
+
+- **`functions/misc_functions.lua`**  
+  - `save_run()` 构造 `G.culled_table` 并设置 `G.ARGS.save_run`；我们在此处用 `lovely.toml` 插入 `LOADER.defer_save_creation()`。  
+- **`functions/button_callbacks.lua`**  
+  - `G.FUNCS.start_run` 负责完整的 wipe 流程（`wipe_on` → `delete_run` → `start_run` → `wipe_off`）。  
+  - `G.FUNCS.wipe_on` / `wipe_off` 的定义也在此文件。  
+- **`game.lua`**  
+  - `Game:start_run` 读取 `saveTable.cardAreas` 并在缺失时写入 `G.load_*`；shop 相关的 `G.load_shop_*` 会在 `Game:update_shop` 中被消费。  
+  - `Game:delete_run` 清理运行态 UI 与 `load_shop_*`。  
+- **`engine/string_packer.lua`**  
+  - `get_compressed` / `STR_UNPACK`：当前用于恢复时解包 `save.jkr`（QuickLoad/Brainstorm 风格）。  
+- **`engine/controller.lua`**  
+  - `Controller:navigate_focus`：控制器导航核心；我们在 `Keybinds.lua` 中覆写该方法以设定存档列表导航边界。  
 
 ---
 
@@ -251,12 +274,12 @@
 - **加载存档**  
   - UI 或快捷键调用 `SaveManager.load_and_start_from_file` / `load_save_at_index`：  
     1. 使用 `FileIO.copy_save_to_main` 直接将存档文件复制到 `save.jkr`（性能优化，避免重复解包）。  
-    2. 调用 `FileIO.load_save_file` 解包 `save.jkr` 供 `start_run` 使用。  
+    2. 使用 `get_compressed + STR_UNPACK` 解包 `save.jkr` 供 `start_run` 使用。  
     3. 设置 `run_data._file` 为存档文件名，用于后续追踪。  
     4. 计算并记录 `pending_future_prune`（所有比当前存档更新的存档文件）。  
     5. 使用 `CacheManager.set_cache_current_file` 更新缓存标志。  
-    6. 调用 `G.FUNCS.start_run` 重启游戏 run。  
-    7. 在 `GamePatches.lua` 的 `Game:start_run` 中标记加载状态并处理商店区域延迟加载。
+    6. 调用 `G.FUNCS.start_run` 或（`S` 快捷键）走 `G:delete_run()` → `G:start_run({savetext=...})` 的无加载页路径。  
+    7. 在 `GamePatches.lua` 的 `Game:start_run` 中标记加载状态，并对 shop 存档做 `G.load_shop_*` 预置以抑制日志。
 
 - **时间线分支与修剪**  
   - 当从较旧存档加载时，`start_from_run_data` 会计算所有比当前存档更新的存档索引。  
@@ -314,22 +337,11 @@
     - 在 `card.lua` 的 `Card:open()` 函数中通过 patch 设置 `skipping_pack_open = true` 标记。  
     - 在 `consume_skip_on_save` 中：若处于 Shop 状态、有 ACTION、且（`skipping_pack_open` 为 true 或 `cardAreas.pack_cards` 存在），则强制跳过本次存档。  
     - 这解决了「打开 Booster 包会改变 Money，但从玩家视角这是恢复流程的一部分」的问题。  
-  - **商店区域延迟加载**：  
-    - 恢复时，`Game:start_run` 会把商店相关的 `cardAreas`（`shop_jokers`, `shop_booster`, `shop_vouchers`, `pack_cards`）从 `savetext.cardAreas` 中剥离。  
-    - 存储到 `self.load_*` 临时变量，延迟到 run 启动后再重建 `CardArea` 并加载。  
-    - 这使商店恢复更加稳定，避免在恢复过程中触发游戏内部状态冲突。  
-  - **Pack Opening 状态的商店区域处理**（当前存在问题）：  
-    - 当恢复「opening pack」状态（Shop 状态且有 ACTION）时，商店区域（`shop_jokers`, `shop_booster`, `shop_vouchers`）应该被隐藏，只显示 pack cards。  
-    - 当前实现：在 `GamePatches.lua` 中检测到 `is_opening_pack` 时，从 `cardAreas` 中移除商店区域，并在 `start_run` 后清除 `G.shop_*` 和 `G.load_shop_*`。  
-    - **问题**：移除商店区域会导致游戏打印 "ERROR LOADING GAME: Card area 'shop_jokers' not instantiated before load" 错误（虽然无害，但会产生日志噪音）。  
-    - **未解决的问题**：恢复 opening pack 状态时，pack opening 状态会丢失，直接显示商店界面而不是 pack opening 界面。这可能是因为：  
-      - 游戏在 `start_run` 中处理 `cardAreas` 时（第 2308-2315 行），如果 `G[k]` 不存在，会设置 `G['load_'..k] = v`，这可能导致商店构建器在 ACTION 触发 pack opening 之前就创建了商店区域。  
-      - 或者 ACTION 的触发时机（第 2199-2217 行，延迟 0.5 秒）与商店区域的创建时机冲突。  
-    - **尝试过的解决方案**：  
-      1. 完全移除商店区域 → 导致 "not instantiated" 错误，且 pack opening 状态丢失。  
-      2. 保留空结构的商店区域 → 游戏可能仍会创建商店区域并显示。  
-      3. 在 `start_run` 后清除 `G.shop_*` 和 `G.load_shop_*` → 仍无法阻止 pack opening 状态丢失。  
-    - **需要进一步调查**：可能需要阻止商店构建器在 ACTION 存在时运行，或者调整 ACTION 的触发时机。  
+  - **商店区域日志抑制**：  
+    - 恢复 shop 存档时，`Game:start_run` 在原版处理 `cardAreas` 前预先把 `shop_*` 写入 `G.load_shop_*`，并从 `cardAreas` 中移除，避免打印 “Card area not instantiated” 噪音日志。  
+    - 实际商店构建与加载仍由原版 `Game:update_shop` 完成。  
+  - **Pack Opening 状态**：  
+    - 当前没有对 `pack_cards` 做额外的加载/重建逻辑；若恢复 opening pack 仍有问题，需要进一步基于原版 `Game:start_run` / `Game:update_shop` 的时序调查。  
 
 ---
 
@@ -393,12 +405,12 @@
      - `card.lua` 的 `Card:open()` patch 可能与其他修改开包逻辑的 Mod 冲突。  
 
 4. **Shop 状态恢复的复杂性**  
-   - 商店区域的延迟加载机制（剥离 `cardAreas` 到 `load_*` 变量）依赖于游戏内部 `CardArea` 的特定行为。  
-   - 如果游戏版本更新或 Mod 修改了 `CardArea` 的加载逻辑，可能导致商店恢复失败。  
-   - 当前实现已包含 fallback 逻辑（`G.load_pack_cards`），但可能无法覆盖所有边缘情况。  
+   - 对 `shop_*` 做日志抑制（使用动态前缀匹配 `^shop_`，自动适应未来新增的 shop 区域），真实加载仍依赖原版 `Game:update_shop`。  
+   - 如果游戏版本或 Mod 修改了 shop 构建流程，可能影响恢复一致性。  
+   - `pack_cards` 的恢复仍依赖原版时序，若 opening pack 仍有问题，需要进一步验证原版流程。  
 
 5. **签名比较的局限性**  
-   - 状态签名包含 `Ante`, `Round`, `State`, `has_action`, `Money`, `discards_used`, `hands_played`，但不包含卡牌内容。  
+   - 状态签名包含 `Ante`, `Round`, `State`, `action_type`, `is_opening_pack`, `Money`, `discards_used`, `hands_played`，但不包含卡牌内容。  
    - 理论上，两个不同状态的存档可能具有相同签名（例如：相同 Ante/Round/State/Money，但卡牌不同）。  
    - 当前实现通过时间戳（< 0.5 秒）的重复检测来缓解，但极端情况下仍可能出现误判。  
 
@@ -486,3 +498,64 @@
    - 可进一步改进：
      - 在 UI 中显示存档的时间戳（相对时间，如「2 分钟前」）。  
      - 显示存档文件大小，帮助用户判断哪些存档占用空间较大。  
+
+---
+
+## 变更摘要（最近更新）
+
+1. **启动时全量预加载**  
+   - `Core/Init.lua` 启动时同步调用 `SaveManager.preload_all_metadata(true)`，确保 UI 打开后不再触发 `.meta` 读取或 `.jkr` 解包。  
+
+2. **存档索引映射**  
+   - `Core/SaveManager.lua` 增加 `save_cache_by_file` / `save_index_by_file` 与 `get_entry_by_file` / `get_index_by_file`，在 reload / prune / retention 后重建索引。  
+
+3. **恢复加载路径优化**  
+   - 使用 QuickLoad/Brainstorm 类似的 `get_compressed + STR_UNPACK` 流程读取 `save.jkr`。  
+   - 快速回退（`S`）改为无加载界面路径：`G:delete_run()` → `G:start_run({savetext=...})`。  
+
+4. **Shop 恢复噪音日志抑制**  
+   - 在 `Game:start_run` 中使用动态前缀匹配（`^shop_`）将未实例化的 shop 卡区移到 `G.load_shop_*`，避免原版打印 "Card area not instantiated" 日志。  
+   - 动态匹配使代码对游戏版本更新更具兼容性（自动支持未来新增的 shop 区域）。  
+
+5. **手柄支持与导航规则**  
+   - 手柄快捷键：`L3` 回退、`R3` 打开/关闭列表。  
+   - 存档列表 overlay 设置了明确的方向边界、循环规则与默认焦点。  
+   - 分页支持 `LB/RB`，`Y` 跳转到当前存档。  
+
+6. **存档 UI 布局调整**  
+   - 保存列表宽度与条目宽度统一（`SAVE_ENTRY_W`）。  
+   - 按钮布局优化（`Current save` / `Delete all` 的尺寸与位置调整）。  
+
+---
+
+## 7. 用户须知与行为说明
+
+> 以下内容面向希望深入了解 Mod 行为的用户和贡献者。
+
+### 7.1 存档时机与限制
+
+- Fast Save Loader 在以下安全点创建存档：选盲注、商店、回合结束、选牌出牌/弃牌后。
+- 如果在动画/转场过程中触发加载，恢复的状态可能略早于预期的存档点。
+- 由于 Balatro 自身的保存行为和 `save.jkr` 读写耗时，快速切换状态/页面时，部分「感觉应该被保存」的中间状态可能不在存档列表中。
+
+### 7.2 关键行为（需保持兼容）
+
+1. **分支与时间线修剪**  
+   - 从列表或 `S` 键加载旧存档时，所有「未来」存档会被记录到待清理列表。  
+   - 下次真正保存时才会删除这些未来存档，保持时间线在分支内线性。
+
+2. **延迟修剪**  
+   - 加载旧存档时不会立即删除未来存档；只有在创建新存档时才删除。  
+   - 这使回退操作非破坏性——如果误操作，重启游戏后仍可「前进」到被删除前的状态。
+
+3. **恢复后跳过重复存档**  
+   - 恢复存档后，第一次自动保存若与刚恢复的状态相同，则跳过。  
+   - 标志会在之后清除，后续操作正常保存。
+
+4. **快速回退（`S` 键）**  
+   - 始终跳到当前分支中的上一个存档。  
+   - 使用与列表加载相同的延迟修剪策略。
+
+5. **商店恢复**  
+   - 确保 shop CardArea 存在或通过 `G.load_shop_*` 延迟加载。  
+   - 让原版 shop 构建器加载已保存的商店区域，保持开包状态且不产生实例化警告。

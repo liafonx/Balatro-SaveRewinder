@@ -4,14 +4,12 @@ This document describes the complete flow when a user clicks on a save entry in 
 
 ## Overview
 
-When a user clicks on a save entry in the saves UI, the following sequence occurs:
-
 1. **UI Button Click** → Button callback triggered
 2. **Cache Update** → Update current file flags immediately
-3. **File Loading** → Load save file from disk
+3. **File Copy** → Copy save file directly to `save.jkr`
 4. **State Setup** → Prepare restore state and skip flags
 5. **Timeline Management** → Calculate which "future" saves to prune
-6. **Game Restart** → Sync to main save and restart game run
+6. **Game Restart** → Start game run from loaded save
 7. **State Marking** → Mark loaded state for skip logic
 
 ## Detailed Flow
@@ -28,65 +26,72 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
 **Actions**:
 1. Extract `file` from `e.config.ref_table.file`
 2. **Immediately update cache flags** via `_set_cache_current_file(file)` 
-   - This ensures UI highlighting works if user reopens saves menu
-   - Sets `entry.is_current = true` for clicked file in cache
-3. Find entry index in save list and set `pending_index = i`
+   - Ensures UI highlighting works if user reopens saves menu
+   - Sets `entry[ENTRY_IS_CURRENT] = true` for clicked file in cache
+3. Find entry index in save list and set `pending_index`
    - Used for timeline stepping consistency
 4. Log: `"restore -> loading <description>"`
 5. Call `LOADER.load_and_start_from_file(file)`
 
 ---
 
-### Step 2: Load Save File (`SaveManager.lua`)
+### Step 2: Load and Start (`SaveManager.lua`)
 
 **Function**: `M.load_and_start_from_file(file, opts)`
 
 **Actions**:
-1. **Load file from disk**: `M.load_save_file(file)`
-   - Decompress and unpack `.jkr` file
-   - Returns `run_data` table
-2. **Set file reference**: `run_data._file = file`
-   - Critical: This links the loaded data to the save file
-3. **Reset restore state flags**:
+1. **Reset restore state flags**:
    ```lua
+   M._loaded_mark_applied = nil
+   M._loaded_meta = nil
    M._pending_skip_reason = "restore"  -- or "step" if skip_restore_identical
    M._restore_active = true
    M._last_loaded_file = file
-   M.skip_next_save = true  -- Will be checked on next save
+   M.skip_next_save = true
    ```
-4. **Update cache flags again** (redundant but safe): `_set_cache_current_file(file)`
-5. Log: `"Loading <description>"`
-6. Call `start_from_run_data(run_data)`
+2. **Update cache flags**: `_set_cache_current_file(file)`
+3. Log: `"Loading <description>"`
+4. Call `start_from_file(file, opts)` (local function)
 
 ---
 
-### Step 3: Prepare Run Data (`SaveManager.lua`)
+### Step 3: Start From File (`SaveManager.lua`)
 
-**Function**: `start_from_run_data(run_data)` (local function)
+**Function**: `start_from_file(file, opts)` (local function)
 
 **Actions**:
 1. **Calculate timeline index**:
-   - Find entry index in save list by matching `run_data._file`
+   - Find entry index in save list by matching `file`
    - Store as `idx_from_list`
 2. **Calculate future saves to prune**:
    ```lua
    M.pending_future_prune = {}
    -- If loading save at index 5, saves 1-4 are "future" and will be pruned
    -- on next real save (deferred pruning strategy)
+   for i = 1, idx_from_list - 1 do
+      table.insert(M.pending_future_prune, entries[i][ENTRY_FILE])
+   end
    ```
 3. **Set current index**: `M.current_index = pending_index or idx_from_list or 1`
 4. **Close saves UI**: `LOADER.saves_open = false`
-5. **Set up game state**:
+5. **Copy save file directly** (fast path):
+   ```lua
+   M.copy_save_to_main(file)  -- Copies file directly to save.jkr, no decode
+   ```
+6. **Load run data from save.jkr**:
+   ```lua
+   run_data = get_compressed(profile .. "/save.jkr")  -- Read what was just copied
+   run_data._file = file  -- Link to source save file
+   ```
+7. **Set up game state**:
    ```lua
    G.SAVED_GAME = run_data
    G.SETTINGS.current_setup = "Continue"
-   G.SAVED_GAME._file = run_data._file  -- Preserve file reference
+   G.SAVED_GAME._file = file  -- Preserve file reference
    ```
-6. **Sync to main save**: `M.sync_to_main_save(run_data)`
-   - Serialize, compress, and write to `PROFILE/save.jkr`
-   - This ensures game's "Continue" button works
-7. **Clear screen wipes**: Remove any existing `G.screenwipe` or `G.screenwipecard`
-8. **Start the run**: `G.FUNCS.start_run(nil, { savetext = G.SAVED_GAME })`
+8. **Start the run** (two paths):
+   - **Fast path** (`no_wipe = true`): `G:delete_run()` → `G:start_run({ savetext = ... })`
+   - **Normal path**: `G.FUNCS.start_run(nil, { savetext = ... })`
 
 ---
 
@@ -97,8 +102,9 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
 **Actions**:
 1. **Match save file** (if `_file` not set):
    - Try to find matching save by signature comparison
+   - Load metadata on-demand if not cached
    - Set `args.savetext._file` if match found
-   - Update cache flags
+   - Fallback: use newest save if no signature match
 2. **Mark loaded state** (if not already marked):
    ```lua
    LOADER.mark_loaded_state(args.savetext, {
@@ -107,19 +113,14 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
       set_skip = true,
    })
    ```
-   - This records the signature and ACTION state for skip logic
 3. **Handle shop card areas** (deferred loading):
    - Extract `shop_jokers`, `shop_booster`, `shop_vouchers`, `pack_cards` from `cardAreas`
    - Store in `self.load_*` temporary variables
    - Remove from `cardAreas` to prevent conflicts during restore
-4. **Preserve `_last_loaded_file`**:
-   - Ensures UI highlighting continues to work
-   - Only reset on brand new run (no `savetext`)
-5. **Call original `start_run`**: `LOADER._start_run(self, args)`
-   - Game's original function handles actual run initialization
-6. **Rebuild pack cards** (if `load_pack_cards` exists):
+4. **Call original `start_run`**: `LOADER._start_run(self, args)`
+5. **Rebuild pack cards** (if `load_pack_cards` exists):
    - Create `CardArea` and load cards
-   - This handles the "opening pack" state restoration
+   - Handles "opening pack" state restoration
 
 ---
 
@@ -130,17 +131,18 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
 **Actions**:
 1. **Store skip reason**: `M._pending_skip_reason = "restore"`
 2. **Get signature**: `M._loaded_meta = StateSignature.get_signature(run_data)`
-   - Includes: ante, round, state, label, money, has_action
-3. **Check ACTION**: `M._loaded_had_action = StateSignature.has_action(run_data)`
-4. **Set skip flag** (with shop exception):
+   - Includes: ante, round, state, action_type, money, is_opening_pack
+3. **Set skip flag** (with shop exception):
    ```lua
-   if is_shop and not _loaded_had_action then
+   local is_shop = (loaded_sig.state == G.STATES.SHOP)
+   local is_opening_pack = loaded_sig.is_opening_pack
+   if is_shop and not is_opening_pack then
       M.skip_next_save = false  -- Don't skip! User action will trigger save
    else
       M.skip_next_save = true   -- Skip duplicate save
    end
    ```
-5. **Mark as applied**: `M._loaded_mark_applied = true`
+4. **Mark as applied**: `M._loaded_mark_applied = true`
 
 ---
 
@@ -150,10 +152,10 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
 
 **Actions**:
 1. **Compare signatures**: 
-   - `incoming_sig` (from loaded state) vs `current_sig` (from current save)
+   - `incoming_sig` (from `_loaded_meta`) vs `current_sig` (from current save)
    - If equal → skip save (duplicate)
 2. **Shop pack open special case**:
-   - If shop with ACTION and `pack_cards` exists → skip (pack opening save)
+   - If shop with `is_opening_pack` and `pack_cards` exists → skip
 3. **Set skip flag**: `save_table.LOADER_SKIP_SAVE = true` if should skip
 4. **Reset flags** (but preserve `_last_loaded_file` for UI)
 
@@ -167,16 +169,15 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
 |----------|--------|---------|
 | `_last_loaded_file` | `load_and_start_from_file` | Tracks current save file for UI highlighting |
 | `pending_index` | `loader_save_restore` | Save index for timeline consistency |
-| `pending_future_prune` | `start_from_run_data` | List of "future" saves to delete on next save |
+| `pending_future_prune` | `start_from_file` | List of "future" saves to delete on next save |
 | `skip_next_save` | `load_and_start_from_file` | Flag to skip duplicate save |
 | `_loaded_meta` | `mark_loaded_state` | Signature of loaded state for comparison |
-| `_loaded_had_action` | `mark_loaded_state` | Whether loaded state had ACTION |
 | `_loaded_mark_applied` | `mark_loaded_state` | Prevents double-marking |
 
 ### Cache Updates
 
-- `entry.is_current = true` for loaded save
-- `entry.is_current = false` for all other saves
+- `entry[ENTRY_IS_CURRENT] = true` for loaded save
+- `entry[ENTRY_IS_CURRENT] = false` for all other saves
 - Updated immediately on click (before loading) for instant UI feedback
 
 ---
@@ -186,7 +187,7 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
 **Deferred Pruning**: Future saves are not deleted immediately when loading an older save.
 
 **Why?**
-- Allows user to "undo" a revert by reloading the game
+- Allows user to "undo" a revert by stepping forward again
 - Non-destructive operation
 - Pruning happens on next real save (when timeline diverges)
 
@@ -201,7 +202,7 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
 ## Error Handling
 
 - **File not found**: `load_save_file` returns `nil`, error logged, function returns early
-- **Unpack failure**: `pcall` protects, error logged
+- **Copy failure**: `copy_save_to_main` returns `false`, error logged
 - **start_run failure**: `pcall` protects, error logged but game may be in inconsistent state
 - **Cache updates**: Always use `pcall` for filesystem operations to prevent crashes
 
@@ -210,24 +211,29 @@ When a user clicks on a save entry in the saves UI, the following sequence occur
 ## Performance Considerations
 
 1. **Immediate cache update**: UI highlighting works instantly, even before file loads
-2. **Deferred file operations**: File loading happens synchronously but is fast (already in memory cache)
-3. **Deferred pruning**: Timeline cleanup happens on next save, not during load (faster restore)
+2. **Direct file copy**: `copy_save_to_main` copies binary file without decode/encode cycle
+3. **Fast restart path**: `no_wipe` option uses `G:delete_run()` → `G:start_run()` for faster restore
+4. **Deferred pruning**: Timeline cleanup happens on next save, not during load
 
 ---
 
-## Sequence Diagram (Simplified)
+## Sequence Diagram
 
 ```
 User Click
     ↓
-loader_save_restore
-    ↓ (update cache flags)
-load_and_start_from_file
-    ↓ (load file, set state)
-start_from_run_data
-    ↓ (calculate prune list, sync save)
+loader_save_restore (ButtonCallbacks)
+    ↓ update cache flags, set pending_index
+load_and_start_from_file (SaveManager)
+    ↓ reset state, log
+start_from_file (local)
+    ↓ calculate prune list
+    ↓ copy_save_to_main (direct file copy)
+    ↓ load run_data from save.jkr
 Game:start_run (patched)
-    ↓ (mark state, handle shop areas)
+    ↓ match save file if needed
+    ↓ mark_loaded_state
+    ↓ handle shop card areas
 Game:start_run (original)
     ↓
 Game Running (from save state)
@@ -235,9 +241,8 @@ Game Running (from save state)
 Next save triggered
     ↓
 consume_skip_on_save
-    ↓ (compare signatures, skip if duplicate)
+    ↓ compare signatures, skip if duplicate
 prune_future_saves (if needed)
     ↓
 Timeline cleaned up
 ```
-
