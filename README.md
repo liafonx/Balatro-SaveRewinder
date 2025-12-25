@@ -64,8 +64,6 @@ Saves are stored in your Balatro profile folder:
 
 > ⚠️ **Note**: Saves are only kept for your **current run**. If you exit mid-run, saves persist. Starting a **new run** will delete all previous saves.
 
-> 💡 **Tip**: When you step back (`S`) or load an older save, "future" saves aren't deleted immediately — they're only removed when you make a new action that triggers a save. This lets you undo your undo if you change your mind!
-
 ## Languages
 
 - English
