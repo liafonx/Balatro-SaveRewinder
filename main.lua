@@ -4,6 +4,13 @@
 
 REWINDER = REWINDER or {}
 
+SMODS.Atlas {
+   key = "modicon",
+   path = "modicon.png",
+   px = 32,
+   py = 32,
+}:register()
+
 if SMODS and SMODS.current_mod then
    REWINDER.mod = SMODS.current_mod
    REWINDER.config = REWINDER.mod.config or {}
