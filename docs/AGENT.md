@@ -82,6 +82,8 @@ Keybinds → SaveManager
   ./scripts/sync_to_mods.sh           # One-time sync
   ./scripts/sync_to_mods.sh --watch   # Auto-sync on changes
   ```
+  
+> **Note for CHANGELOG**: Development script improvements (like `sync_to_mods.sh` changes) are **not** user-facing features and should **not** be included in CHANGELOG.md. Only include changes that affect mod functionality, UI, or user experience.
 
 ### 2.5 Reference Directories (Not Part of Mod)
 

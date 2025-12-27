@@ -1,8 +1,8 @@
 {
     "name": "SaveRewinder",
-    "version_number": "1.3.0",
+    "version_number": "1.3.1",
     "website_url": "https://github.com/liafonx/Balatro-SaveRewinder",
-    "description": "Undo mistakes, experiment freely. Auto-saves at key moments, press S to rewind instantly. Full controller support.",
+    "description": "Undo mistakes, experiment freely. Auto-saves at key moments, press S to rewind or use the orange Saves button in pause menu.",
     "dependencies": [
         "Steamodded-Steamodded-0.9.8"
     ]

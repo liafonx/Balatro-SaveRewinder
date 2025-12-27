@@ -35,7 +35,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 
 ### In-Game Menu
 
-Press `Ctrl+S` (or click Right Stick) during a run to open the saves browser:
+Press `ESC` to open the menu and click the **orange "Saves" button**, or press `Ctrl+S` (or click Right Stick):
 - Click any save to restore it
 - Orange highlight shows your current position
 - Use "Current save" button to find where you are
