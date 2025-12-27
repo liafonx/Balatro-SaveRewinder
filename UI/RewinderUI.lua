@@ -468,6 +468,7 @@ function create_UIBox_options()
             button = "rewinder_save_open",
             label = { (localize and localize("rewinder_saves_button")) or "Saves" },
             minw = 5,
+            colour = G.C.ORANGE or {1, 0.6, 0.2, 1},  -- Orange button to stand out
          })
          table.insert(n3.nodes, button)
       end

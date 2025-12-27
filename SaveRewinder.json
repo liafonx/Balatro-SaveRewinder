@@ -3,11 +3,11 @@
   "name": "Save Rewinder",
   "display_name": "Save Rewinder",
   "author": ["liafonx"],
-  "description": "Undo mistakes, experiment freely. Auto-saves at key moments, press S to rewind instantly.",
+  "description": "Undo mistakes, experiment freely. Auto-saves at key moments, press S to rewind or use the orange Saves button in pause menu.",
   "prefix": "rewinder",
   "main_file": "main.lua",
   "priority": 0,
   "badge_colour": "ffffff",
   "badge_text_colour": "000000",
-  "version": "1.3.0"
+  "version": "1.3.1"
 }

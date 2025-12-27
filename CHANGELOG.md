@@ -2,6 +2,15 @@
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.3.1] - 2025-12-28
+
+### Added
+- Orange "Saves" button in the pause menu for better visibility
+- In-game mod icon (visible in Steamodded mod list)
+
+### Changed
+- Updated installation instructions to mention the orange Saves button
+
 ## [1.3.0] - 2025-12-25
 
 ### Added
