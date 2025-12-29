@@ -17,17 +17,11 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 
 ## Screenshots
 
-### Saves Button in Options Menu
-![Saves button in the Options menu](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Saves_button%20in_the_Options_menu.jpeg)
-
-### Save List with Blind Icons
-![Save list with blind icons](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Save_list_with_blind_icon.jpeg)
-
-### Save List with Round Numbers
-![Save list with round numbers](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Save_list_with_round_number.jpeg)
-
-### Mod Settings
-![Mod settings](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Mod_settings.jpeg)
+| Saves Button | Save List (Blind Icons) |
+|:---:|:---:|
+| ![Saves button](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Saves_button%20in_the_Options_menu.jpeg) | ![Blind icons](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Save_list_with_blind_icon.jpeg) |
+| **Save List (Round Numbers)** | **Mod Settings** |
+| ![Round numbers](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Save_list_with_round_number.jpeg) | ![Settings](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Mod_settings.jpeg) |
 
 ## Quick Start
 
