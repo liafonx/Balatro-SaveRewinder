@@ -20,6 +20,7 @@ M.ENTRY_SIGNATURE = 10
 M.ENTRY_DISCARDS_USED = 11
 M.ENTRY_HANDS_PLAYED = 12
 M.ENTRY_IS_CURRENT = 13
+M.ENTRY_BLIND_KEY = 14  -- Blind key (e.g., "bl_small", "bl_final_acorn") for displaying blind icon
 
 return M
 

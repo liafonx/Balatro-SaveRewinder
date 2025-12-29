@@ -31,6 +31,7 @@ M.ENTRY_SIGNATURE = EntryConstants.ENTRY_SIGNATURE
 M.ENTRY_DISCARDS_USED = EntryConstants.ENTRY_DISCARDS_USED
 M.ENTRY_HANDS_PLAYED = EntryConstants.ENTRY_HANDS_PLAYED
 M.ENTRY_IS_CURRENT = EntryConstants.ENTRY_IS_CURRENT
+M.ENTRY_BLIND_KEY = EntryConstants.ENTRY_BLIND_KEY
 
 -- Local references for convenience
 local ENTRY_FILE = EntryConstants.ENTRY_FILE
@@ -46,6 +47,7 @@ local ENTRY_SIGNATURE = EntryConstants.ENTRY_SIGNATURE
 local ENTRY_DISCARDS_USED = EntryConstants.ENTRY_DISCARDS_USED
 local ENTRY_HANDS_PLAYED = EntryConstants.ENTRY_HANDS_PLAYED
 local ENTRY_IS_CURRENT = EntryConstants.ENTRY_IS_CURRENT
+local ENTRY_BLIND_KEY = EntryConstants.ENTRY_BLIND_KEY
 
 -- Configuration for file paths
 M.PATHS = {
@@ -235,6 +237,8 @@ function M.get_save_meta(entry)
         entry[ENTRY_SIGNATURE] = meta.signature
         entry[ENTRY_DISCARDS_USED] = meta.discards_used
         entry[ENTRY_HANDS_PLAYED] = meta.hands_played
+        entry[ENTRY_BLIND_KEY] = meta.blind_key
+        M.debug_log("info", "Loaded blind_key from meta file: " .. tostring(meta.blind_key) .. " for file " .. tostring(entry[ENTRY_FILE]))
         return true
     end
 
@@ -253,6 +257,8 @@ function M.get_save_meta(entry)
             entry[ENTRY_SIGNATURE] = sig.signature
             entry[ENTRY_DISCARDS_USED] = sig.discards_used  -- Store for action type detection
             entry[ENTRY_HANDS_PLAYED] = sig.hands_played   -- Store for action type detection
+            entry[ENTRY_BLIND_KEY] = sig.blind_key
+            M.debug_log("info", "Loaded blind_key from save file: " .. tostring(sig.blind_key) .. " for file " .. tostring(entry[ENTRY_FILE]))
             
             -- Write .meta file for future fast reads (same structure as cache entry metadata)
             local entry_meta = {
@@ -263,6 +269,7 @@ function M.get_save_meta(entry)
                 signature = sig.signature,
                 discards_used = sig.discards_used,
                 hands_played = sig.hands_played,
+                blind_key = sig.blind_key,
             }
             MetaFile.write_meta_file(meta_path, entry_meta)
             
@@ -299,7 +306,7 @@ function M.get_save_files(force_reload)
             local round = tonumber(round_str or 0)
             local index = tonumber(index_str or 0)
             
-            -- Create entry as array: {file, ante, round, index, modtime, state, action_type, is_opening_pack, money, signature, discards_used, hands_played, is_current}
+            -- Create entry as array: {file, ante, round, index, modtime, state, action_type, is_opening_pack, money, signature, discards_used, hands_played, is_current, blind_key}
             local entry = {
                file,  -- [ENTRY_FILE]
                ante,  -- [ENTRY_ANTE]
@@ -314,6 +321,7 @@ function M.get_save_files(force_reload)
                nil,  -- [ENTRY_DISCARDS_USED] - loaded by get_save_meta
                nil,  -- [ENTRY_HANDS_PLAYED] - loaded by get_save_meta
                false,  -- [ENTRY_IS_CURRENT] - set by _update_cache_current_flags
+               nil,  -- [ENTRY_BLIND_KEY] - loaded by get_save_meta (e.g., "bl_small", "bl_final_acorn")
             }
 
             table.insert(entries, entry)
@@ -860,7 +868,7 @@ function M.create_save(run_data)
         M.debug_log("monitor", string.format("Action detected: %s in round %s", action_type, current_round_key))
     end
     
-    -- Create an entry as array: {file, ante, round, index, modtime, state, action_type, is_opening_pack, money, signature, discards_used, hands_played, is_current}
+    -- Create an entry as array: {file, ante, round, index, modtime, state, action_type, is_opening_pack, money, signature, discards_used, hands_played, is_current, blind_key}
     local new_entry = {
         filename,  -- [ENTRY_FILE]
         sig.ante,  -- [ENTRY_ANTE]
@@ -875,6 +883,7 @@ function M.create_save(run_data)
         sig.discards_used,  -- [ENTRY_DISCARDS_USED] - Store for future action type detection
         sig.hands_played,  -- [ENTRY_HANDS_PLAYED] - Store for future action type detection
         false,  -- [ENTRY_IS_CURRENT] - Set by _set_cache_current_file
+        sig.blind_key,  -- [ENTRY_BLIND_KEY] - Blind identifier for UI display (e.g., "bl_small", "bl_final_acorn")
     }
 
     local full_path = dir .. "/" .. filename
@@ -898,6 +907,7 @@ function M.create_save(run_data)
         signature = sig.signature,
         discards_used = sig.discards_used,
         hands_played = sig.hands_played,
+        blind_key = sig.blind_key,  -- Blind identifier for UI display
     }
     MetaFile.write_meta_file(meta_path, entry_meta)
 

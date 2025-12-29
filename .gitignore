@@ -34,6 +34,9 @@ save.*
 balatro_src/
 save_decoder.py
 raw_icon/
+UnBlind/
+Blueprint/
+JokerDisplay/
 icon.png
 
 # Development scripts (local only)

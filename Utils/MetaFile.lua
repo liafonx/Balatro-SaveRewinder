@@ -16,7 +16,7 @@ function M.read_meta_file(meta_path)
     if not data then return nil end
     
     -- Meta file format: simple key=value pairs, one per line
-    -- Format: state=<num>, action_type=<str|nil>, is_opening_pack=<0|1>, money=<num>, signature=<str>, discards_used=<num>, hands_played=<num>
+    -- Format: state=<num>, action_type=<str|nil>, is_opening_pack=<0|1>, money=<num>, signature=<str>, discards_used=<num>, hands_played=<num>, blind_key=<str>
     local meta = {}
     for line in data:gmatch("([^\n]+)") do
         local key, value = line:match("^([^=]+)=(.+)$")
@@ -31,7 +31,7 @@ function M.read_meta_file(meta_path)
                 end
             elseif key == "is_opening_pack" then
                 meta[key] = (value == "1")
-            elseif key == "signature" then
+            elseif key == "signature" or key == "blind_key" then
                 meta[key] = value
             end
         end
@@ -59,6 +59,7 @@ function M.write_meta_file(meta_path, entry_meta)
         string.format("signature=%s", entry_meta.signature),
         string.format("discards_used=%d", entry_meta.discards_used or 0),
         string.format("hands_played=%d", entry_meta.hands_played or 0),
+        string.format("blind_key=%s", entry_meta.blind_key or ""),
     }
     
     local content = table.concat(lines, "\n")

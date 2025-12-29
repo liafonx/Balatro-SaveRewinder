@@ -18,7 +18,6 @@ REWINDER.consume_skip_on_save = SaveManager.consume_skip_on_save
 REWINDER.describe_save = SaveManager.describe_save
 
 -- StateSignature helpers
-REWINDER.describe_state_label = StateSignature.describe_state_label
 REWINDER.StateSignature = StateSignature -- Expose StateSignature module itself for GamePatches to pass to SaveManager
 
 -- File/Save Management
@@ -51,6 +50,7 @@ REWINDER.ENTRY_SIGNATURE = SaveManager.ENTRY_SIGNATURE
 REWINDER.ENTRY_DISCARDS_USED = SaveManager.ENTRY_DISCARDS_USED
 REWINDER.ENTRY_HANDS_PLAYED = SaveManager.ENTRY_HANDS_PLAYED
 REWINDER.ENTRY_IS_CURRENT = SaveManager.ENTRY_IS_CURRENT
+REWINDER.ENTRY_BLIND_KEY = SaveManager.ENTRY_BLIND_KEY
 
 -- Convenience getters/setters for internal state
 REWINDER.get_pending_index = function() return SaveManager.pending_index end
@@ -66,25 +66,31 @@ local Logger = require("Logger")
 REWINDER._debug_alert = nil
 REWINDER.debug_log = Logger.log  -- Simple log without module name
 
--- Initialize cache during game loading (deferred to avoid blocking startup)
--- This pre-builds the save list so UI opens instantly
--- Uses get_save_files which loads first page eagerly, then background-loads the rest
-if G and G.E_MANAGER and Event then
-   G.E_MANAGER:add_event(Event({
-      trigger = 'after',
-      delay = 0.1,  -- Small delay to let game finish initializing
-      func = function()
+-- Deferred cache initialization - runs after Steamodded is ready
+-- Hook into Game.set_render_settings like Blueprint does for asset loading
+-- This ensures we initialize after "Steamodded v1.0.0~BETA" log message
+REWINDER._cache_initialized = false
+
+local _game_set_render_settings = Game.set_render_settings
+function Game:set_render_settings(...)
+   local ret = _game_set_render_settings(self, ...)
+   
+   -- Initialize cache once after Steamodded is fully ready
+   if not REWINDER._cache_initialized then
+      REWINDER._cache_initialized = true
+      local success, err = pcall(function()
          if SaveManager and SaveManager.get_save_files then
-            -- Force reload to scan directory, but let background loading handle metadata
-            -- get_save_files loads META_FIRST_PASS_COUNT (12) entries eagerly for UI,
-            -- then schedules remaining entries in chunks via _schedule_meta_load
             local entries = SaveManager.get_save_files(true)
             local count = entries and #entries or 0
-            REWINDER.debug_log("", "Initialized with " .. count .. " save(s)")
+            REWINDER.debug_log("step", "Initialized with " .. count .. " save(s)")
          end
-         return true
+      end)
+      if not success then
+         REWINDER.debug_log("error", "Cache init failed: " .. tostring(err))
       end
-   }))
+   end
+   
+   return ret
 end
 
 -- UI Helper (Alert Box) - Remains in Init.lua for now.

@@ -1,12 +1,19 @@
 return {
     misc = {
         dictionary = {
+            -- Config section headers
+            rewinder_section_auto_save = 'Auto-Save Triggers',
+            rewinder_section_display = 'Display Options',
+            rewinder_section_advanced = 'Advanced',
+            
             -- Config labels
             rewinder_save_on_blind = 'Save when choosing blind',
             rewinder_save_on_selecting_hand = 'Save when selecting hands',
             rewinder_save_on_round_end = 'Save at end of round',
             rewinder_save_on_shop = 'Save in shop',
-            rewinder_debug_saves = 'Debug: show save notifications',
+            rewinder_show_blind_image = 'Show blind image (instead of round number)',
+            rewinder_animate_blind_image = 'Blind image effects (animation & hover sound)',
+            rewinder_debug_saves = 'Debug: verbose logging',
             rewinder_max_antes_per_run = 'Max saved antes per run',
             rewinder_delete_all_saves_button = 'Delete all saves',
 
@@ -35,7 +42,7 @@ return {
             rewinder_round_label = 'Round',
             rewinder_page_label = 'Page %d/%d',
             rewinder_all_label = 'All',
-            rewinder_separator = ' | '
+            rewinder_separator = ' | ',
         },
     },
 }

@@ -39,25 +39,6 @@ function M.encode_signature(ante, round, state, action_type, money)
    )
 end
 
--- Decode signature string back to components
-function M.decode_signature(sig_str)
-   if not sig_str or type(sig_str) ~= "string" then return nil end
-   local parts = {}
-   for part in sig_str:gmatch("([^:]+)") do
-      table.insert(parts, part)
-   end
-   if #parts ~= 5 then return nil end
-   local action_type = parts[4]
-   if action_type == "" then action_type = nil end
-   return {
-      ante = tonumber(parts[1]) or 0,
-      round = tonumber(parts[2]) or 0,
-      state = tonumber(parts[3]) or 0,
-      action_type = action_type,
-      money = tonumber(parts[5]) or 0,
-   }
-end
-
 function M.get_signature(run_data)
    if not run_data or type(run_data) ~= "table" then return nil end
    local game = run_data.GAME or {}
@@ -89,6 +70,28 @@ function M.get_signature(run_data)
    local discards_used = tonumber(current_round.discards_used) or 0
    local hands_played = tonumber(current_round.hands_played) or 0
    
+   -- Extract blind key for displaying blind icon in UI
+   -- Use blind_on_deck to get the current/active blind (more accurate than round number mapping)
+   local blind_key = nil
+   if game.blind_on_deck and game.round_resets and game.round_resets.blind_choices then
+      -- blind_on_deck contains 'Small', 'Big', or 'Boss'
+      local blind_type = game.blind_on_deck
+      -- Force Small blind for round 0 (blind selection phase)
+      if round == 0 then
+         blind_type = 'Small'
+      end
+      blind_key = game.round_resets.blind_choices[blind_type]
+      M.debug_log("info", "Extracted blind_key from blind_on_deck: " .. tostring(blind_type) .. " -> " .. tostring(blind_key))
+   elseif game.round_resets and game.round_resets.blind_choices then
+      -- Fallback: use round number if blind_on_deck is not available
+      -- Round 0 = blind selection, 1 = Small, 2 = Big, 3 = Boss
+      local blind_type = (round == 0 and 'Small') or (round == 1 and 'Small') or (round == 2 and 'Big') or 'Boss'
+      blind_key = game.round_resets.blind_choices[blind_type]
+      M.debug_log("info", "Extracted blind_key from round number: round=" .. tostring(round) .. ", type=" .. tostring(blind_type) .. " -> " .. tostring(blind_key))
+   else
+      M.debug_log("warn", "Could not extract blind_key: blind_on_deck=" .. tostring(game.blind_on_deck) .. ", has_round_resets=" .. tostring(game.round_resets ~= nil) .. ", has_blind_choices=" .. tostring(game.round_resets and game.round_resets.blind_choices ~= nil))
+   end
+   
    local sig = {
       ante = ante,
       round = round,
@@ -98,6 +101,7 @@ function M.get_signature(run_data)
       is_opening_pack = is_opening_pack,  -- Boolean: true if shop state has ACTION
       discards_used = discards_used,
       hands_played = hands_played,
+      blind_key = blind_key,  -- Blind key (e.g., "bl_small", "bl_final_acorn")
       signature = M.encode_signature(ante, round, state, action_type, money or 0),
    }
 
@@ -151,15 +155,7 @@ end
 function M.is_shop_signature(sig)
    if not sig then return false end
    local state = sig.state
-   if state and G and G.STATES and G.STATES.SHOP and state == G.STATES.SHOP then
-      return true
-   end
-   -- Fallback: check if label would be "shop" (but not "opening pack")
-   local label = M.get_label_from_state(sig.state, sig.action_type, sig.is_opening_pack)
-   if label and type(label) == "string" then
-      return label:lower() == "shop"
-   end
-   return false
+   return state and G and G.STATES and G.STATES.SHOP and state == G.STATES.SHOP
 end
 
 -- Check if save data has a pending ACTION (e.g., opening a booster pack)

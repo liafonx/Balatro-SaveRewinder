@@ -7,7 +7,7 @@ This document shows the structure of cache entries used in Save Rewinder.
 Cache entries are stored as **arrays** (not key-value tables) to reduce memory. Access fields using index constants from `REWINDER.ENTRY_*`:
 
 ```lua
--- Array format: {file, ante, round, index, modtime, state, action_type, is_opening_pack, money, signature, discards_used, hands_played, is_current}
+-- Array format: {file, ante, round, index, modtime, state, action_type, is_opening_pack, money, signature, discards_used, hands_played, is_current, blind_key}
 local entry = {
     "2-3-1609430.jkr",  -- [1] ENTRY_FILE - Filename: <ante>-<round>-<unique_id>.jkr
     2,                   -- [2] ENTRY_ANTE - Ante number
@@ -24,12 +24,14 @@ local entry = {
     0,                   -- [11] ENTRY_DISCARDS_USED - Discards used in current round
     0,                   -- [12] ENTRY_HANDS_PLAYED - Hands played in current round
     false,               -- [13] ENTRY_IS_CURRENT - Whether this is the currently loaded save
+    "bl_final_acorn",    -- [14] ENTRY_BLIND_KEY - Blind key for displaying blind icon (e.g., "bl_small", "bl_big", "bl_final_acorn")
 }
 
 -- Access example:
 -- entry[REWINDER.ENTRY_FILE] = "2-3-1609430.jkr"
 -- entry[REWINDER.ENTRY_STATE] = 5
 -- entry[REWINDER.ENTRY_IS_OPENING_PACK] = true
+-- entry[REWINDER.ENTRY_BLIND_KEY] = "bl_final_acorn"
 ```
 
 ## Index Constants
@@ -48,6 +50,7 @@ ENTRY_SIGNATURE = 10
 ENTRY_DISCARDS_USED = 11
 ENTRY_HANDS_PLAYED = 12
 ENTRY_IS_CURRENT = 13
+ENTRY_BLIND_KEY = 14       -- Blind key string (e.g., "bl_small", "bl_final_acorn")
 ```
 
 ## Field Descriptions

@@ -4,7 +4,173 @@
 
 if not REWINDER then REWINDER = {} end
 
-local SAVE_ENTRY_W = 8.8
+local SAVE_ENTRY_W = 8.9  -- Reduced from 8.8 to give arrow more space
+
+-- Custom triangle arrow indicator (replaces built-in 'chosen' which has hardcoded positioning)
+-- Extends Moveable to create a custom drawable object
+local TriangleArrow = Moveable:extend()
+
+function TriangleArrow:init(w, h)
+   Moveable.init(self, 0, 0, w or 0.25, h or 0.4)
+   self.states = {
+      drag = { can = false },
+      hover = { can = false },
+      collide = { can = false },
+   }
+end
+
+function TriangleArrow:draw()
+   if not self.VT then return end
+   
+   -- Use prep_draw like the game does for proper coordinate transformation
+   prep_draw(self, 1)
+   
+   -- Scale to pixel space for polygon drawing
+   love.graphics.scale(1 / G.TILESIZE)
+   
+   -- Triangle size and animation (matching game's chosen triangle)
+   local scale = 2
+   local anim_offset = math.min(0.6 * math.sin(G.TIMERS.REAL * 9) * scale + 0.2, 0)
+   
+   -- Get dimensions in screen space
+   local w = self.VT.w * G.TILESIZE
+   local h = self.VT.h * G.TILESIZE
+   
+   -- Triangle centered in our bounds, pointing right
+   -- Shift right within the bounds for better positioning
+   local cx = w * 1.2 + anim_offset
+   local cy = h / 2
+   -- Make more equilateral: equal width and height
+   local tri_size = 3 * scale
+   
+   -- Draw shadow
+   if G.SETTINGS.GRAPHICS.shadows == 'On' then
+      love.graphics.setColor(0, 0, 0, 0.3)
+      love.graphics.polygon("fill",
+         cx - tri_size + 1, cy - tri_size * 0.6 + 1,
+         cx + 1, cy + 1,
+         cx - tri_size + 1, cy + tri_size * 0.6 + 1
+      )
+   end
+   
+   -- Draw white triangle pointing right (contrasts with orange background)
+   love.graphics.setColor(G.C.WHITE)
+   love.graphics.polygon("fill",
+      cx - tri_size, cy - tri_size * 0.6,
+      cx, cy,
+      cx - tri_size, cy + tri_size * 0.6
+   )
+   
+   love.graphics.pop()
+end
+
+-- Factory function to create a triangle arrow
+function REWINDER.create_triangle_arrow()
+   return TriangleArrow(0.25, 0.4)
+end
+
+-- Cache for blind sprite configurations (not the sprites themselves, since UI objects
+-- get destroyed when removed). We cache the config lookup to avoid repeated G.P_BLINDS access.
+local blind_config_cache = {}
+
+-- Get cached blind config (atlas key and position)
+local function get_blind_config_cached(blind_key)
+   if not blind_key then return nil end
+   
+   -- Check cache first
+   if blind_config_cache[blind_key] then
+      return blind_config_cache[blind_key]
+   end
+   
+   -- Lookup and cache
+   if not G or not G.P_BLINDS then return nil end
+   local blind_config = G.P_BLINDS[blind_key]
+   if not blind_config then return nil end
+   
+   local atlas_key = blind_config.atlas or 'blind_chips'
+   if not G.ANIMATION_ATLAS or not G.ANIMATION_ATLAS[atlas_key] then return nil end
+   
+   -- Cache the config (immutable data)
+   blind_config_cache[blind_key] = {
+      atlas_key = atlas_key,
+      pos = blind_config.pos,
+   }
+   
+   return blind_config_cache[blind_key]
+end
+
+-- Clear blind config cache (call when game reloads or mods change)
+function REWINDER.clear_blind_cache()
+   blind_config_cache = {}
+end
+
+-- Create a blind sprite that looks like UnBlind (with shade/border)
+-- Uses AnimatedSprite with dissolve shader for the shadow effect, but doesn't animate
+-- Returns a sprite object suitable for UI display
+-- Note: Sprites cannot be reused across UI rebuilds, but config lookup is cached
+function REWINDER.create_blind_sprite(blind_key, width, height)
+   local config = get_blind_config_cached(blind_key)
+   if not config then return nil end
+   
+   local atlas = G.ANIMATION_ATLAS[config.atlas_key]
+   if not atlas then return nil end
+   
+   -- Use AnimatedSprite like UnBlind for shader support (shadow/shade effect)
+   -- Size 0.45x0.45 to be visible but still fit in entry height
+   local sprite = AnimatedSprite(0, 0, width or 0.45, height or 0.45, atlas, config.pos)
+   
+   -- Calculate shadow parallax based on screen position (like game does)
+   -- This makes shadow offset vary based on horizontal position
+   -- For consistent appearance, we set a fixed offset similar to right-side sprites
+   sprite.shadow_parrallax = {x = 1.5, y = -0.5}
+   
+   -- Apply dissolve shader with shadow for UnBlind-like appearance
+   -- shadow_height 0.05 matches UnBlind
+   sprite:define_draw_steps({
+      {shader = 'dissolve', shadow_height = 0.05},
+      {shader = 'dissolve'}
+   })
+   
+   -- Check if effects (animation + hover sound) are enabled
+   local effects_enabled = REWINDER.config and REWINDER.config.animate_blind_image
+   
+   -- Stop animation by setting to single frame (prevents cycling through frames)
+   -- Only stop if effects are disabled in config
+   if not effects_enabled then
+      sprite.animation.frames = 1
+      sprite.current_animation.frames = 1
+   end
+   
+   sprite.states.drag.can = false
+   
+   -- Enable hover effects (sound + juice) when effects are enabled
+   if effects_enabled then
+      sprite.float = true
+      sprite.states.hover.can = true
+      sprite.states.collide.can = true
+      sprite.hover = function()
+         if not G.CONTROLLER.dragging.target or G.CONTROLLER.using_touch then
+            if not sprite.hovering and sprite.states.visible then
+               sprite.hovering = true
+               sprite.hover_tilt = 3
+               sprite:juice_up(0.05, 0.02)
+               play_sound('chips1', math.random()*0.1 + 0.55, 0.12)
+               Node.hover(sprite)
+            end
+         end
+      end
+      sprite.stop_hover = function()
+         sprite.hovering = false
+         sprite.hover_tilt = 0
+         Node.stop_hover(sprite)
+      end
+   else
+      sprite.states.hover.can = false
+      sprite.states.collide.can = false
+   end
+   
+   return sprite
+end
 
 -- Get dot color based on round number (odd/even)
 -- Colors chosen for good contrast against blue background (G.C.BLUE)
@@ -26,24 +192,22 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
    if not entry then return nil end
    opts = opts or {}
 
-   -- Build ante/round text
+   -- Check if we should show blind image instead of round number
+   local show_blind_image = REWINDER.config and REWINDER.config.show_blind_image
+   
+   -- Build ante text
    local ante_text = ""
    if entry[REWINDER.ENTRY_ANTE] then
       local ante_label = (localize and localize("rewinder_ante_label")) or "Ante"
-      local round_label = (localize and localize("rewinder_round_label")) or "Round"
       ante_text = ante_label .. " " .. tostring(entry[REWINDER.ENTRY_ANTE])
-      -- Add round number if available
-      if entry[REWINDER.ENTRY_ROUND] ~= nil then
-         local ante_round_spacing = (localize and localize("rewinder_ante_round_spacing")) or " "
-         ante_text = ante_text .. ante_round_spacing .. round_label .. " " .. tostring(entry[REWINDER.ENTRY_ROUND])
-      end
    end
+   
+   -- Compute label once and reuse (avoid redundant get_label_from_state calls)
+   local label = (REWINDER.StateSignature and REWINDER.StateSignature.get_label_from_state(entry[REWINDER.ENTRY_STATE], entry[REWINDER.ENTRY_ACTION_TYPE], entry[REWINDER.ENTRY_IS_OPENING_PACK])) or "state"
    
    -- Build state label text
    local state_text = ""
    if entry[REWINDER.ENTRY_STATE] ~= nil then
-      -- Use action_type (play/discard) and is_opening_pack (boolean) for label generation
-      local label = (REWINDER.StateSignature and REWINDER.StateSignature.get_label_from_state(entry[REWINDER.ENTRY_STATE], entry[REWINDER.ENTRY_ACTION_TYPE], entry[REWINDER.ENTRY_IS_OPENING_PACK])) or "state"
       if label and label ~= "state" then
          local label_key = label:gsub(" ", "_"):gsub("%(", ""):gsub("%)", "")
          local localized = nil
@@ -83,7 +247,6 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
    local is_selecting_hand_with_action = st and entry[REWINDER.ENTRY_STATE] == st.SELECTING_HAND and entry[REWINDER.ENTRY_ACTION_TYPE]
    
    -- Check if this is start of round or end of round (don't show ordinal for these)
-   local label = (REWINDER.StateSignature and REWINDER.StateSignature.get_label_from_state(entry[REWINDER.ENTRY_STATE], entry[REWINDER.ENTRY_ACTION_TYPE], entry[REWINDER.ENTRY_IS_OPENING_PACK])) or ""
    local is_start_or_end_round = (label == "start of round" or label == "end of round")
    
    if is_selecting_hand_with_action and meta and meta.label_value then
@@ -112,11 +275,9 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
       button_colour = G.C.ORANGE or {1, 0.6, 0.2, 1}  -- Fallback orange
       dot_colour = G.C.WHITE  -- White dot for better contrast on orange
       default_text_colour = G.C.WHITE
-      -- Add visual indicator prefix to ante text
-      ante_text = "▶ " .. ante_text
    end
    
-   -- Build text nodes - separate nodes for text and colored dot
+   -- Build text nodes - separate nodes for text and colored separator/blind image
    local text_nodes = {}
    
    if ante_text ~= "" then
@@ -130,17 +291,82 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
       })
    end
    
-   -- Add colored separator (always show if we have ante text)
-   local separator = (localize and localize("rewinder_separator")) or " | "
+   -- Add separator or blind image between ante and state
    if ante_text ~= "" then
-      table.insert(text_nodes, {
-         n = G.UIT.T,
-         config = {
-            text = separator,
-            colour = dot_colour,
-            scale = 0.45,
-         },
-      })
+      if show_blind_image and entry[REWINDER.ENTRY_BLIND_KEY] then
+         -- Show blind image instead of round number
+         local blind_sprite = REWINDER.create_blind_sprite(entry[REWINDER.ENTRY_BLIND_KEY])
+         if blind_sprite then
+            -- Check if effects are enabled for hover
+            local effects_enabled = REWINDER.config and REWINDER.config.animate_blind_image
+            -- Add horizontal spacing around the blind image (left spacer + image + right spacer)
+            local h_spacing = 0.06
+            table.insert(text_nodes, {
+               n = G.UIT.C,
+               config = { minw = h_spacing },  -- Left spacer
+            })
+            table.insert(text_nodes, {
+               n = G.UIT.C,
+               config = {
+                  align = "cm",
+                  padding = 0,  -- No extra padding (avoid vertical spacing)
+               },
+               nodes = {
+                  {
+                     n = G.UIT.O,
+                     config = {
+                        object = blind_sprite,
+                        focus_with_object = effects_enabled,  -- Enable focus for hover events
+                     },
+                  },
+               },
+            })
+            table.insert(text_nodes, {
+               n = G.UIT.C,
+               config = { minw = h_spacing },  -- Right spacer
+            })
+         else
+            -- Fallback to separator if sprite creation fails
+            local separator = (localize and localize("rewinder_separator")) or " | "
+            table.insert(text_nodes, {
+               n = G.UIT.T,
+               config = {
+                  text = separator,
+                  colour = dot_colour,
+                  scale = 0.45,
+               },
+            })
+         end
+      else
+         -- Show colored separator with round number (original behavior)
+         local round_text = ""
+         if entry[REWINDER.ENTRY_ROUND] ~= nil then
+            local round_label = (localize and localize("rewinder_round_label")) or "Round"
+            local spacing = (localize and localize("rewinder_ante_round_spacing")) or " "
+            round_text = spacing .. round_label .. " " .. tostring(entry[REWINDER.ENTRY_ROUND])
+         end
+         
+         if round_text ~= "" then
+            table.insert(text_nodes, {
+               n = G.UIT.T,
+               config = {
+                  text = round_text,
+                  colour = default_text_colour,  -- Use normal text color, not colored dot
+                  scale = 0.45,
+               },
+            })
+         end
+         
+         local separator = (localize and localize("rewinder_separator")) or " | "
+         table.insert(text_nodes, {
+            n = G.UIT.T,
+            config = {
+               text = separator,
+               colour = dot_colour,
+               scale = 0.45,
+            },
+         })
+      end
    end
    
    -- Build state and tailing number text
@@ -176,9 +402,46 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
       })
    end
    
+   -- Add left padding spacer to text nodes, and arrow indicator for current save
+   local padded_text_nodes = {}
+   
+   -- Left padding for all entries
+   local left_padding = 0.06
+   
+   if is_current then
+      -- For current save: small left pad + arrow (no gap - arrow bounds provide spacing)
+      table.insert(padded_text_nodes, {
+         n = G.UIT.C,
+         config = { minw = left_padding },
+      })
+      local arrow = REWINDER.create_triangle_arrow()
+      table.insert(padded_text_nodes, {
+         n = G.UIT.O,
+         config = {
+            object = arrow,
+            can_collide = false,
+         },
+      })
+      -- Small gap between arrow and text
+      table.insert(padded_text_nodes, {
+         n = G.UIT.C,
+         config = { minw = 0.03 },
+      })
+   else
+      -- For normal entries: just left padding
+      table.insert(padded_text_nodes, {
+         n = G.UIT.C,
+         config = { minw = left_padding },
+      })
+   end
+   
+   for _, node in ipairs(text_nodes) do
+      table.insert(padded_text_nodes, node)
+   end
+   
    return {
       n = G.UIT.R,
-      config = { align = "cm", padding = 0.05 },
+      config = { align = "cm", padding = 0.06 },
       nodes = {
          {
             n = G.UIT.R,
@@ -189,7 +452,7 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
                colour = button_colour,
                minw = SAVE_ENTRY_W,
                maxw = SAVE_ENTRY_W,
-               padding = 0.1,
+               padding = 0.08,
                r = 0.1,
                hover = true,
                can_collide = true,
@@ -197,7 +460,7 @@ function REWINDER.build_save_node(entry, meta, ordinal_suffix, is_first_entry, o
                focus_args = { snap_to = opts.snap_to == true },
                ref_table = { file = entry[REWINDER.ENTRY_FILE] },
             },
-            nodes = text_nodes,
+            nodes = padded_text_nodes,
          },
       },
    }

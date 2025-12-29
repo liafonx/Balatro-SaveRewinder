@@ -44,12 +44,20 @@ Press `ESC` to open the menu and click the **orange "Saves" button**, or press `
 
 In the Steamodded config menu for Save Rewinder:
 
+**Auto-Save Triggers:**
 - **Toggle save points** — Choose which moments create saves:
   - Choosing blind
   - Selecting hand (after play/discard)
   - End of round
   - In shop
+
+**Display Options:**
+- **Show blind image** — Display blind icons (Small/Big/Boss) instead of round numbers in save list
+- **Blind image effects** — Enable hover animation and sound on blind icons (off by default)
+
+**Advanced:**
 - **Limit saves** — Keep only recent antes (1, 2, 4, 6, 8, 16, or All; default: 4)
+- **Debug: verbose logging** — Show detailed save operation logs
 - **Delete all** — Clear all saves for current profile
 
 ## Save Data Location
