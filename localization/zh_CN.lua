@@ -1,12 +1,18 @@
 return {
     misc = {
         dictionary = {
+            -- Config section headers
+            rewinder_section_auto_save = '自动存档触发',
+            rewinder_section_display = '显示选项',
+            rewinder_section_advanced = '高级设置',
+            
             -- Config labels
             rewinder_save_on_blind = '选择盲注时存档',
             rewinder_save_on_selecting_hand = '操作手牌时存档',
             rewinder_save_on_round_end = '回合结束时存档',
             rewinder_save_on_shop = '在商店中时存档',
-            rewinder_debug_saves = '调试：显示存档通知',
+            rewinder_show_blind_image = '显示盲注图标（而非回合数字）',            
+            rewinder_animate_blind_image = '盲注图标效果（动画与悬停音效）',            rewinder_debug_saves = '调试：详细日志',
             rewinder_max_antes_per_run = '每局最多保留的盲注存档数',
             rewinder_delete_all_saves_button = '删除所有存档',
 
