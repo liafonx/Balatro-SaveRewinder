@@ -1,6 +1,6 @@
 # Save Rewinder
 
-English | [简体中文](README_zh.md)
+English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/main/README_zh.md)
 
 **Undo mistakes. Experiment freely. Never lose progress.**
 
