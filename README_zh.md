@@ -17,17 +17,11 @@ Save Rewinder 在你游玩小丑牌时自动创建存档点，让你可以一键
 
 ## 截图
 
-### 游戏内菜单按钮
-![存档列表游戏内菜单按钮](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/存档列表游戏内菜单按钮.jpeg)
-
-### 存档列表（显示盲注图标）
-![存档列表（显示盲注图标）](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/存档列表（显示盲注图标）.jpeg)
-
-### 存档列表（显示回合数）
-![存档列表（显示回合数）](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/存档列表（显示回合数）.jpeg)
-
-### Mod设置选项
-![Mod设置选项](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Mod设置选项.jpeg)
+| 存档按钮 | 存档列表（盲注图标） |
+|:---:|:---:|
+| ![存档按钮](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/存档列表游戏内菜单按钮.jpeg) | ![盲注图标](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/存档列表（显示盲注图标）.jpeg) |
+| **存档列表（回合数）** | **Mod设置** |
+| ![回合数](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/存档列表（显示回合数）.jpeg) | ![设置](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Mod设置选项.jpeg) |
 
 ## 快速开始
 
