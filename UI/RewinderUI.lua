@@ -37,8 +37,8 @@ function TriangleArrow:draw()
    local h = self.VT.h * G.TILESIZE
    
    -- Triangle centered in our bounds, pointing right
-   -- Shift right within the bounds for better positioning
-   local cx = w * 1.2 + anim_offset
+   -- Arrow shift right within the bounds for better positioning
+   local cx = w * 1.4 + anim_offset
    local cy = h / 2
    -- Make more equilateral: equal width and height
    local tri_size = 3 * scale
