@@ -35,7 +35,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 
 ### In-Game Menu
 
-Press `ESC` to open the menu and click the **orange "Saves" button**, or press `Ctrl+S` (or click Right Stick):
+Open the Options menu and click the **orange "Saves" button**, or press `Ctrl+S` (or click Right Stick):
 - Click any save to restore it
 - Orange highlight shows your current position
 - Use "Current save" button to find where you are
@@ -70,7 +70,7 @@ Saves are stored in your Balatro profile folder:
 - **`.jkr` files** — The actual save data, named `<ante>-<round>-<timestamp>.jkr`
 - **`.meta` files** — Cached metadata for faster loading.
 
-> ⚠️ **Note**: Saves are only kept for your **current run**. If you exit mid-run, saves persist. Starting a **new run** will delete all previous saves.
+> ⚠️ **Note**: Saves are only kept for your **current run**. Saves persist even if you quit the game mid-run — when you reopen and continue your run, all saves will still be available. Starting a **new run** will delete all previous saves.
 
 ## Languages
 

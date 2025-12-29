@@ -12,13 +12,7 @@ All notable changes to Save Rewinder will be documented in this file.
 - Reorganized config UI with two-column layout and section headers
 
 ### Changed
-- Updated installation instructions to mention the orange Saves button
 - Config setting "Debug: show save notifications" renamed to "Debug: verbose logging"
-- Improved shadow rendering on blind sprites (matches UnBlind mod style)
-
-### Fixed
-- Fixed arrow indicator positioning on current save entry
-- Reduced verbose logging during normal operation
 
 ## [1.3.0] - 2025-12-25
 
