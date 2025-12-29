@@ -15,6 +15,20 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - 🔄 **Undo your undo** — Stepped back too far? rewinded saves stay in the list until you make a new move
 - 🎮 **Full controller support** — Works great with gamepad
 
+## Screenshots
+
+### Saves Button in Options Menu
+![Saves button in the Options menu](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Saves_button%20in_the_Options_menu.jpeg)
+
+### Save List with Blind Icons
+![Save list with blind icons](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Save_list_with_blind_icon.jpeg)
+
+### Save List with Round Numbers
+![Save list with round numbers](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Save_list_with_round_number.jpeg)
+
+### Mod Settings
+![Mod settings](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/assets/Mod_settings.jpeg)
+
 ## Quick Start
 
 ### Installation
