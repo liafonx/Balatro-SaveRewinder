@@ -1,539 +1,224 @@
-# Save Rewinder - Project Documentation
+# Save Rewinder - AI Development Guide
 
-> Architecture and design documentation for AI/LLM-assisted development.
+Detailed guidance for AI agents working on this repo. More comprehensive than `.github/copilot-instructions.md`.
 
 ---
 
-## 1. Project Goals & Overview
+## 1. Big Picture
 
-**Save Rewinder** is a save/rewind mod for *Balatro*. Core objectives:
+This is a Balatro mod that snapshots game state and supports instant rewind/restore via a cached `.jkr` + `.meta` timeline. It uses **static patching** (via `lovely.toml`) and **deferred execution** (next-frame events) to avoid recursive hook conflicts with other mods.
 
-- Automatically create multiple saves during gameplay (sorted by Ante/Round timeline)
+**Core objectives:**
+- Automatically create multiple saves during gameplay (sorted chronologically)
 - Allow players to restore runs from any save point ("undo / step back")
-- Provide save list UI and hotkeys
+- Provide save list UI with blind icons, hotkeys, and controller support
 - Run transparently, compatible with popular mods (`Steamodded`, `debugplus`, etc.)
 
 ---
 
-## 2. Project Structure
+## 2. File Structure & Relations
 
-### 2.1 Core Scripts
+### Core/ — Core Modules
 
-#### Core/ - Core Modules
+| File | Purpose | Key Exports | Dependencies |
+|------|---------|-------------|--------------|
+| `Init.lua` | Entry point. Sets up `REWINDER` namespace, hooks `Game:set_render_settings` for cache init at boot | `REWINDER` global | SaveManager |
+| `SaveManager.lua` | Save management: create, load, list, prune. Contains `ordinal_state` for O(1) metadata. Single source of truth for entry constants | `ENTRY_*` constants, `get_save_files`, `create_save`, `load_and_start_from_file`, `blind_key_to_index`, `index_to_blind_key` | StateSignature, FileIO, MetaFile, Pruning |
+| `GamePatches.lua` | Game function overrides. Hooks `Game:start_run` for loaded state marking, shop CardArea pre-loading | `defer_save_creation` | SaveManager |
 
-- **`Core/Init.lua`** — Mod entry point. Sets up `REWINDER` namespace, preloads save metadata at startup.
-
-- **`Core/StateSignature.lua`** — State signature module for comparing game states.
-  - `get_signature(run_data)`: Generates fingerprint from Ante, Round, State, Money, etc.
-  - `encode_signature(sig)`: Encodes to string `"ante:round:state:action_type:money"` for fast comparison.
-  - `signatures_equal(a, b)`: Compares two signatures.
-
-- **`Core/SaveManager.lua`** — Core save management (create, load, list, prune).
-  - Key state: `save_cache` (in-memory array), `pending_future_prune`, `_last_loaded_file`
-  - `create_save(run_data)`: Creates save with duplicate/config filtering.
-  - `load_and_start_from_file(file)`: Loads save, copies to `save.jkr`, restarts run.
-  - `revert_to_previous_save()`: Steps back one save.
-  - Filename format: `<ante>-<round>-<timestamp>.jkr`
-
-- **`Core/GamePatches.lua`** — Game function patches.
-  - `Game:start_run` override: Marks loaded state, handles shop CardArea pre-loading.
-  - `REWINDER.defer_save_creation()`: Deep-copies `G.culled_table`, defers save to next frame.
-
-#### Utils/ - Utilities
-
-- **`Utils/Logger.lua`** — Centralized logging. `Logger.create(module_name)` returns module-specific logger.
-- **`Utils/EntryConstants.lua`** — Cache entry array index constants (`ENTRY_FILE`, `ENTRY_ANTE`, etc.)
-- **`Utils/MetaFile.lua`** — `.meta` file read/write for fast metadata caching.
-- **`Utils/FileIO.lua`** — File I/O: `copy_save_to_main`, `load_save_file`, `get_save_dir`.
-- **`Utils/ActionDetector.lua`** — Detects play/discard action type by comparing `discards_used`/`hands_played`.
-- **`Utils/CacheManager.lua`** — Updates cache entry `is_current` flags.
-- **`Utils/Pruning.lua`** — `apply_retention_policy` and `prune_future_saves`.
-- **`Utils/DuplicateDetector.lua`** — Skips duplicate saves within short time windows.
-
-#### UI/ - User Interface
-
-- **`UI/RewinderUI.lua`** — Save list overlay. `G.UIDEF.rewinder_saves()`, pagination, entry highlighting.
-- **`UI/ButtonCallbacks.lua`** — Button handlers: `rewinder_save_restore`, `rewinder_save_jump_to_current`, etc.
-
-#### Root Files
-
-- **`Keybinds.lua`** — Hotkeys: `S` (step back), `Ctrl+S` (toggle UI). Controller: `L3`/`R3`.
-- **`main.lua`** — Steamodded config UI integration.
-- **`config.lua`** — Default config values.
-- **`lovely.toml`** — Lovely Loader patches: injects `REWINDER.defer_save_creation()` after `save_run`.
-
-### 2.2 Module Dependencies
-
+**Module Dependency Graph:**
 ```
-GamePatches → SaveManager → StateSignature, FileIO, MetaFile, ActionDetector, CacheManager, Pruning, DuplicateDetector
-UI (RewinderUI, ButtonCallbacks) → SaveManager
-Keybinds → SaveManager
+lovely.toml patches → GamePatches.defer_save_creation()
+                              ↓
+Init.lua → SaveManager.preload_all_metadata() (at boot)
+                              ↓
+SaveManager → StateSignature (fingerprinting)
+            → FileIO (file read/write)
+            → MetaFile (fast .meta read/write)
+            → Pruning (retention policy, future prune)
+                              ↓
+UI (RewinderUI, ButtonCallbacks) → SaveManager (entry data, load functions)
+Keybinds → SaveManager (step back, UI toggle)
 ```
 
-### 2.3 Documentation
+### Utils/ — Utilities
 
-- `CACHE_ENTRY_EXAMPLE.md`: Cache entry array structure details.
-- `CLICK_LOAD_FLOW.md`: Complete save loading flow diagram.
+| File | Purpose | Key Functions | Used By |
+|------|---------|---------------|---------|
+| `StateSignature.lua` | Game state fingerprinting for duplicate detection | `get_signature`, `encode_signature`, `describe_signature`, `get_label_from_state` | SaveManager, GamePatches |
+| `MetaFile.lua` | Fast `.meta` file read/write (7 fields: money, signature, discards_used, hands_played, blind_idx, display_type, ordinal) | `read_meta_file`, `write_meta_file` | SaveManager |
+| `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file`, `get_save_dir` | SaveManager |
+| `Pruning.lua` | Retention policy (max antes), future save cleanup on restore | `apply_retention_policy`, `prune_future_saves` | SaveManager |
+| `Logger.lua` | Centralized logging with module-specific tags | `Logger.create(module_name)` → returns logger with `step`, `list`, `error`, `prune`, `restore`, `info`, `detail` methods | All modules |
+| `G.STATES.lua` | Reference file for `G.STATES` enum and `G.P_BLINDS` table | **Not loaded at runtime** — IDE autocomplete only | None |
 
-### 2.4 Development Scripts
+### UI/ — User Interface
 
-- **`scripts/sync_to_mods.sh`** (gitignored): Syncs mod files to game Mods directory via `rsync`.
-  ```bash
-  ./scripts/sync_to_mods.sh           # One-time sync
-  ./scripts/sync_to_mods.sh --watch   # Auto-sync on changes
-  ```
-  
-> **Note for CHANGELOG**: Development script improvements (like `sync_to_mods.sh` changes) are **not** user-facing features and should **not** be included in CHANGELOG.md. Only include changes that affect mod functionality, UI, or user experience.
+| File | Purpose | Key Functions | Dependencies |
+|------|---------|---------------|--------------|
+| `RewinderUI.lua` | Save list overlay with pagination, blind sprites, entry highlighting | `G.UIDEF.rewinder_saves`, `build_save_node`, `create_blind_sprite`, `get_saves_page` | SaveManager (`ENTRY_*` constants) |
+| `ButtonCallbacks.lua` | UI button handlers for restore, navigation, deletion | `rewinder_save_restore`, `rewinder_save_jump_to_current`, `rewinder_next_page`, `rewinder_prev_page` | SaveManager |
 
-### 2.5 Reference Directories (Not Part of Mod)
+### Root Files
 
-- **`balatro_src/`** — Unpacked vanilla Balatro source files, used for:
-  - Viewing original function implementations (`save_run`, `start_run`, etc.)
-  - Text reference for writing `lovely.toml` regex patterns.
+| File | Purpose |
+|------|---------|
+| `Keybinds.lua` | `S` (step back), `Ctrl+S` (toggle UI), Controller: `L3`/`R3`, LB/RB for page nav |
+| `main.lua` | Steamodded config tab integration (auto-save toggles, display options) |
+| `config.lua` | Default config values |
+| `lovely.toml` | Lovely Loader patches: injects `REWINDER.defer_save_creation()` after `save_run` |
 
-- **`lovely/`** — Local Lovely Loader files (including `lovely/log/`). Useful for debugging patches and viewing crash info.
+### Localization/
 
-- **`Steamodded/`** — Steamodded Loader scripts and config, for reference.
-
-- **`Balatro-History/`** — Another save history mod, referenced for backup and timeline logic.
-
-- **`Brainstorm-Rerolled/`** — Borrowed its fast restore path (`G:delete_run()` → `G:start_run()`) for instant rewind without loading screen.
-
-- **`QuickLoad/`** — Borrowed its `get_compressed + STR_UNPACK` flow for fast `save.jkr` unpacking.
-
-- **`BetterMouseandGamepad/`** — Referenced for controller navigation and focus management.
-
----
-
-## 3. Core Flows
-
-### 3.1 Save Writing Flow
-
-1. Game executes `save_run()` → constructs `G.culled_table`
-2. `lovely.toml` patch calls `REWINDER.defer_save_creation()`
-3. `GamePatches.defer_save_creation()`:
-   - Deep-copies `G.culled_table`
-   - Defers to **next frame** via `G.E_MANAGER` (breaks recursive call stack)
-4. `SaveManager.create_save()` on next frame:
-   - Checks skip conditions (duplicate, config filters)
-   - Prunes future saves if pending
-   - Writes `.jkr` + `.meta` files
-   - Updates `save_cache`, applies retention policy
-
-### 3.2 Save Loading Flow
-
-1. UI or hotkey calls `load_and_start_from_file(file)`
-2. Copies save to `save.jkr`, unpacks via `get_compressed + STR_UNPACK`
-3. Records `pending_future_prune` (saves newer than loaded)
-4. Updates cache flags
-5. Calls `G:delete_run()` → `G:start_run({savetext=...})` (fast path, no loading screen)
-6. `Game:start_run` marks loaded state, pre-sets `G.load_shop_*` for shop saves
-
-### 3.3 Timeline Pruning
-
-- **Deferred pruning**: Future saves aren't deleted immediately when loading older save.
-- Recorded to `pending_future_prune`, deleted on next `create_save`.
-- Allows "undo the undo" if game is restarted before new save.
-
-### 3.4 Duplicate Skip Logic
-
-- After restore, first auto-save often matches restored state → skip it.
-- `mark_loaded_state()` records signature, `consume_skip_on_save()` compares.
-- Special handling for Shop + Pack Open states.
+| File | Purpose |
+|------|---------|
+| `localization/en-us.lua` | English strings for UI labels, state names, config options |
+| `localization/zh_CN.lua` | Chinese (Simplified) strings |
 
 ---
 
-## 4. Architecture Design
+## 3. Documentation Files
 
-### Why Static Patch + Deferred Execution?
-
-**Problem**: Runtime hook of `save_run` caused stack overflow due to recursive mod hook chains.
-
-**Solution** (current):
-1. `lovely.toml` statically injects call after `G.ARGS.save_run = G.culled_table`
-2. `defer_save_creation()` schedules save to next frame via event manager
-3. Breaks synchronous call stack, avoids recursion with other mod hooks
-
-**Benefits**:
-- No hook order conflicts
-- No stack overflow from recursive hooks
-- Better mod compatibility
-- Centralized logic in `SaveManager.lua`
+| Doc | Content |
+|-----|---------|
+| `CACHE_ENTRY_EXAMPLE.md` | **12-field entry structure**, display type codes (S/F/O/R/P/D/H/E/B/?), meta file format, entry lifecycle |
+| `CLICK_LOAD_FLOW.md` | Complete save loading flow diagram with all steps from click to game restart |
 
 ---
 
-## 5. Key Behaviors (Must Maintain)
+## 4. References Directory (Not Part of Mod)
 
-1. **Deferred Timeline Pruning** — Future saves only deleted on next save creation, not immediately on load.
+All materials in `References/` are for development reference only, not distributed with mod:
 
-2. **Skip Duplicate After Restore** — First auto-save after restore is skipped if signature matches.
-
-3. **Shop Area Handling** — Pre-write `shop_*` to `G.load_shop_*` to suppress "Card area not instantiated" warnings.
-
-4. **Fast Step-Back** — `S` key uses `G:delete_run()` → `G:start_run()` path (no loading screen).
-
-5. **Pack Open Detection** — `Card:open()` patch sets `skipping_pack_open` flag to skip save during pack opening.
-
----
-
-## 6. Key Source Locations in balatro_src
-
-- `functions/misc_functions.lua` — `save_run()`, where we inject `defer_save_creation()`
-- `functions/button_callbacks.lua` — `G.FUNCS.start_run`, wipe flow
-- `game.lua` — `Game:start_run`, `Game:delete_run`, `Game:update_shop`
-- `engine/string_packer.lua` — `get_compressed`, `STR_UNPACK`
-- `engine/controller.lua` — `Controller:navigate_focus`
+| Folder | Content | Use For |
+|--------|---------|---------|
+| `balatro_src/` | Unpacked vanilla Balatro source (`game.lua`, `functions/misc_functions.lua`, `functions/button_callbacks.lua`, etc.) | Understanding original implementations (`save_run`, `start_run`), writing `lovely.toml` regex patterns |
+| `lovely/` | Lovely Loader files including `log/` directory | Debugging patches, crash logs, patch diagnostics |
+| `Steamodded/` | Steamodded loader scripts and config | Understanding mod loading, config tab patterns |
+| `Balatro-History/` | Another save history mod | Timeline and backup logic reference |
+| `Brainstorm-Rerolled/` | Fast restart mod | Borrowed `G:delete_run()` → `G:start_run({savetext=...})` pattern for instant restore |
+| `QuickLoad/` | Fast save loading mod | Borrowed `get_compressed()` + `STR_UNPACK()` flow for `.jkr` unpacking |
+| `BetterMouseandGamepad/` | Controller navigation mod | Focus management, L3/R3 mapping patterns |
+| `UnBlind/` | Boss blind preview mod | Blind sprite creation with `AnimatedSprite`, dissolve shader, shadow effects |
+| `JokerDisplay/` | Joker info display mod | Config UI organization (two-column layout) |
 
 ---
 
-## 7. Blind Information & Sprite Access (for UI Enhancement)
+## 5. Key Concepts
 
-### Accessing Blind Data
+### Entry Structure
+12-field arrays for memory efficiency. Access via `REWINDER.ENTRY_*` constants.
 
-**Key Globals:**
-- `G.GAME.round_resets.blind_choices[type]` — Blind key for each type ('Small', 'Big', 'Boss')
-- `G.P_BLINDS[blind_key]` — Full blind configuration from globals
-- `G.GAME.round_resets.blind_states[type]` — State: 'Select', 'Defeated', 'Skipped', 'Hide', 'Upcoming'
+**See `CACHE_ENTRY_EXAMPLE.md`** for:
+- All 12 field indices and types
+- Display type codes and their meanings
+- Meta file format
+- Entry lifecycle (create, load, restore)
 
-**Example from UnBlind mod:**
+### ordinal_state (O(1) Metadata)
+In-memory state machine in `SaveManager.lua` for computing `display_type` and `ordinal` at save time without cache scanning.
+
+**Structure:**
 ```lua
--- Get blind config for current ante
-local blind_choice = {
-    config = G.P_BLINDS[G.GAME.round_resets.blind_choices['Small']]
+ordinal_state = {
+   ante = nil,              -- Current ante
+   blind_key = nil,         -- Current blind (e.g., "bl_small")
+   last_display_type = nil, -- For first_shop detection
+   last_discards_used = 0,  -- For play/discard detection
+   last_hands_played = 0,   -- For play/discard detection
+   counters = { S=0, O=0, P=0, D=0, H=0, B=0, ["?"]=0 }  -- Per-type ordinals
 }
-
--- blind_choice.config contains:
---   .key     - "bl_small", "bl_big", "bl_final_acorn", etc.
---   .name    - Display name
---   .pos     - Position in sprite atlas
---   .atlas   - Atlas name (usually 'blind_chips')
---   .mult    - Score multiplier
---   .dollars - Reward amount
 ```
 
-### Creating Blind Sprites
+**Reset triggers:**
+- Ante or blind_key change during gameplay
+- Save restore → re-initialized from entry's stored values
 
-**AnimatedSprite creation:**
-```lua
--- Full-size blind sprite (from UnBlind mod)
-local blind_sprite = AnimatedSprite(
-    0, 0,                                    -- x, y position
-    0.75, 0.75,                              -- width, height
-    G.ANIMATION_ATLAS['blind_chips'],        -- Atlas (or blind_choice.config.atlas)
-    blind_choice.config.pos                  -- Position in atlas
-)
+### Timeline Pruning (Deferred)
+When loading older save at index 5, saves 1-4 are marked in `pending_future_prune` but **not deleted immediately**. Deletion happens on next `create_save()` call. This allows "undo the undo" if user restarts before making new move.
 
--- Apply shaders for visual effects
-blind_sprite:define_draw_steps({
-    {shader = 'dissolve', shadow_height = 0.05},
-    {shader = 'dissolve'}
-})
-
--- Smaller sprites (for save list entries)
-local small_blind = AnimatedSprite(
-    0, 0, 
-    0.5, 0.5,                                -- Smaller size for list
-    G.ANIMATION_ATLAS['blind_chips'],
-    blind_pos
-)
-```
-
-### Determining Round Type from Save Data
-
-**Round-to-Blind Mapping:**
-- Round 1 (Small Blind) → `G.GAME.round_resets.blind_choices['Small']`
-- Round 2 (Big Blind) → `G.GAME.round_resets.blind_choices['Big']`  
-- Round 3 (Boss Blind) → `G.GAME.round_resets.blind_choices['Boss']`
-
-**From run_data in save file:**
-```lua
--- run_data structure (from .jkr file):
---   .round              - 1, 2, or 3
---   .round_resets.blind_choices
---       .Small  = 'bl_small'
---       .Big    = 'bl_big'
---       .Boss   = 'bl_final_acorn'
-
--- Map round number to blind type
-local blind_type = (round == 1 and 'Small') or (round == 2 and 'Big') or 'Boss'
-local blind_key = run_data.round_resets.blind_choices[blind_type]
-local blind_config = G.P_BLINDS[blind_key]
-
--- Create sprite for that blind
-local blind_sprite = AnimatedSprite(0, 0, 0.4, 0.4, 
-    G.ANIMATION_ATLAS[blind_config.atlas or 'blind_chips'],
-    blind_config.pos
-)
-```
-
-### Integration with Save Rewinder
-
-**Blind Image Feature - IMPLEMENTED ✅**
-
-The mod now displays blind icons instead of/alongside round numbers in save list entries.
-
-**Implementation Details:**
-
-1. **State Signature (`Core/StateSignature.lua`)**:
-   - Extracts `blind_key` from `game.blind_on_deck` (primary) or round number mapping (fallback)
-   - Special case: Round 0 (blind selection) forced to Small blind
-   - Returns signature with `blind_key` field (e.g., `"bl_small"`, `"bl_final_acorn"`)
-
-2. **Save Creation (`Core/SaveManager.lua`)**:
-   - Stores `blind_key` in cache entry at `ENTRY_BLIND_KEY` (index 14)
-   - Writes `blind_key` to `.meta` file for fast loading
-   - Exports `ENTRY_BLIND_KEY` constant
-
-3. **UI Rendering (`UI/RewinderUI.lua`)**:
-   - `create_blind_sprite(blind_key, width, height)`:
-     - Creates `AnimatedSprite` with `'blind_chips'` atlas
-     - Applies dissolve shader with shadow (`shadow_height=0.05`, `shadow_parrallax={x=1.5, y=-1.5}`)
-     - Animation control via `config.animate_blind_image`:
-       - When enabled: Full animation frames + hover sound effect (using `focus_with_object`)
-       - When disabled: Static single frame (`sprite.animation.frames = 1`)
-     - Size: 0.45x0.45 for compact display
-   - `build_save_node()`:
-     - Checks `config.show_blind_image` to show blind sprite or round number
-     - For round number mode: displays neutral text color, only separator is colored
-     - Sets `chosen='vert'` on current save entry (triggers animated red triangle indicator)
-
-4. **Configuration (`config.lua` + `main.lua`)**:
-   - `show_blind_image = true` — Toggle blind icons vs round numbers
-   - `animate_blind_image = false` — Control sprite animation and hover effects (default: static)
-   - Steamodded UI toggles with bilingual localization (EN/ZH)
-   - Config UI organized into columns: "Auto-Save Triggers" (left), "Display Options" (right), "Advanced" (bottom)
-
-**Reference:**
-- Blind sprite creation borrowed from `UnBlind/UI_Def append.lua`
-- Shadow positioning: `shadow_parrallax = {x = 1.5, y = -1.5}` creates lower-right shadow like UnBlind
-- Hover sound effect pattern from `UnBlind` using `focus_with_object` for collision detection
-- Animation control: `sprite.animation.frames = 1` stops frame cycling
+### Duplicate Skip
+After restore, first auto-save often matches restored state. `mark_loaded_state()` records signature; `consume_skip_on_save()` compares and skips if identical.
 
 ---
 
-## 8. Reference Mods (balatro_src/ Neighbors)
+## 6. Core Flows
 
-### UnBlind/
-Boss blind preview mod. Key patterns borrowed:
-- **Blind sprite creation**: `AnimatedSprite` with `G.ANIMATION_ATLAS['blind_chips']`
-- **Shader setup**: `define_draw_steps` with `dissolve` shader for shadow effects
-- **Shadow positioning**: `shadow_parrallax = {x, y}` for dynamic shadow offset
-- **Hover effects**: `focus_with_object = true` enables collision detection for hover callbacks
-- **Key files**: `UI_Def append.lua`, `unBlindShopGUI.lua`
+### Save Writing
+1. Game calls `save_run()` → `G.culled_table` ready
+2. `lovely.toml` patch → `REWINDER.defer_save_creation()`
+3. Deep-copy `G.culled_table`, defer to next frame via `G.E_MANAGER`
+4. `SaveManager.create_save()`:
+   - Check ordinal_state reset (ante/blind change)
+   - O(1) action detection (compare discards_used/hands_played)
+   - O(1) first_shop detection (check last_display_type)
+   - Compute display_type and ordinal
+   - Write `.jkr` + `.meta` files
+   - Update cache, apply retention policy
 
-### BetterMouseandGamepad/
-Controller and mouse navigation improvements. Key patterns:
-- **Focus management**: Controller navigation through UI elements
-- **L3/R3 mapping**: Gamepad stick clicks for quick actions
-- **Key file**: `BetterMouseAndGamepad.lua`
-
-### Brainstorm-Rerolled/
-Joker reroll mod with fast game restart. Key patterns:
-- **Fast restore path**: `G:delete_run()` → `G:start_run({savetext=...})` without loading screen
-- **Key files**: `Core/*.lua`
-
-### QuickLoad/
-Fast save loading mod. Key patterns:
-- **Save unpacking**: `get_compressed()` + `STR_UNPACK()` for `.jkr` file reading
-- **Key file**: `QuickLoad.lua`
-
-### JokerDisplay/
-Joker info display mod with well-organized config UI. Key patterns:
-- **Config tab layout**: Two-column organization with section headers
-- **UI structure**: `G.UIT.C` for columns, `G.UIT.T` for headers, padding for separation
-- **Key file**: `src/config_tab.lua`
+### Save Loading
+**See `CLICK_LOAD_FLOW.md`** for detailed diagram. Summary:
+1. Click/hotkey → `load_and_start_from_file(file)`
+2. Copy save to `save.jkr`, record `pending_future_prune`
+3. Initialize `ordinal_state` from entry
+4. `G:delete_run()` → `G:start_run({savetext=...})` (fast path, no loading screen)
+5. `Game:start_run` marks loaded state, pre-sets shop CardAreas
 
 ---
 
-## 9. Logger System
+## 7. Common Mistakes to Avoid
 
-### Architecture
+> [!CAUTION]
+> **No loops in create_save** — Use `ordinal_state` for O(1) access, never scan `save_cache` for action detection or ordinal computation.
 
-The logging system uses a module-based approach for organized output:
+> [!IMPORTANT]
+> **Ordinal is per-blind, not per-ante** — Counters reset when `blind_key` changes. Each blind (Small/Big/Boss) has separate ordinal sequences.
+
+> [!WARNING]
+> **Restore resets ordinal_state** — Must re-initialize from entry's stored values (ante, blind_idx, discards_used, hands_played, display_type, ordinal for counter).
+
+> [!NOTE]
+> **TOML regex escaping** — Double-escape backslashes in `lovely.toml` patterns (e.g., `\\(` not `\(`).
+
+---
+
+## 8. Development
+
+```bash
+./scripts/sync_to_mods.sh           # One-time sync
+./scripts/sync_to_mods.sh --watch   # Auto-sync on file changes
+```
+
+- **No build system**: Edit Lua files in-place, sync to game, restart Balatro
+- **Logs**: Check `References/lovely/log/` for crash traces and patch diagnostics
+- **Testing**: Launch Balatro with Steamodded/Lovely Loader, verify mod in mods list
+
+---
+
+## 9. When to Ask Humans
+
+- Changes to entry structure, metadata layout, or signature format
+- Altering deferred-execution or timeline-pruning logic
+- Adding new `lovely.toml` patches that might conflict with other mods
+- Changing `ordinal_state` reset/initialization behavior
+
+---
+
+## 10. Code Examples
 
 ```lua
--- Create module-specific logger
-local log = Logger.create("SaveManager")
+-- Defer save (injected by lovely.toml after G.ARGS.save_run = G.culled_table)
+REWINDER.defer_save_creation()
 
--- Log with different tags
-log.step("Creating save...")      -- Always shows (important operations)
-log.list("Files: " .. count)      -- Always shows (list operations)
-log.error("Failed: " .. msg)      -- Always shows (errors)
-log.prune("Pruned " .. n)         -- Always shows (pruning)
-log.restore("Restored: " .. f)    -- Always shows (restore operations)
-log.info("Details...")            -- Only when debug_saves enabled
-log.detail("Verbose...")          -- Only when debug_saves enabled
+-- Load save
+REWINDER.load_and_start_from_file("2-3-1609430.jkr")
+
+-- Access cache entry (12-element array)
+local file = entry[REWINDER.ENTRY_FILE]           -- index 1
+local display_type = entry[REWINDER.ENTRY_DISPLAY_TYPE]  -- index 11
+local blind_idx = entry[REWINDER.ENTRY_BLIND_IDX] -- index 10
+
+-- Convert blind_idx to key for sprite
+local blind_key = REWINDER.SaveManager.index_to_blind_key(blind_idx)
+local sprite = REWINDER.create_blind_sprite(blind_key)
 ```
-
-### Log Tags
-
-| Tag | Visibility | Purpose |
-|-----|------------|---------|
-| `step` | Always | Major operation milestones |
-| `list` | Always | File listing operations |
-| `error` | Always | Error conditions |
-| `prune` | Always | Save pruning operations |
-| `restore` | Always | Save restore operations |
-| `info` | Debug only | Verbose operational details |
-| `detail` | Debug only | Extra verbose details |
-
-### Debug Mode
-
-Controlled by `config.debug_saves` toggle in mod settings (labeled "Debug: verbose logging"):
-- **OFF (default)**: Only critical tags shown (`step`, `list`, `error`, `prune`, `restore`)
-- **ON**: All tags shown including `info` and `detail`
-
----
-
-## 10. Initialization Flow
-
-### Game Loading Sequence
-
-```
-Game:start_up()
-    ├── Settings load
-    ├── Window init
-    ├── Sound manager
-    ├── Controller setup
-    ├── load_profile()           ← G.SETTINGS.profile ready
-    │
-    ├── set_render_settings()    ← OUR HOOK (Cache Init)
-    │   └── preload_all_metadata()  ← Load ALL .meta files
-    │
-    ├── set_language()
-    ├── init_item_prototypes()
-    ├── Shared sprites
-    └── Loading screen ends → Main menu appears
-```
-
-### Cache Initialization (During Loading Screen)
-
-The mod hooks `Game:set_render_settings` to initialize during the loading phase:
-
-```lua
--- Core/Init.lua
-local _game_set_render_settings = Game.set_render_settings
-function Game:set_render_settings(...)
-   local ret = _game_set_render_settings(self, ...)
-   
-   if not REWINDER._cache_initialized then
-      REWINDER._cache_initialized = true
-      -- Preload ALL metadata synchronously
-      SaveManager.preload_all_metadata(true)
-   end
-   
-   return ret
-end
-```
-
-**Why `set_render_settings`?**
-- Runs **after** `load_profile()` — profile directory is set
-- Runs **during** loading screen — blocking is invisible to user
-- Runs **before** main menu — no UI lag during gameplay
-
-**Why `preload_all_metadata` (not `get_save_files`)?**
-- Loads ALL `.meta` files synchronously (not just first 16)
-- No background loading needed later
-- First save list open is instant — everything pre-cached
-
-### preload_all_metadata Flow
-
-`SaveManager.preload_all_metadata(true)`:
-1. Lists all `.jkr` files in save directory
-2. Creates entry arrays with filename/ante/round/modtime
-3. Sorts by modtime (newest first)
-4. Loads ALL `.meta` files synchronously (or unpacks `.jkr` if missing)
-5. Runs action type detection for play/discard labels
-6. Updates current file highlighting flags
-7. Rebuilds file index for O(1) lookup
-
----
-
-## 11. Config UI Layout
-
-### Organization (JokerDisplay Pattern)
-
-The Steamodded config tab uses a two-column layout:
-
-```
-┌─────────────────────────────────────────────────┐
-│  Auto-Save Triggers       │  Display Options    │
-├─────────────────────────────────────────────────┤
-│  ☑ Save when choosing     │  ☑ Show blind image │
-│     blind                 │  ☑ Blind image      │
-│  ☑ Save when selecting    │     effects         │
-│     hand                  │                     │
-│  ☑ Save at end of round   │                     │
-│  ☑ Save in shop           │                     │
-├─────────────────────────────────────────────────┤
-│                   Advanced                      │
-├─────────────────────────────────────────────────┤
-│       Max saved antes per run: [< 4 >]          │
-│  ☐ Debug: verbose logging    [Delete all saves] │
-└─────────────────────────────────────────────────┘
-```
-
-### UI Elements Used
-- `G.UIT.ROOT` — Root container
-- `G.UIT.R` — Row (horizontal grouping)
-- `G.UIT.C` — Column (vertical grouping)
-- `G.UIT.T` — Text (section headers)
-- `create_toggle()` — Toggle switches
-- `create_option_cycle()` — Dropdown/cycle selector
-- `UIBox_button()` — Action buttons
-
----
-
-## 12. Known Issues & Workarounds
-
-### ✅ Fixed: Arrow Indicator Position
-The vertical triangle arrow (`chosen='vert'`) positioning was resolved by adding left spacer padding to entry content:
-```lua
--- Add spacer before content for arrow clearance
-{ n = G.UIT.C, config = { minw = 0.15 } },
-```
-
-### ✅ Fixed: Shadow Position
-Blind sprite shadows now appear at lower-right (matching UnBlind) using:
-```lua
-shadow_parrallax = { x = 1.5, y = -1.5 },
-shadow_height = 0.05
-```
-
-### Note: Duplicate Logging
-When extracting `blind_key` from save data, use `log.detail()` instead of `log.info()` to avoid verbose output during normal operation.
-
----
-
-## 13. SaveManager.lua Refactoring (v1.4.1)
-
-Refactored from **966 lines to ~500 lines** (48% reduction).
-
-### Changes Made
-
-1. **Removed duplicate constant declarations** — Used `local E = EntryConstants` alias instead of duplicating all 14 constants as both `M.ENTRY_*` and `local ENTRY_*`.
-
-2. **Removed `_schedule_meta_load` background loader** (~60 lines) — No longer needed since `preload_all_metadata()` runs synchronously at boot during loading screen.
-
-3. **Unified `get_save_files` and `preload_all_metadata`** — They now share implementation; `preload_all_metadata` simply calls `get_save_files(force, true)`.
-
-4. **Removed redundant fallback in `start_from_file`** (~20 lines) — The `get_compressed`/`STR_UNPACK` path was redundant; now uses `M.load_save_file(file)` directly.
-
-5. **Removed pcall wrappers** (~15 lines) — Game API calls (`G:start_run`, `G:delete_run`) rarely fail; errors are caught at higher levels.
-
-6. **Simplified config filter checks** (~25 lines) — Replaced 4 repetitive if-blocks with data-driven `_should_save_state()` lookup table.
-
-7. **Simplified `describe_save`** (~20 lines) — Extracted `_sig_from_entry()` helper to eliminate duplicate code.
-
-8. **Simplified `revert_to_previous_save`** (~30 lines) — Removed redundant fallback index logic, now uses `M.get_index_by_file()`.
-
-9. **Removed verbose per-field comments** (~100 lines) — Entry arrays now use single-line construction.
-
-10. **Removed unused `timing_enabled` scaffolding** (~10 lines) — Was always `false`.
-
-### Key Structural Changes
-
-- `local E = EntryConstants` — Single alias for all entry constants
-- `_sig_from_entry(e)` — Helper to build signature table from cache entry
-- `_should_save_state(state, config)` — Data-driven config filter lookup
-- `get_save_files(force_reload, sync)` — Optional `sync` parameter for full synchronous load

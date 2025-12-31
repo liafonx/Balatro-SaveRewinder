@@ -19,6 +19,7 @@ return {
 
             -- Saves UI labels
             rewinder_state_shop = 'In shop',
+            rewinder_state_entering_shop = 'Entering shop',  -- First shop save in each blind
             rewinder_state_opening_pack = 'Opening pack in shop',
             rewinder_state_start_round = 'Start of round',
             rewinder_state_selecting_hand = 'Selecting hands',
@@ -27,6 +28,7 @@ return {
             rewinder_state_end_of_round = 'End of round',
             rewinder_state_choose_blind = 'Choosing next blind',
             rewinder_state_in_run = 'In run',
+
 
             rewinder_no_saves = 'No saves yet',
             rewinder_saves_button = 'Saves',

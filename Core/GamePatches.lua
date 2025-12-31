@@ -3,11 +3,9 @@
 -- Contains the overrides for Game:start_run and Game:write_save_file.
 -- These functions are injected into the game via lovely.toml.
 if not REWINDER then REWINDER = {} end
-
 -- Guard against double-execution (e.g., if this file is patched multiple times)
 if REWINDER._game_patches_loaded then return end
 REWINDER._game_patches_loaded = true
-
 -- Local deepcopy utility for safely copying tables
 local function deepcopy(orig)
     if type(orig) ~= 'table' then return orig end
@@ -17,9 +15,7 @@ local function deepcopy(orig)
     end
     return copy
 end
-
 -- Assume REWINDER is already defined and populated by Init.lua
-
 -- REWINDER.hook_key_hold from Init.lua, now defined here.
 function REWINDER.hook_key_hold()
    -- Previously used to hook long-press behaviour; kept as a no-op
@@ -27,66 +23,30 @@ function REWINDER.hook_key_hold()
    if REWINDER._key_hold_hooked then return end
    REWINDER._key_hold_hooked = true
 end
-
 REWINDER._start_run = Game.start_run
 REWINDER._update_shop = Game.update_shop
-
 function Game:start_run(args)
    args = args or {}
-
-   -- 1. Mark the loaded state
+   -- 1. Mark the loaded state and use pre-matched save file from init phase
    if args and args.savetext and REWINDER.mark_loaded_state then
-      -- Access SaveManager directly for internal state (scalars are copied by value)
       local BM = REWINDER._SaveManager
-      
-      -- If continuing from system UI, try to find matching save file
-      if args.savetext and not args.savetext._file and BM then
-         local entries = BM.get_save_files and BM.get_save_files() or {}
-         if entries and #entries > 0 then
-            local matched = false
-            -- Try to match by signature
-            local current_sig = REWINDER.StateSignature and REWINDER.StateSignature.get_signature(args.savetext)
-            if current_sig then
-               for i, entry in ipairs(entries) do
-                  -- Ensure metadata is loaded for this entry (async loading may not have reached it)
-                  if not entry[REWINDER.ENTRY_SIGNATURE] and BM.get_save_meta then
-                     BM.get_save_meta(entry)
-                  end
-                  -- Compare using signature string for fast comparison
-                  if entry[REWINDER.ENTRY_SIGNATURE] and current_sig.signature and entry[REWINDER.ENTRY_SIGNATURE] == current_sig.signature then
-                     args.savetext._file = entry[REWINDER.ENTRY_FILE]
-                              BM.current_index = i
-                        -- Update cache flags using helper function
-                        if BM._set_cache_current_file then
-                        BM._set_cache_current_file(entry[REWINDER.ENTRY_FILE])
-                     end
-                     matched = true
-                     break
-                  end
-               end
-            end
-            -- Fallback: if no signature match, use the newest save (most likely current)
-            if not matched and entries[1] and entries[1][REWINDER.ENTRY_FILE] then
-               args.savetext._file = entries[1][REWINDER.ENTRY_FILE]
-               BM.current_index = 1
-               if BM._set_cache_current_file then
-                  BM._set_cache_current_file(entries[1][REWINDER.ENTRY_FILE])
-               end
-            end
-         end
+      -- Use pre-matched file from init phase (if save.jkr was matched during loading)
+      -- Only need to set _file on savetext if not already set
+      if args.savetext and not args.savetext._file and BM and BM._last_loaded_file then
+         args.savetext._file = BM._last_loaded_file
       end
       
+      -- Mark loaded state for skip-duplicate logic
       local need_mark = BM and (not BM._loaded_mark_applied)
       if need_mark then
          local pending_reason = BM and BM._pending_skip_reason or "continue"
          REWINDER.mark_loaded_state(args.savetext, {
             reason = pending_reason,
-            last_loaded_file = args.savetext._file or "save.jkr",
+            last_loaded_file = args.savetext._file or BM._last_loaded_file or "save.jkr",
             set_skip = true,
          })
       end
    end
-
    -- 2. Suppress noisy "Card area 'shop_*' not instantiated" logs on shop restores.
    -- In vanilla `Game:start_run`, missing areas are moved to `G.load_shop_*` and later
    -- consumed in `Game:update_shop`, but it prints an error-level log while doing so.
@@ -98,16 +58,14 @@ function Game:start_run(args)
       for area_key, area_data in pairs(cardAreas) do
          if area_key:match("^shop_") and not G[area_key] then
             G["load_" .. area_key] = area_data
-         cardAreas[area_key] = nil
-      end
+            cardAreas[area_key] = nil
+         end
       end
    end
-
    -- 3. Reset REWINDER State for new run
    REWINDER.saves_open = false
    REWINDER._save_counter = 0
    REWINDER._debug_alert = nil
-
    if not args or not args.savetext then
       -- Brand new run - reset SaveManager internal state directly
       local BM = REWINDER._SaveManager
@@ -126,6 +84,9 @@ function Game:start_run(args)
          BM.skipping_pack_open = nil
          BM._last_save_sig = nil  -- Reset duplicate detection
          BM._last_save_time = nil
+         if BM.reset_ordinal_state then
+            BM.reset_ordinal_state()  -- Reset ordinal counters for new run
+         end
       end
       
       -- Prune all saves (new run destroys future of previous run)
@@ -171,13 +132,10 @@ function Game:start_run(args)
          end
       end
    end
-
    REWINDER._start_run(self, args)
-
    -- Call the REWINDER.hook_key_hold defined in this file.
    REWINDER.hook_key_hold()
 end
-
 -- The Game:write_save_file patch is no longer needed with the new save_run hook.
 -- The original function will be called automatically.
 -- You can remove the REWINDER._Game_write_save_file and the function override.
@@ -204,10 +162,7 @@ function REWINDER.defer_save_creation()
                return true
             end
          }))
-      else
-         -- Fallback for safety, though this path is unlikely and might still crash.
-         require("SaveManager").create_save(run_data_copy)
       end
+      -- If event manager isn't available, skip save creation (shouldn't happen during gameplay)
    end
 end
-

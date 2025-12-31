@@ -2,15 +2,11 @@
 --
 -- Helper module for analyzing and comparing game state signatures.
 -- Used to determine if a save should be skipped or kept.
-
 local Logger = require("Logger")
 local M = {}
-
 M.debug_log = Logger.create("StateSignature")
-
 function M.describe_state_label(state)
    if not state then return nil end
-
    -- Primary mapping via G.STATES.
    local st = G and G.STATES
    if st then
@@ -22,7 +18,6 @@ function M.describe_state_label(state)
    end
    return nil
 end
-
 -- Encode signature as a string for fast comparison
 -- Format: "ante:round:state:action_type:money" (action_type: nil="", "opening_pack", "play", "discard")
 function M.encode_signature(ante, round, state, action_type, money)
@@ -38,7 +33,6 @@ function M.encode_signature(ante, round, state, action_type, money)
       money or 0
    )
 end
-
 function M.get_signature(run_data)
    if not run_data or type(run_data) ~= "table" then return nil end
    local game = run_data.GAME or {}
@@ -81,15 +75,15 @@ function M.get_signature(run_data)
          blind_type = 'Small'
       end
       blind_key = game.round_resets.blind_choices[blind_type]
-      M.debug_log("info", "Extracted blind_key from blind_on_deck: " .. tostring(blind_type) .. " -> " .. tostring(blind_key))
+      M.debug_log("detail", "Extracted blind_key from blind_on_deck: " .. tostring(blind_type) .. " -> " .. tostring(blind_key))
    elseif game.round_resets and game.round_resets.blind_choices then
       -- Fallback: use round number if blind_on_deck is not available
       -- Round 0 = blind selection, 1 = Small, 2 = Big, 3 = Boss
       local blind_type = (round == 0 and 'Small') or (round == 1 and 'Small') or (round == 2 and 'Big') or 'Boss'
       blind_key = game.round_resets.blind_choices[blind_type]
-      M.debug_log("info", "Extracted blind_key from round number: round=" .. tostring(round) .. ", type=" .. tostring(blind_type) .. " -> " .. tostring(blind_key))
+      M.debug_log("detail", "Extracted blind_key from round number: round=" .. tostring(round) .. ", type=" .. tostring(blind_type) .. " -> " .. tostring(blind_key))
    else
-      M.debug_log("warn", "Could not extract blind_key: blind_on_deck=" .. tostring(game.blind_on_deck) .. ", has_round_resets=" .. tostring(game.round_resets ~= nil) .. ", has_blind_choices=" .. tostring(game.round_resets and game.round_resets.blind_choices ~= nil))
+      M.debug_log("detail", "Could not extract blind_key: blind_on_deck=" .. tostring(game.blind_on_deck) .. ", has_round_resets=" .. tostring(game.round_resets ~= nil) .. ", has_blind_choices=" .. tostring(game.round_resets and game.round_resets.blind_choices ~= nil))
    end
    
    local sig = {
@@ -121,7 +115,6 @@ function M.signatures_equal(a, b)
           (a.action_type or nil) == (b.action_type or nil) and
           (a.money or 0) == (b.money or 0)
 end
-
 -- Get label from state, action_type (play/discard), and is_opening_pack (boolean)
 function M.get_label_from_state(state, action_type, is_opening_pack)
    local label = M.describe_state_label(state) or "state"
@@ -145,19 +138,16 @@ function M.get_label_from_state(state, action_type, is_opening_pack)
    end
    return label
 end
-
 function M.describe_signature(sig)
    if not sig then return "save" end
    local label = M.get_label_from_state(sig.state, sig.action_type, sig.is_opening_pack)
    return string.format("Ante %s Round %s (%s)", tostring(sig.ante or "?"), tostring(sig.round or "?"), tostring(label))
 end
-
 function M.is_shop_signature(sig)
    if not sig then return false end
    local state = sig.state
    return state and G and G.STATES and G.STATES.SHOP and state == G.STATES.SHOP
 end
-
 -- Check if save data has a pending ACTION (e.g., opening a booster pack)
 -- ACTION is stored as run_data.ACTION = { ... } when there's a pending action
 function M.has_action(run_data)

@@ -19,25 +19,12 @@ Balatro.antihypertensive.code-workspace
 
 # Reference/Development folders (not part of released mod)
 # These are kept locally for development but excluded from git and game Mods folder
-lovely/
-!lovely/README.md
-Steamodded/
-!Steamodded/README.md
-Balatro-History/
-Brainstorm-Rerolled/
-BetterMouseandGamepad/
-QuickLoad/
-HandyBalatro/
 Contents/
 jkrs/
 save.*
-balatro_src/
 save_decoder.py
 raw_icon/
-UnBlind/
-Blueprint/
-JokerDisplay/
-Frost_Utils/
+References/
 icon.png
 
 # Development scripts (local only)
@@ -54,8 +41,9 @@ Contents/
 
 # Documentation (if auto-generated)
 MCP_SUGGESTIONS.md/
-localization/zh_CN.lua
 docs/NEXUSMODS_DESCRIPTION.txt
 *.tmp
 assets/icon_single_border.ai
 icon_single_border.ai
+docs/ISSUE_SHOP_TEARING.md
+Utils/G.STATES.lua

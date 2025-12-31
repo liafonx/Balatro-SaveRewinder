@@ -9,18 +9,14 @@ priority = 5
 #     lovely.toml
 #     Core/
 #       Init.lua
-#       SaveManager.lua
-#       StateSignature.lua
+#       SaveManager.lua (includes EntryConstants, CacheManager, DuplicateDetector)
 #       GamePatches.lua
 #     Utils/
-#       Utils.lua
-#       EntryConstants.lua
+#       StateSignature.lua
+#       Logger.lua
 #       MetaFile.lua
 #       FileIO.lua
-#       ActionDetector.lua
-#       CacheManager.lua
 #       Pruning.lua
-#       DuplicateDetector.lua
 #     UI/
 #       RewinderUI.lua
 #       ButtonCallbacks.lua
@@ -57,18 +53,10 @@ target = "globals.lua"
 position = "append"
 sources = [ "Core/GamePatches.lua" ] # Appended after Init.lua (which is also appended to globals.lua)
 
-
 [[patches]]
 [patches.module]
 name = "Logger"
 source = "Utils/Logger.lua"
-load_now = true
-before = "globals.lua"
-
-[[patches]]
-[patches.module]
-name = "EntryConstants"
-source = "Utils/EntryConstants.lua"
 load_now = true
 before = "globals.lua"
 
@@ -88,20 +76,6 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
-name = "ActionDetector"
-source = "Utils/ActionDetector.lua"
-load_now = true
-before = "globals.lua"
-
-[[patches]]
-[patches.module]
-name = "CacheManager"
-source = "Utils/CacheManager.lua"
-load_now = true
-before = "globals.lua"
-
-[[patches]]
-[patches.module]
 name = "Pruning"
 source = "Utils/Pruning.lua"
 load_now = true
@@ -109,23 +83,17 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
-name = "DuplicateDetector"
-source = "Utils/DuplicateDetector.lua"
-load_now = true
-before = "globals.lua"
-
-[[patches]]
-[patches.module]
 name = "StateSignature"
-source = "Core/StateSignature.lua"
-load_now = true # Load immediately so Init.lua can require it
+source = "Utils/StateSignature.lua"
+load_now = true
+
 before = "globals.lua"
 
 [[patches]]
 [patches.module]
 name = "SaveManager"
 source = "Core/SaveManager.lua"
-load_now = true # Load immediately so Init.lua can require it
+load_now = true
 before = "globals.lua"
 
 [[patches]]
