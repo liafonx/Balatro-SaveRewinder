@@ -1,15 +1,11 @@
 --- Save Rewinder - UI/ButtonCallbacks.lua
 --
 -- Button callbacks for the saves UI.
-
 if not REWINDER then REWINDER = {} end
-
 local function _snap_saves_focus_to_current()
    if not (G and G.CONTROLLER and REWINDER and REWINDER._saves_ui_refs and REWINDER._saves_ui_refs.saves_box) then return end
-
    local idx = REWINDER.find_current_index and REWINDER.find_current_index()
    if not idx then return end
-
    local node = REWINDER._saves_ui_refs.saves_box:get_UIE_by_ID("rewinder_save_entry_" .. tostring(idx))
    if node then
       G.CONTROLLER:snap_to({ node = node })
@@ -18,7 +14,6 @@ local function _snap_saves_focus_to_current()
       end
    end
 end
-
 function G.FUNCS.rewinder_save_open(e)
    if not G.FUNCS or not G.FUNCS.overlay_menu then return end
    
@@ -27,7 +22,6 @@ function G.FUNCS.rewinder_save_open(e)
       definition = G.UIDEF.rewinder_saves(),
    })
    REWINDER.saves_open = true
-
    if G and G.E_MANAGER and Event then
       G.E_MANAGER:add_event(Event({
          trigger = "after",
@@ -41,7 +35,6 @@ function G.FUNCS.rewinder_save_open(e)
       _snap_saves_focus_to_current()
    end
 end
-
 function G.FUNCS.rewinder_save_jump_to_current(e)
    REWINDER.debug_log("UI", "jump_to_current: Starting")
    local refs = REWINDER._saves_ui_refs
@@ -84,7 +77,6 @@ function G.FUNCS.rewinder_save_jump_to_current(e)
       cycle_config = cycle_config,
       to_key = target_page,
    })
-
    if G and G.E_MANAGER and Event then
       G.E_MANAGER:add_event(Event({
          trigger = "after",
@@ -98,7 +90,6 @@ function G.FUNCS.rewinder_save_jump_to_current(e)
       _snap_saves_focus_to_current()
    end
 end
-
 function G.FUNCS.rewinder_save_reload(e)
    if REWINDER and REWINDER.preload_all_metadata then
       REWINDER.preload_all_metadata(true) -- Force a full reload + meta preload
@@ -107,7 +98,6 @@ function G.FUNCS.rewinder_save_reload(e)
    end
    if not G.FUNCS or not G.FUNCS.exit_overlay_menu or not G.FUNCS.overlay_menu or not G.E_MANAGER then return end
    G.FUNCS.exit_overlay_menu()
-
    -- Defer re-opening the menu to the next frame.
    -- This prevents an infinite loop where the mouse click that triggered the delete
    -- is immediately processed again by the newly created UI.
@@ -123,25 +113,21 @@ function G.FUNCS.rewinder_save_reload(e)
       end
    }))
 end
-
 function G.FUNCS.rewinder_save_delete_all(e)
    if REWINDER and REWINDER.clear_all_saves then
       REWINDER.clear_all_saves()
    end
    G.FUNCS.rewinder_save_reload(e)
 end
-
 function G.FUNCS.rewinder_save_restore(e)
    if not e or not e.config or not e.config.ref_table then return end
    local file = e.config.ref_table.file
    if not file then return end
-
    -- Update cache flags immediately when clicking (before loading)
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
       REWINDER.debug_log("UI", "restore click: " .. file)
       REWINDER._SaveManager._set_cache_current_file(file)
    end
-
    -- Set pending_index so that start_from_file can use it for timeline consistency
    if REWINDER and REWINDER._SaveManager then
       local idx = REWINDER._SaveManager.get_index_by_file and REWINDER._SaveManager.get_index_by_file(file)
@@ -154,7 +140,6 @@ function G.FUNCS.rewinder_save_restore(e)
          end
       end
    end
-
    local label = file
    if REWINDER and REWINDER.describe_save then
      label = REWINDER.describe_save({ file = file })
@@ -164,7 +149,6 @@ function G.FUNCS.rewinder_save_restore(e)
    end
    REWINDER.load_and_start_from_file(file)
 end
-
 function G.FUNCS.rewinder_save_update_page(args)
    if not args or not args.cycle_config then
       REWINDER.debug_log("UI", "update_page: No args or cycle_config")
@@ -175,12 +159,9 @@ function G.FUNCS.rewinder_save_update_page(args)
       tostring(args.to_key), tostring(args.cycle_config.current_option)))
    
    local callback_args = args.cycle_config.opt_args
-
    local saves_object = callback_args.ui
    local saves_wrap = saves_object.parent
-
    local entries = REWINDER.get_save_files()
-
    saves_wrap.config.object:remove()
    saves_wrap.config.object = UIBox({
       definition = REWINDER.get_saves_page({
@@ -246,17 +227,3 @@ function G.FUNCS.rewinder_save_update_page(args)
       REWINDER.debug_log("UI", "update_page: No parent or children to find cycle")
    end
 end
-
--- Callback for the "Delete All Saves" button in the main mod config menu.
-function G.FUNCS.rewinder_save_delete_all(e)
-   if REWINDER and REWINDER.clear_all_saves then
-      REWINDER.clear_all_saves()
-   end
-   -- Show a simple confirmation toast
-   if G.FUNCS.show_tarot_reward then
-      G.FUNCS.show_tarot_reward({
-         config = { text = (localize and localize("rewinder_all_saves_deleted")) or "All saves deleted" }
-      })
-   end
-end
-

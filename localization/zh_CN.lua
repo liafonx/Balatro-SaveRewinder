@@ -12,12 +12,14 @@ return {
             rewinder_save_on_round_end = '回合结束时存档',
             rewinder_save_on_shop = '在商店中时存档',
             rewinder_show_blind_image = '显示盲注图标（而非回合数字）',            
-            rewinder_animate_blind_image = '盲注图标效果（动画与悬停音效）',            rewinder_debug_saves = '调试：详细日志',
+            rewinder_animate_blind_image = '盲注图标效果（动画与悬停音效）',
+            rewinder_debug_saves = '调试：详细日志',
             rewinder_max_antes_per_run = '每局最多保留的盲注存档数',
             rewinder_delete_all_saves_button = '删除所有存档',
 
             -- Saves UI labels
             rewinder_state_shop = '在商店中',
+            rewinder_state_entering_shop = '进入商店时',  -- 每轮第一个商店存档
             rewinder_state_opening_pack = '在商店中打开补充包时',
             rewinder_state_start_round = '回合开始时',
             rewinder_state_selecting_hand = '操作手牌中',
