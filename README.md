@@ -61,7 +61,7 @@ In the Steamodded config menu for Save Rewinder:
 
 **Display Options:**
 - **Show blind image** — Display blind icons (Small/Big/Boss) instead of round numbers in save list
-- **Blind image effects** — Enable hover animation and sound on blind icons (off by default)
+- **Blind image effects** — Enable hover animation and sound on blind icons (on by default)
 
 **Advanced:**
 - **Limit saves** — Keep only recent antes (1, 2, 4, 6, 8, 16, or All; default: 4)

@@ -66,23 +66,27 @@ local Logger = require("Logger")
 REWINDER._debug_alert = nil
 REWINDER.debug_log = Logger.log  -- Simple log without module name
 
--- Deferred cache initialization - runs after Steamodded is ready
--- Hook into Game.set_render_settings like Blueprint does for asset loading
--- This ensures we initialize after "Steamodded v1.0.0~BETA" log message
+-- Cache initialization during game loading phase
+-- Hook into Game.set_render_settings - runs during loading screen, before main menu
+-- At this point: G.SETTINGS.profile is set (load_profile called before), loading screen visible
+-- We preload ALL metadata synchronously here so no loading happens during gameplay
 REWINDER._cache_initialized = false
 
 local _game_set_render_settings = Game.set_render_settings
 function Game:set_render_settings(...)
    local ret = _game_set_render_settings(self, ...)
    
-   -- Initialize cache once after Steamodded is fully ready
+   -- Initialize and preload all metadata during loading phase
+   -- This blocks briefly but is hidden by loading screen - no UI lag later
    if not REWINDER._cache_initialized then
       REWINDER._cache_initialized = true
       local success, err = pcall(function()
-         if SaveManager and SaveManager.get_save_files then
-            local entries = SaveManager.get_save_files(true)
+         if SaveManager and SaveManager.preload_all_metadata then
+            -- Use preload_all_metadata to load everything synchronously
+            -- This ensures no background loading or lag when user opens save list
+            local entries = SaveManager.preload_all_metadata(true)
             local count = entries and #entries or 0
-            REWINDER.debug_log("step", "Initialized with " .. count .. " save(s)")
+            REWINDER.debug_log("step", "Preloaded " .. count .. " save(s)")
          end
       end)
       if not success then

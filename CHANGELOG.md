@@ -2,17 +2,44 @@
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.4.1] - 2025-12-31
+
+### Changed
+- Preload all save metadata during game loading screen (no lazy loading)
+- Eliminates any UI lag when first opening save list
+- Increased default metadata chunk size from 8 to 16
+
+### Technical
+- Changed from `get_save_files()` to `preload_all_metadata()` at startup
+- All `.meta` files now loaded synchronously during loading phase
+- No background metadata loading needed after boot
+
+## [1.4.0] - 2025-12-29
+
+### Added
+- **Blind icons in save list** — Shows the blind image (Small/Big/Boss) instead of round number (enabled by default)
+- **Hover effects on blind icons** — Animation and sound when hovering (enabled by default)
+- Reorganized config UI with two-column layout and section headers
+- Screenshots added to README
+
+### Changed
+- Config setting "Debug: show save notifications" renamed to "Debug: verbose logging"
+- "Return" button in save list now returns directly to game instead of options menu
+- Improved shadow rendering on blind sprites (matches UnBlind mod style)
+- Deferred cache initialization to run after Steamodded is ready
+
+### Fixed
+- Fixed arrow indicator positioning on current save entry
+- Reduced verbose logging during normal operation
+
 ## [1.3.1] - 2025-12-28
 
 ### Added
 - Orange "Saves" button in the pause menu for better visibility
 - In-game mod icon (visible in Steamodded mod list)
-- **Blind icons in save list** — Shows the blind image (Small/Big/Boss) instead of round number
-- **Hover effects on blind icons** — Animation and sound when hovering (optional, disabled by default)
-- Reorganized config UI with two-column layout and section headers
 
 ### Changed
-- Config setting "Debug: show save notifications" renamed to "Debug: verbose logging"
+- Updated installation instructions to mention the orange Saves button
 
 ## [1.3.0] - 2025-12-25
 

@@ -647,7 +647,7 @@ function G.UIDEF.rewinder_saves()
    REWINDER._saves_ui_refs.cycle_config = cycle_config
 
    return create_UIBox_generic_options({
-      back_func = "options",
+      back_func = "exit_overlay_menu",
       minw = SAVE_ENTRY_W,
       back_id = "rewinder_back",
       contents = {

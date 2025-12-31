@@ -387,36 +387,65 @@ Controlled by `config.debug_saves` toggle in mod settings (labeled "Debug: verbo
 
 ## 10. Initialization Flow
 
-### Blueprint Pattern (Immediate Init)
+### Game Loading Sequence
 
-The mod uses immediate initialization at require-time (similar to Blueprint mod):
+```
+Game:start_up()
+    ├── Settings load
+    ├── Window init
+    ├── Sound manager
+    ├── Controller setup
+    ├── load_profile()           ← G.SETTINGS.profile ready
+    │
+    ├── set_render_settings()    ← OUR HOOK (Cache Init)
+    │   └── preload_all_metadata()  ← Load ALL .meta files
+    │
+    ├── set_language()
+    ├── init_item_prototypes()
+    ├── Shared sprites
+    └── Loading screen ends → Main menu appears
+```
+
+### Cache Initialization (During Loading Screen)
+
+The mod hooks `Game:set_render_settings` to initialize during the loading phase:
 
 ```lua
 -- Core/Init.lua
-if not REWINDER._initialized then
-    REWINDER._initialized = true
-    
-    -- Load modules immediately (runs when file is required)
-    REWINDER.SaveManager = require("SaveManager")
-    -- etc.
-    
-    -- Cache initialization runs during game load, before Continue button
-    SaveManager.initialize_cache()
+local _game_set_render_settings = Game.set_render_settings
+function Game:set_render_settings(...)
+   local ret = _game_set_render_settings(self, ...)
+   
+   if not REWINDER._cache_initialized then
+      REWINDER._cache_initialized = true
+      -- Preload ALL metadata synchronously
+      SaveManager.preload_all_metadata(true)
+   end
+   
+   return ret
 end
 ```
 
-**Benefits:**
-- No lag spike when player clicks Continue
-- Smoother UX as saves are pre-loaded during initial game loading
-- Avoids lazy initialization patterns that cause visible delays
+**Why `set_render_settings`?**
+- Runs **after** `load_profile()` — profile directory is set
+- Runs **during** loading screen — blocking is invisible to user
+- Runs **before** main menu — no UI lag during gameplay
 
-### Cache Initialization
+**Why `preload_all_metadata` (not `get_save_files`)?**
+- Loads ALL `.meta` files synchronously (not just first 16)
+- No background loading needed later
+- First save list open is instant — everything pre-cached
 
-`SaveManager.initialize_cache()`:
+### preload_all_metadata Flow
+
+`SaveManager.preload_all_metadata(true)`:
 1. Lists all `.jkr` files in save directory
-2. For each file, reads `.meta` or unpacks `.jkr` for metadata
-3. Builds sorted cache array (newest first)
-4. Runs once at mod load time
+2. Creates entry arrays with filename/ante/round/modtime
+3. Sorts by modtime (newest first)
+4. Loads ALL `.meta` files synchronously (or unpacks `.jkr` if missing)
+5. Runs action type detection for play/discard labels
+6. Updates current file highlighting flags
+7. Rebuilds file index for O(1) lookup
 
 ---
 
@@ -473,3 +502,38 @@ shadow_height = 0.05
 
 ### Note: Duplicate Logging
 When extracting `blind_key` from save data, use `log.detail()` instead of `log.info()` to avoid verbose output during normal operation.
+
+---
+
+## 13. SaveManager.lua Refactoring (v1.4.1)
+
+Refactored from **966 lines to ~500 lines** (48% reduction).
+
+### Changes Made
+
+1. **Removed duplicate constant declarations** — Used `local E = EntryConstants` alias instead of duplicating all 14 constants as both `M.ENTRY_*` and `local ENTRY_*`.
+
+2. **Removed `_schedule_meta_load` background loader** (~60 lines) — No longer needed since `preload_all_metadata()` runs synchronously at boot during loading screen.
+
+3. **Unified `get_save_files` and `preload_all_metadata`** — They now share implementation; `preload_all_metadata` simply calls `get_save_files(force, true)`.
+
+4. **Removed redundant fallback in `start_from_file`** (~20 lines) — The `get_compressed`/`STR_UNPACK` path was redundant; now uses `M.load_save_file(file)` directly.
+
+5. **Removed pcall wrappers** (~15 lines) — Game API calls (`G:start_run`, `G:delete_run`) rarely fail; errors are caught at higher levels.
+
+6. **Simplified config filter checks** (~25 lines) — Replaced 4 repetitive if-blocks with data-driven `_should_save_state()` lookup table.
+
+7. **Simplified `describe_save`** (~20 lines) — Extracted `_sig_from_entry()` helper to eliminate duplicate code.
+
+8. **Simplified `revert_to_previous_save`** (~30 lines) — Removed redundant fallback index logic, now uses `M.get_index_by_file()`.
+
+9. **Removed verbose per-field comments** (~100 lines) — Entry arrays now use single-line construction.
+
+10. **Removed unused `timing_enabled` scaffolding** (~10 lines) — Was always `false`.
+
+### Key Structural Changes
+
+- `local E = EntryConstants` — Single alias for all entry constants
+- `_sig_from_entry(e)` — Helper to build signature table from cache entry
+- `_should_save_state(state, config)` — Data-driven config filter lookup
+- `get_save_files(force_reload, sync)` — Optional `sync` parameter for full synchronous load
