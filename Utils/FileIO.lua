@@ -90,6 +90,9 @@ end
 function M.write_save_file(run_data, full_path, opts)
     opts = opts or {}
 
+    -- Note: Amulet/Talisman OmegaNum compatibility is handled by their STR_PACK/STR_UNPACK overrides
+    -- We don't need to call sanitize - it corrupts the data
+
     local ok_pack, packed_or_err = pcall(STR_PACK, run_data)
     if not ok_pack then
         return false, "pack:" .. tostring(packed_or_err)

@@ -45,5 +45,4 @@ docs/NEXUSMODS_DESCRIPTION.txt
 *.tmp
 assets/icon_single_border.ai
 icon_single_border.ai
-docs/ISSUE_SHOP_TEARING.md
 Utils/G.STATES.lua

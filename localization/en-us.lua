@@ -18,7 +18,7 @@ return {
             rewinder_delete_all_saves_button = 'Delete all saves',
 
             -- Saves UI labels
-            rewinder_state_shop = 'In shop',
+            rewinder_state_shop = 'Reroll shop',
             rewinder_state_entering_shop = 'Entering shop',  -- First shop save in each blind
             rewinder_state_opening_pack = 'Opening pack in shop',
             rewinder_state_start_round = 'Start of round',

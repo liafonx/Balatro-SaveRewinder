@@ -32,17 +32,21 @@ for i, key in ipairs(ENTRY_KEYS) do
    M["ENTRY_" .. key] = i
 end
 
--- Internal alias 'E' for SaveManager code
-local E = {}
-for i, key in ipairs(ENTRY_KEYS) do
-   E["ENTRY_" .. key] = i
-end
+-- Internal alias 'E' uses local constants (same indices, avoids table lookup overhead)
+local E = {
+   ENTRY_FILE = ENTRY_FILE, ENTRY_ANTE = ENTRY_ANTE, ENTRY_ROUND = ENTRY_ROUND, ENTRY_INDEX = ENTRY_INDEX,
+   ENTRY_MONEY = ENTRY_MONEY, ENTRY_SIGNATURE = ENTRY_SIGNATURE, ENTRY_DISCARDS_USED = ENTRY_DISCARDS_USED,
+   ENTRY_HANDS_PLAYED = ENTRY_HANDS_PLAYED, ENTRY_IS_CURRENT = ENTRY_IS_CURRENT, ENTRY_BLIND_IDX = ENTRY_BLIND_IDX,
+   ENTRY_DISPLAY_TYPE = ENTRY_DISPLAY_TYPE, ENTRY_ORDINAL = ENTRY_ORDINAL,
+   -- Also expose ante/round without prefix for fallback code
+   ANTE = ENTRY_ANTE, ROUND = ENTRY_ROUND,
+}
 
 M.PATHS = { SAVES = "SaveRewinder" }
 M.debug_log = Logger.create("SaveManager")
 
 -- Blind key <-> index mapping for compact storage (string "bl_small" -> number 1)
--- Index 0 reserved for unknown blinds
+-- Index 0 is bl_undiscovered (for choose_blind state)
 local BLIND_KEYS = {
    "bl_small", "bl_big", "bl_ox", "bl_hook", "bl_mouth", "bl_fish",
    "bl_club", "bl_manacle", "bl_tooth", "bl_wall", "bl_house", "bl_mark",
@@ -52,7 +56,9 @@ local BLIND_KEYS = {
 }
 
 -- Build reverse lookup (key -> index)
-local BLIND_KEY_TO_INDEX = {}
+local BLIND_KEY_TO_INDEX = {
+   bl_undiscovered = 0,  -- Special index for undiscovered blind
+}
 for i, key in ipairs(BLIND_KEYS) do
    BLIND_KEY_TO_INDEX[key] = i
 end
@@ -65,13 +71,13 @@ end
 
 -- Convert index back to blind_key (nil if unknown)
 function M.index_to_blind_key(index)
-   if not index or index == 0 then return nil end
+   if not index then return nil end
+   if index == 0 then return "bl_undiscovered" end
    return BLIND_KEYS[index]
 end
 
 -- Internal state
 local save_cache, save_cache_by_file, save_index_by_file = nil, nil, nil
-local _last_loaded_file_ref = { nil }
 
 M._last_loaded_file = nil
 M._pending_skip_reason = nil
@@ -95,6 +101,7 @@ local ordinal_state = {
    last_display_type = nil, -- Last saved display_type (to detect first_shop)
    last_discards_used = 0,  -- For O(1) play/discard detection
    last_hands_played = 0,   -- For O(1) play/discard detection
+   last_round = nil,        -- Last saved round (to detect post-boss shop)
    counters = {             -- Per-type ordinal counters (only types with show_ordinal=true)
       S = 0,                -- Shop
       O = 0,                -- Opening pack
@@ -103,7 +110,9 @@ local ordinal_state = {
       H = 0,                -- Selecting hand (unknown)
       B = 0,                -- Choose blind
       ["?"] = 0,            -- Unknown/other
-   }
+   },
+   -- Boss tracking: blind_idx of defeated boss (nil = not in post-boss phase)
+   defeated_boss_idx = nil,
 }
 
 -- Reset ordinal counters for new blind (or new run)
@@ -113,56 +122,30 @@ local function _reset_ordinal_state(ante, blind_key)
    ordinal_state.last_display_type = nil
    ordinal_state.last_discards_used = 0
    ordinal_state.last_hands_played = 0
+   ordinal_state.last_round = nil
    ordinal_state.counters = { S = 0, O = 0, P = 0, D = 0, H = 0, B = 0, ["?"] = 0 }
+   -- Don't reset defeated_boss_idx here - it persists across blind changes within the shop phase
 end
 
 -- Export for GamePatches to reset on new run
 function M.reset_ordinal_state()
    _reset_ordinal_state(nil, nil)
+   ordinal_state.defeated_boss_idx = nil
 end
 
 -- ============================================================================
--- Cache Manager (inlined from CacheManager.lua)
+-- Cache Manager
 -- ============================================================================
 
--- Helper to update cache flags for a specific file
-local function _set_cache_current_file_impl(file)
-   if not save_cache or not file then return end
-   local count = 0
-   for _, entry in ipairs(save_cache) do
-      if entry and entry[ENTRY_FILE] then
-         entry[ENTRY_IS_CURRENT] = (entry[ENTRY_FILE] == file)
-         if entry[ENTRY_IS_CURRENT] then count = count + 1 end
-      end
-   end
-   _last_loaded_file_ref[1] = file
-   M.debug_log("cache", string.format("_set_current: file=%s, marked=%d", file, count))
-end
--- Updates the is_current flag in cache entries based on current file
-local function _update_cache_current_flags_impl()
+-- Update is_current flag in all cache entries for given file
+local function _update_cache_current_flags()
    if not save_cache then return end
-   local current_file = nil
-
-   -- Priority 1: _last_loaded_file (most reliable)
-   if _last_loaded_file_ref[1] then
-      current_file = _last_loaded_file_ref[1]
-   else
-      -- Priority 2: G.SAVED_GAME._file
-      if G and G.SAVED_GAME and G.SAVED_GAME._file then
-         current_file = G.SAVED_GAME._file
-         _last_loaded_file_ref[1] = current_file
-      end
-   end
-
-   local marked_count = 0
+   local current_file = M._last_loaded_file or (G and G.SAVED_GAME and G.SAVED_GAME._file)
    for _, entry in ipairs(save_cache) do
-      if entry and entry[ENTRY_FILE] then
+      if entry then
          entry[ENTRY_IS_CURRENT] = (current_file and entry[ENTRY_FILE] == current_file) or false
-         if entry[ENTRY_IS_CURRENT] then marked_count = marked_count + 1 end
       end
    end
-
-   M.debug_log("cache", string.format("_update_flags: current=%s, marked=%d", current_file or "nil", marked_count))
 end
 
 -- ============================================================================
@@ -315,11 +298,41 @@ function M.get_save_meta(entry)
    local is_start_round = (st and sig.state == st.SELECTING_HAND and
                            sig.hands_played == 0 and sig.discards_used == 0)
    local display_type = M.compute_display_type(sig.state, nil, sig.is_opening_pack, false, is_start_round)
+   
+   -- Compute display blind_idx (fallback for saves without meta)
+   local actual_blind_idx = M.blind_key_to_index(sig.blind_key)
+   local blind_idx = 0
+   local entry_index = entry[E.ENTRY_INDEX]  -- Timestamp of this save
+   
+   if display_type == "B" then
+      -- Choose blind: show undiscovered
+      blind_idx = 0
+   elseif (display_type == "F" or display_type == "S" or display_type == "O") then
+      -- Shop states: check if there's a boss defeat (round 3) before this save
+      -- in the same ante (meaning we're in post-boss shop)
+      local found_boss_idx = nil
+      if save_cache then
+         for _, e in ipairs(save_cache) do
+            -- Find boss blind (round 3) in same ante that happened BEFORE this save
+            if e[E.ANTE] == sig.ante and e[E.ROUND] == 3 and e[E.ENTRY_INDEX] < entry_index then
+               if e[E.ENTRY_BLIND_IDX] and e[E.ENTRY_BLIND_IDX] > 0 then
+                  found_boss_idx = e[E.ENTRY_BLIND_IDX]
+                  break
+               end
+            end
+         end
+      end
+      blind_idx = found_boss_idx or actual_blind_idx
+   else
+      -- Other states: use actual blind
+      blind_idx = actual_blind_idx
+   end
+   
    entry[E.ENTRY_MONEY] = sig.money
    entry[E.ENTRY_SIGNATURE] = sig.signature
    entry[E.ENTRY_DISCARDS_USED] = sig.discards_used
    entry[E.ENTRY_HANDS_PLAYED] = sig.hands_played
-   entry[E.ENTRY_BLIND_IDX] = M.blind_key_to_index(sig.blind_key)
+   entry[E.ENTRY_BLIND_IDX] = blind_idx
    entry[E.ENTRY_DISPLAY_TYPE] = display_type
    entry[E.ENTRY_ORDINAL] = 1 -- Default ordinal for fallback entries
 
@@ -329,7 +342,7 @@ function M.get_save_meta(entry)
       signature = sig.signature,
       discards_used = sig.discards_used,
       hands_played = sig.hands_played,
-      blind_idx = M.blind_key_to_index(sig.blind_key),
+      blind_idx = blind_idx,
       display_type = display_type,
       ordinal = 1,
    })
@@ -365,21 +378,14 @@ end
 
 
 function M._set_cache_current_file(file)
-   _last_loaded_file_ref[1] = file
    M._last_loaded_file = file
-   _set_cache_current_file_impl(file)
-end
-
-function M._update_cache_current_flags()
-   _last_loaded_file_ref[1] = M._last_loaded_file
-   _update_cache_current_flags_impl()
-   M._last_loaded_file = _last_loaded_file_ref[1]
+   _update_cache_current_flags()
 end
 
 -- Returns sorted list of saves. Use sync=true to load all metadata synchronously.
-function M.get_save_files(force_reload, sync)
+function M.get_save_files(force_reload)
    if save_cache and not force_reload then
-      M._update_cache_current_flags()
+      _update_cache_current_flags()
       if not save_cache_by_file then _rebuild_file_index() end
       return save_cache
    end
@@ -392,13 +398,12 @@ function M.get_save_files(force_reload, sync)
       end
    end
 
-   M._update_cache_current_flags()
+   _update_cache_current_flags()
    return save_cache
 end
 
-function M.preload_all_metadata(force_reload)
-   return M.get_save_files(force_reload, true)
-end
+-- Alias for backward compatibility
+M.preload_all_metadata = M.get_save_files
 
 -- Display type to label mapping for describe_save
 local DISPLAY_TYPE_TO_LABEL = {
@@ -509,8 +514,19 @@ function M.load_and_start_from_file(file, opts)
       if dtype and ordinal_state.counters[dtype] then
          ordinal_state.counters[dtype] = entry[E.ENTRY_ORDINAL] or 1
       end
+      
+      -- Restore boss tracking for shop saves
+      -- If loading a shop save (F/S/O) with a boss blind_idx (>2), assume it's post-boss
+      if (dtype == "F" or dtype == "S" or dtype == "O") and entry[E.ENTRY_BLIND_IDX] and entry[E.ENTRY_BLIND_IDX] > 2 then
+         ordinal_state.defeated_boss_idx = entry[E.ENTRY_BLIND_IDX]
+         ordinal_state.last_round = 3  -- Assume post-boss shop was after round 3
+      else
+         ordinal_state.defeated_boss_idx = nil
+         ordinal_state.last_round = nil
+      end
    else
       _reset_ordinal_state(nil, nil)
+      ordinal_state.defeated_boss_idx = nil
    end
    if mark_restore then
       M.debug_log("restore", "Loading " .. M.describe_save({ file = file }))
@@ -548,7 +564,6 @@ function M.mark_loaded_state(run_data, opts)
    M._restore_active = (M._pending_skip_reason == "restore")
    if opts.last_loaded_file and not M._last_loaded_file then
       M._last_loaded_file = opts.last_loaded_file
-      _last_loaded_file_ref[1] = opts.last_loaded_file
    end
 
    M._loaded_meta = StateSignature.get_signature(run_data)
@@ -633,7 +648,9 @@ function M.create_save(run_data)
 
    -- Check if we need to reset ordinal state (new blind or new ante)
    local blind_key = sig.blind_key or "unknown"
-   if ordinal_state.ante ~= sig.ante or ordinal_state.blind_key ~= blind_key then
+   local ante_changed = ordinal_state.ante ~= sig.ante
+   local blind_changed = ordinal_state.blind_key ~= blind_key
+   if ante_changed or blind_changed then
       _reset_ordinal_state(sig.ante, blind_key)
    end
    -- O(1) action type detection using ordinal_state
@@ -663,6 +680,12 @@ function M.create_save(run_data)
 
    local display_type = M.compute_display_type(sig.state, action_type, sig.is_opening_pack, is_first_shop, is_start_round)
 
+   -- Bug fix: Reset B counter when entering choose blind from non-B state
+   -- This handles cases where blind_key didn't change but we're starting a new choose blind phase
+   if display_type == "B" and ordinal_state.last_display_type ~= "B" then
+      ordinal_state.counters["B"] = 0
+   end
+
    -- Compute ordinal using O(1) counter approach
    local ordinal = 1
    if ordinal_state.counters[display_type] then
@@ -675,7 +698,43 @@ function M.create_save(run_data)
 
    -- 12-field entry: file, ante, round, index, money, signature,
    --                 discards_used, hands_played, is_current, blind_idx, display_type, ordinal
-   local blind_idx = M.blind_key_to_index(sig.blind_key)
+   
+   -- Get the actual blind_idx for current state
+   local actual_blind_idx = M.blind_key_to_index(sig.blind_key)
+   
+   -- Track boss defeat: when end of round (E) for a boss round
+   -- A round is "boss round" if round==3 OR the blind is a boss (idx > 2)
+   -- Track the round for later detection of post-boss shop
+   if display_type == "E" then
+      ordinal_state.last_round = sig.round
+      -- Set defeated_boss_idx if this looks like a boss round
+      if sig.round == 3 or actual_blind_idx > 2 then
+         -- Use actual_blind_idx if it's a boss, otherwise try to preserve existing
+         ordinal_state.defeated_boss_idx = (actual_blind_idx > 2) and actual_blind_idx or ordinal_state.defeated_boss_idx
+      end
+   end
+   
+   -- Reset boss tracking when entering choose blind screen
+   if display_type == "B" then
+      ordinal_state.defeated_boss_idx = nil
+      ordinal_state.last_round = nil
+   end
+   
+   -- Compute which blind icon to display (determined at save time, not display time)
+   -- B=undiscovered(0), shop after boss=defeated boss, else=actual blind
+   -- For shop states: use defeated_boss_idx if set, or if we just finished round 3, use actual if boss
+   local is_shop_state = display_type == "F" or display_type == "S" or display_type == "O"
+   local blind_idx = 0
+   if display_type == "B" then
+      blind_idx = 0  -- Undiscovered
+   elseif is_shop_state and ordinal_state.defeated_boss_idx then
+      blind_idx = ordinal_state.defeated_boss_idx  -- Use tracked boss
+   elseif is_shop_state and ordinal_state.last_round == 3 and actual_blind_idx > 2 then
+      blind_idx = actual_blind_idx  -- Fallback: use current if it's a boss
+   else
+      blind_idx = actual_blind_idx  -- Default: use current blind
+   end
+   
    local new_entry = {
       filename, sig.ante, sig.round, unique_id,
       sig.money, sig.signature, sig.discards_used, sig.hands_played,
@@ -693,7 +752,7 @@ function M.create_save(run_data)
       signature = sig.signature,
       discards_used = sig.discards_used,
       hands_played = sig.hands_played,
-      blind_idx = M.blind_key_to_index(sig.blind_key),
+      blind_idx = blind_idx,  -- Use display blind_idx (may be defeated boss)
       display_type = display_type,
       ordinal = ordinal,
    })
@@ -713,6 +772,7 @@ function M.create_save(run_data)
       is_opening_pack = sig.is_opening_pack or false,
       money = sig.money,
    }))
+   
    Pruning.apply_retention_policy(dir, save_cache, E)
    _rebuild_file_index()
 end

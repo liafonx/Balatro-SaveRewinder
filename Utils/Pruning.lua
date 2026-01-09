@@ -92,8 +92,7 @@ function M.prune_future_saves(save_dir, pending_future_prune, save_cache, entry_
     end
     
     -- Clear the pending list (tables are passed by reference in Lua)
-    for i = #pending_future_prune, 1, -1 do
-        table.remove(pending_future_prune, i)
-    end
+    -- Use wipe pattern: faster than repeated table.remove
+    for k in pairs(pending_future_prune) do pending_future_prune[k] = nil end
 end
 return M

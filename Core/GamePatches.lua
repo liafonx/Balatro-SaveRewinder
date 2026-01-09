@@ -132,7 +132,9 @@ function Game:start_run(args)
          end
       end
    end
+
    REWINDER._start_run(self, args)
+
    -- Call the REWINDER.hook_key_hold defined in this file.
    REWINDER.hook_key_hold()
 end
@@ -156,6 +158,7 @@ function REWINDER.defer_save_creation()
          G.E_MANAGER:add_event(Event({
             trigger = 'after',
             delay = 0,
+            blockable = false,  -- Don't block shop animation events
             func = function()
                -- require here since this runs in a new context
                require("SaveManager").create_save(run_data_copy)

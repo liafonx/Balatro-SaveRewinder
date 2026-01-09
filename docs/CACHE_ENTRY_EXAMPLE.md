@@ -66,11 +66,34 @@ ordinal=2
 1. O(1) action detection via `ordinal_state`
 2. O(1) first_shop detection via `last_display_type`
 3. `compute_display_type()` → single-char code
-4. `counters[display_type]++` → ordinal
-5. 12-element array constructed with blind_idx (number)
-6. `.meta` file written
+4. Reset B counter if entering choose blind from non-B state
+5. `counters[display_type]++` → ordinal
+6. Boss tracking: set `defeated_boss_idx` on E saves for boss rounds (round 3 or blind_idx > 2)
+7. Compute `blind_idx`: B→0 (undiscovered), shop after boss→defeated_boss_idx, else→actual
+8. 12-element array constructed with blind_idx (number)
+9. `.meta` file written
 
 ### Loaded (`get_save_meta`)
 1. Parse filename → file, ante, round, index
 2. Read `.meta` → remaining 8 fields
 3. Fallback: decode `.jkr` if no valid meta
+
+## ordinal_state Structure
+
+```lua
+ordinal_state = {
+   ante = nil,              -- Current ante
+   blind_key = nil,         -- Current blind (e.g., "bl_small")
+   last_display_type = nil, -- For first_shop and B-counter reset detection
+   last_discards_used = 0,  -- For play/discard detection
+   last_hands_played = 0,   -- For play/discard detection
+   last_round = nil,        -- For post-boss shop detection
+   counters = { S=0, O=0, P=0, D=0, H=0, B=0, ["?"]=0 },  -- Per-type ordinals
+   defeated_boss_idx = nil, -- Boss blind index after defeat (nil = not in post-boss phase)
+}
+```
+
+### Boss Tracking Logic
+- **Set**: On E save when `sig.round == 3` or `actual_blind_idx > 2`
+- **Reset**: On B save (entering choose blind)
+- **Used by**: Shop saves (F/S/O) to show defeated boss icon instead of next blind

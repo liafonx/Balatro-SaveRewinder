@@ -2,19 +2,29 @@
 
 All notable changes to Save Rewinder will be documented in this file.
 
-## [1.4.1] - 2025-12-31
+## [1.4.5] - 2026-01-09
 
-### Changed
-- Preload all save metadata during game loading screen (no lazy loading)
-- Eliminates any UI lag when first opening save list
-- Increased default metadata chunk size from 8 to 16
+### ⚠️ BREAKING CHANGES
 
-### Technical
-- Changed from `get_save_files()` to `preload_all_metadata()` at startup
-- All `.meta` files now loaded synchronously during loading phase
-- No background metadata loading needed after boot
+**Old saves are incompatible with this version. Please delete your save folder before updating.**
+
+### Added
+- **"Reroll shop" label** — Shop saves now labeled more clearly as "Reroll shop" instead of "In shop"
+- **Undiscovered blind icon** — Choose blind saves now shows "?" icon instead of last blind icon
+- **Previous boss blind icon** — After beating a boss, shop saves show the boss you just defeated
+- **Shop indicator** — First shop in each ante shows "$" indicator
+
+### Fixed
+- **Choose blind ordinal** — First "choose blind" save now correctly shows ordinal 1
+
+### Optimized
+- **Faster save list loading** — Save metadata now pre-computed when creating saves
+
+### Improved
+- Cleaner save list display (removed "+>" prefix from some states)
 
 ## [1.4.0] - 2025-12-29
+
 
 ### Added
 - **Blind icons in save list** — Shows the blind image (Small/Big/Boss) instead of round number (enabled by default)

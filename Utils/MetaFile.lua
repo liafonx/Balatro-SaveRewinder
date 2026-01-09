@@ -4,33 +4,33 @@
 local Logger = require("Logger")
 local M = {}
 M.debug_log = Logger.create("MetaFile")
+
+-- Fields that should be parsed as numbers
+local NUMERIC_FIELDS = { money=true, discards_used=true, hands_played=true, ordinal=true, blind_idx=true }
+
 -- Reads metadata from .meta file (fast path)
--- Format: money, signature, discards_used, hands_played, blind_idx, display_type, ordinal
 function M.read_meta_file(meta_path)
     local info = love.filesystem.getInfo(meta_path)
     if not info or info.type ~= "file" then return nil end
     
     local data = love.filesystem.read(meta_path)
     if not data then return nil end
+    
     local meta = {}
     for line in data:gmatch("([^\n]+)") do
         local key, value = line:match("^([^=]+)=(.+)$")
         if key and value then
-            if key == "money" or key == "discards_used" or key == "hands_played" or key == "ordinal" or key == "blind_idx" then
+            if NUMERIC_FIELDS[key] then
                 meta[key] = tonumber(value)
             elseif key == "display_type" then
-                meta[key] = (value ~= "") and value or nil
+                meta[key] = value ~= "" and value or nil
             elseif key == "signature" then
                 meta[key] = value
             end
         end
     end
     
-    -- Validate we have essential field
-    if meta.signature and meta.display_type then
-        return meta
-    end
-    return nil
+    return (meta.signature and meta.display_type) and meta or nil
 end
 
 -- Writes metadata to .meta file (fast path for future reads)

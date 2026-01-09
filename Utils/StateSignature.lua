@@ -149,14 +149,9 @@ function M.is_shop_signature(sig)
    return state and G and G.STATES and G.STATES.SHOP and state == G.STATES.SHOP
 end
 -- Check if save data has a pending ACTION (e.g., opening a booster pack)
--- ACTION is stored as run_data.ACTION = { ... } when there's a pending action
 function M.has_action(run_data)
-   if not run_data then return false end
-   local action = run_data.ACTION
-   if action and type(action) == "table" and next(action) then
-      return true
-   end
-   return false
+   local action = run_data and run_data.ACTION
+   return action and type(action) == "table" and next(action) ~= nil
 end
 
 return M

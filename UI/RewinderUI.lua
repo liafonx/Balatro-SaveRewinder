@@ -102,59 +102,31 @@ end
 function REWINDER.clear_blind_cache()
    blind_config_cache = {}
 end
--- Create a blind sprite that looks like UnBlind (with shade/border)
--- Uses AnimatedSprite with dissolve shader for the shadow effect, but doesn't animate
--- Returns a sprite object suitable for UI display
--- Note: Sprites cannot be reused across UI rebuilds, but config lookup is cached
-function REWINDER.create_blind_sprite(blind_key, width, height)
-   local config = get_blind_config_cached(blind_key)
-   if not config then return nil end
+
+-- Setup common sprite properties (shadow, shaders, hover effects)
+local function setup_blind_sprite(sprite)
+   if sprite.parent then sprite:remove() end
    
-   local atlas = G.ANIMATION_ATLAS[config.atlas_key]
-   if not atlas then return nil end
-   
-   -- Use AnimatedSprite like UnBlind for shader support (shadow/shade effect)
-   -- Size 0.45x0.45 to be visible but still fit in entry height
-   local sprite = AnimatedSprite(0, 0, width or 0.45, height or 0.45, atlas, config.pos)
-   
-   -- Calculate shadow parallax based on screen position (like game does)
-   -- This makes shadow offset vary based on horizontal position
-   -- For consistent appearance, we set a fixed offset similar to right-side sprites
    sprite.shadow_parrallax = {x = 1.5, y = -0.5}
-   
-   -- Apply dissolve shader with shadow for UnBlind-like appearance
-   -- shadow_height 0.05 matches UnBlind
    sprite:define_draw_steps({
       {shader = 'dissolve', shadow_height = 0.05},
       {shader = 'dissolve'}
    })
-   
-   -- Check if effects (animation + hover sound) are enabled
-   local effects_enabled = REWINDER.config and REWINDER.config.animate_blind_image
-   
-   -- Stop animation by setting to single frame (prevents cycling through frames)
-   -- Only stop if effects are disabled in config
-   if not effects_enabled then
-      sprite.animation.frames = 1
-      sprite.current_animation.frames = 1
-   end
-   
    sprite.states.drag.can = false
    
-   -- Enable hover effects (sound + juice) when effects are enabled
+   local effects_enabled = REWINDER.config and REWINDER.config.animate_blind_image
    if effects_enabled then
       sprite.float = true
       sprite.states.hover.can = true
       sprite.states.collide.can = true
       sprite.hover = function()
-         if not G.CONTROLLER.dragging.target or G.CONTROLLER.using_touch then
-            if not sprite.hovering and sprite.states.visible then
-               sprite.hovering = true
-               sprite.hover_tilt = 3
-               sprite:juice_up(0.05, 0.02)
-               play_sound('chips1', math.random()*0.1 + 0.55, 0.12)
-               Node.hover(sprite)
-            end
+         if (not G.CONTROLLER.dragging.target or G.CONTROLLER.using_touch) and
+            not sprite.hovering and sprite.states.visible then
+            sprite.hovering = true
+            sprite.hover_tilt = 3
+            sprite:juice_up(0.05, 0.02)
+            play_sound('chips1', math.random()*0.1 + 0.55, 0.12)
+            Node.hover(sprite)
          end
       end
       sprite.stop_hover = function()
@@ -163,11 +135,33 @@ function REWINDER.create_blind_sprite(blind_key, width, height)
          Node.stop_hover(sprite)
       end
    else
+      sprite.animation.frames = 1
+      sprite.current_animation.frames = 1
       sprite.states.hover.can = false
       sprite.states.collide.can = false
    end
-   
    return sprite
+end
+
+-- Create a blind sprite with UnBlind-like appearance (shadow/shader effects)
+function REWINDER.create_blind_sprite(blind_key, width, height)
+   local w, h = width or 0.45, height or 0.45
+   
+   -- Undiscovered blind uses G.b_undiscovered
+   if blind_key == "bl_undiscovered" then
+      if not G or not G.b_undiscovered or not G.ANIMATION_ATLAS or not G.ANIMATION_ATLAS['blind_chips'] then
+         return nil
+      end
+      return setup_blind_sprite(AnimatedSprite(0, 0, w, h, G.ANIMATION_ATLAS['blind_chips'], G.b_undiscovered.pos))
+   end
+   
+   -- Regular blinds from G.P_BLINDS
+   local config = get_blind_config_cached(blind_key)
+   if not config then return nil end
+   local atlas = G.ANIMATION_ATLAS[config.atlas_key]
+   if not atlas then return nil end
+   
+   return setup_blind_sprite(AnimatedSprite(0, 0, w, h, atlas, config.pos))
 end
 
 -- Get dot color based on round number (odd/even)
@@ -188,9 +182,9 @@ end
 -- Format: { loc_key, has_prefix, show_ordinal }
 local DISPLAY_TYPE_LABELS = {
    S = { "rewinder_state_shop", false, true },           -- Shop
-   F = { "rewinder_state_entering_shop", true, false },  -- First shop (entering)
+   F = { "rewinder_state_entering_shop", false, false },  -- First shop (entering)
    O = { "rewinder_state_opening_pack", false, true },   -- Opening pack
-   R = { "rewinder_state_start_round", true, false },    -- Start of round (highlighted like entering shop)
+   R = { "rewinder_state_start_round", false, false },    -- Start of round (highlighted like entering shop)
    P = { "rewinder_state_selecting_hand_play", false, true },    -- Selecting hand (play)
    D = { "rewinder_state_selecting_hand_discard", false, true }, -- Selecting hand (discard)
    H = { "rewinder_state_selecting_hand", false, true }, -- Selecting hand (unknown)
@@ -283,9 +277,10 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
    -- Add separator or blind image between ante and state
    if ante_text ~= "" then
          if show_blind_image and entry[REWINDER.ENTRY_BLIND_IDX] then
-         -- Show blind image instead of round number (convert idx to key)
+         -- Blind icon is determined at save time, just display it
          local blind_key = REWINDER._SaveManager and REWINDER._SaveManager.index_to_blind_key(entry[REWINDER.ENTRY_BLIND_IDX])
          local blind_sprite = blind_key and REWINDER.create_blind_sprite(blind_key)
+         
          if blind_sprite then
             -- Check if effects are enabled for hover
             local effects_enabled = REWINDER.config and REWINDER.config.animate_blind_image
@@ -299,18 +294,19 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
                n = G.UIT.C,
                config = {
                   align = "cm",
-                  padding = 0,  -- No extra padding (avoid vertical spacing)
+                  padding = 0,
                },
                nodes = {
                   {
                      n = G.UIT.O,
                      config = {
                         object = blind_sprite,
-                        focus_with_object = effects_enabled,  -- Enable focus for hover events
+                        focus_with_object = effects_enabled,
                      },
                   },
                },
             })
+            
             table.insert(text_nodes, {
                n = G.UIT.C,
                config = { minw = h_spacing },  -- Right spacer
@@ -357,6 +353,20 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
             },
          })
       end
+   end
+   
+   -- Add "$" indicator for "entering shop" (display_type "F")
+   -- Note: Stickers atlas can't be used - it contains card-sized overlays with tiny icons in corners
+   if display_type == "F" then
+      local dollar_colour = is_current and G.C.WHITE or (G.C.GOLD or {0.9, 0.7, 0.2, 1})
+      table.insert(text_nodes, {
+         n = G.UIT.T,
+         config = {
+            text = "$",  -- Trailing space for separation from state text
+            colour = dollar_colour,
+            scale = 0.5,
+         },
+      })
    end
    
    -- Build state and tailing number text
@@ -493,6 +503,7 @@ function REWINDER.get_saves_page(args)
                   table.insert(nodes, REWINDER.build_save_node(entry, is_first_entry, {
             id = "rewinder_save_entry_" .. tostring(global_index),
             snap_to = (entry and entry[REWINDER.ENTRY_IS_CURRENT] == true),
+            entries = entries,  -- Pass entries list for boss blind lookup
          }))
       end
 

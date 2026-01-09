@@ -18,15 +18,15 @@ return {
             rewinder_delete_all_saves_button = '删除所有存档',
 
             -- Saves UI labels
-            rewinder_state_shop = '在商店中',
-            rewinder_state_entering_shop = '进入商店时',  -- 每轮第一个商店存档
-            rewinder_state_opening_pack = '在商店中打开补充包时',
-            rewinder_state_start_round = '回合开始时',
-            rewinder_state_selecting_hand = '操作手牌中',
-            rewinder_state_selecting_hand_play = '操作手牌中（出牌）',
-            rewinder_state_selecting_hand_discard = '操作手牌中（弃牌）',
-            rewinder_state_end_of_round = '回合结束时',
-            rewinder_state_choose_blind = '选择盲注中',
+            rewinder_state_shop = '重掷商店',
+            rewinder_state_entering_shop = '进入商店',  -- 每轮第一个商店存档
+            rewinder_state_opening_pack = '在商店中打开补充包',
+            rewinder_state_start_round = '回合开始',
+            rewinder_state_selecting_hand = '操作手牌',
+            rewinder_state_selecting_hand_play = '操作手牌（出牌）',
+            rewinder_state_selecting_hand_discard = '操作手牌（弃牌）',
+            rewinder_state_end_of_round = '回合结束',
+            rewinder_state_choose_blind = '选择盲注',
             rewinder_state_in_run = '对局进行中',
 
             rewinder_no_saves = '暂无存档',

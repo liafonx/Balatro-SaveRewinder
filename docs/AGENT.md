@@ -41,12 +41,26 @@ UI (RewinderUI, ButtonCallbacks) → SaveManager (entry data, load functions)
 Keybinds → SaveManager (step back, UI toggle)
 ```
 
+### Documentation Files
+
+**IMPORTANT: CHANGELOG is user-facing**
+- `CHANGELOG.md` / `CHANGELOG_zh.md` are for **end users**, not developers
+- Focus on **what users will notice**, not implementation details
+- ✅ Good: "Shop saves now show previous boss blind icon"
+- ❌ Bad: "Refactored blind icon logic from display-time to save-time determination"
+- Skip technical details unless they directly impact user experience
+
+**Other docs:**
+- `README.md` / `README_zh.md`: User-facing project overview
+- `docs/AGENT.md`: This file - AI agent development guide
+- `docs/*.md`: Technical documentation for developers
+
 ### Utils/ — Utilities
 
 | File | Purpose | Key Functions | Used By |
 |------|---------|---------------|---------|
 | `StateSignature.lua` | Game state fingerprinting for duplicate detection | `get_signature`, `encode_signature`, `describe_signature`, `get_label_from_state` | SaveManager, GamePatches |
-| `MetaFile.lua` | Fast `.meta` file read/write (7 fields: money, signature, discards_used, hands_played, blind_idx, display_type, ordinal) | `read_meta_file`, `write_meta_file` | SaveManager |
+| `MetaFile.lua` | Fast `.meta` file read/write (7 fields). Uses `NUMERIC_FIELDS` set for O(1) field type lookup | `read_meta_file`, `write_meta_file` | SaveManager |
 | `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file`, `get_save_dir` | SaveManager |
 | `Pruning.lua` | Retention policy (max antes), future save cleanup on restore | `apply_retention_policy`, `prune_future_saves` | SaveManager |
 | `Logger.lua` | Centralized logging with module-specific tags | `Logger.create(module_name)` → returns logger with `step`, `list`, `error`, `prune`, `restore`, `info`, `detail` methods | All modules |
@@ -126,13 +140,21 @@ ordinal_state = {
    last_display_type = nil, -- For first_shop detection
    last_discards_used = 0,  -- For play/discard detection
    last_hands_played = 0,   -- For play/discard detection
-   counters = { S=0, O=0, P=0, D=0, H=0, B=0, ["?"]=0 }  -- Per-type ordinals
+   last_round = nil,        -- For post-boss shop detection
+   counters = { S=0, O=0, P=0, D=0, H=0, B=0, ["?"]=0 },  -- Per-type ordinals
+   defeated_boss_idx = nil, -- Boss blind index after defeat (nil = not in post-boss phase)
 }
 ```
 
 **Reset triggers:**
-- Ante or blind_key change during gameplay
+- Ante or blind_key change during gameplay → resets counters but preserves `defeated_boss_idx`
+- Entering choose blind (B) → resets `defeated_boss_idx` and `last_round`
 - Save restore → re-initialized from entry's stored values
+
+**Boss tracking:**
+- Set when E save on round 3 or boss blind (index > 2)
+- Used by shop saves (F/S/O) to display defeated boss icon
+- Reset when entering choose blind screen
 
 ### Timeline Pruning (Deferred)
 When loading older save at index 5, saves 1-4 are marked in `pending_future_prune` but **not deleted immediately**. Deletion happens on next `create_save()` call. This allows "undo the undo" if user restarts before making new move.
@@ -152,7 +174,10 @@ After restore, first auto-save often matches restored state. `mark_loaded_state(
    - Check ordinal_state reset (ante/blind change)
    - O(1) action detection (compare discards_used/hands_played)
    - O(1) first_shop detection (check last_display_type)
+   - Reset B counter if entering choose blind from non-B state
    - Compute display_type and ordinal
+   - Boss tracking: set defeated_boss_idx on E saves for boss rounds
+   - Compute blind_idx: B→0, shop after boss→defeated_boss_idx, else→actual
    - Write `.jkr` + `.meta` files
    - Update cache, apply retention policy
 
