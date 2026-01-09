@@ -20,6 +20,9 @@ All notable changes to Save Rewinder will be documented in this file.
 ### Optimized
 - **Faster save list loading** — Save metadata now pre-computed when creating saves
 
+### Changed
+- **Simplified release zip** — Now extracts directly to `Mods/SaveRewinder/` without nested folder
+
 ### Improved
 - Cleaner save list display (removed "+>" prefix from some states)
 

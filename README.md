@@ -28,9 +28,11 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 ### Installation
 
 1. Install [Steamodded](https://github.com/Steamopollys/Steamodded) for Balatro
-2. Download the latest release (`SaveRewinder-[version].zip`) from the [Releases](../../releases) page
-3. Extract and put the `SaveRewinder` folder (NOT SaveRewinder-[version]) into your game's `Mods` folder
+2. Download `SaveRewinder.zip` from the [Releases](../../releases) page
+3. Extract to your game's `Mods` folder (creates `Mods/SaveRewinder/`)
 4. Launch Balatro — you'll see **Save Rewinder** in the mods list
+
+> ⚠️ Make sure `Mods/SaveRewinder/` contains mod files directly (like `main.lua`), not another `SaveRewinder` folder.
 
 ### Controls
 
