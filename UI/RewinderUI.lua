@@ -428,7 +428,7 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
       -- Small gap between arrow and text
       table.insert(padded_text_nodes, {
          n = G.UIT.C,
-         config = { minw = 0.03 },
+         config = { minw = 0.08 },
       })
    else
       -- For normal entries: just left padding
