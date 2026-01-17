@@ -36,12 +36,8 @@ function G.FUNCS.rewinder_save_open(e)
    end
 end
 function G.FUNCS.rewinder_save_jump_to_current(e)
-   REWINDER.debug_log("UI", "jump_to_current: Starting")
    local refs = REWINDER._saves_ui_refs
-   if not refs or not refs.saves_box then
-      REWINDER.debug_log("UI", "jump_to_current: No stored refs")
-      return
-   end
+   if not refs or not refs.saves_box then return end
    
    -- Refresh entries to ensure current flags are up to date
    local entries = REWINDER.get_save_files()
@@ -51,13 +47,11 @@ function G.FUNCS.rewinder_save_jump_to_current(e)
    local idx = REWINDER.find_current_index and REWINDER.find_current_index()
    if idx then
       target_page = math.ceil(idx / per_page)
-      REWINDER.debug_log("UI", string.format("jump_to_current: Found current at index %d, target_page=%d", idx, target_page))
    end
    
    -- Use stored cycle_config or reconstruct it
    local cycle_config = refs.cycle_config
    if not cycle_config then
-      -- Reconstruct cycle_config from stored refs
       cycle_config = {
          options = refs.page_numbers or {},
          current_option = target_page,
@@ -72,7 +66,6 @@ function G.FUNCS.rewinder_save_jump_to_current(e)
       cycle_config.opt_args.ui = refs.saves_box
    end
    
-   REWINDER.debug_log("UI", string.format("jump_to_current: Calling update_page with to_key=%d", target_page))
    G.FUNCS.rewinder_save_update_page({
       cycle_config = cycle_config,
       to_key = target_page,
@@ -125,14 +118,12 @@ function G.FUNCS.rewinder_save_restore(e)
    if not file then return end
    -- Update cache flags immediately when clicking (before loading)
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
-      REWINDER.debug_log("UI", "restore click: " .. file)
       REWINDER._SaveManager._set_cache_current_file(file)
    end
    -- Set pending_index so that start_from_file can use it for timeline consistency
    if REWINDER and REWINDER._SaveManager then
       local idx = REWINDER._SaveManager.get_index_by_file and REWINDER._SaveManager.get_index_by_file(file)
       if idx then
-         -- Use setter or direct module access since scalars are copied by value
          if REWINDER.set_pending_index then
             REWINDER.set_pending_index(idx)
          elseif REWINDER._SaveManager then
@@ -140,23 +131,10 @@ function G.FUNCS.rewinder_save_restore(e)
          end
       end
    end
-   local label = file
-   if REWINDER and REWINDER.describe_save then
-     label = REWINDER.describe_save({ file = file })
-   end
-   if REWINDER and REWINDER.debug_log then
-      REWINDER.debug_log("UI", "restore -> loading " .. label)
-   end
    REWINDER.load_and_start_from_file(file)
 end
 function G.FUNCS.rewinder_save_update_page(args)
-   if not args or not args.cycle_config then
-      REWINDER.debug_log("UI", "update_page: No args or cycle_config")
-      return
-   end
-   
-   REWINDER.debug_log("UI", string.format("update_page: Starting, to_key=%s, current_option before=%s", 
-      tostring(args.to_key), tostring(args.cycle_config.current_option)))
+   if not args or not args.cycle_config then return end
    
    local callback_args = args.cycle_config.opt_args
    local saves_object = callback_args.ui
@@ -173,57 +151,56 @@ function G.FUNCS.rewinder_save_update_page(args)
    })
    saves_wrap.UIBox:recalculate()
    
+   -- Calculate new values once
+   local new_val = args.cycle_config.options and args.cycle_config.options[args.to_key] or nil
+   
+   -- Find the cycle node and DynaText ref_table (what it actually reads from)
+   local cycle_node = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_page_cycle")
+   local cycle_args = nil
+   
+   if cycle_node and cycle_node.children then
+      -- Search for DynaText ref_table (what it reads current_option_val from)
+      local function find_dynatext_ref(nodes)
+         if not nodes then return end
+         for _, child in ipairs(nodes) do
+            if child and child.config and child.config.object then
+               local obj = child.config.object
+               if obj.config and obj.config.string and obj.config.string[1] and
+                  obj.config.string[1].ref_value == "current_option_val" then
+                  cycle_args = obj.config.string[1].ref_table
+                  return
+               end
+            end
+            if child and child.children then
+               find_dynatext_ref(child.children)
+               if cycle_args then return end
+            end
+         end
+      end
+      find_dynatext_ref(cycle_node.children)
+   end
+   
+   -- Update config references (avoid loop if cycle_args == args.cycle_config)
+   if cycle_args and cycle_args ~= args.cycle_config then
+      -- Different references, update both
+      cycle_args.current_option = args.to_key
+      if new_val then cycle_args.current_option_val = new_val end
+   end
+   args.cycle_config.current_option = args.to_key
+   if new_val then args.cycle_config.current_option_val = new_val end
+   
    -- Update stored references
    if REWINDER._saves_ui_refs then
       REWINDER._saves_ui_refs.saves_box = saves_wrap.config.object
       REWINDER._saves_ui_refs.entries = entries
-      -- Update cycle_config reference if it exists
       if REWINDER._saves_ui_refs.cycle_config then
          REWINDER._saves_ui_refs.cycle_config.current_option = args.to_key
-         if args.cycle_config.options and args.cycle_config.options[args.to_key] then
-            REWINDER._saves_ui_refs.cycle_config.current_option_val = args.cycle_config.options[args.to_key]
-         end
+         if new_val then REWINDER._saves_ui_refs.cycle_config.current_option_val = new_val end
       end
    end
    
-   -- Update cycle config - this is what makes the cycle display update
-   local old_option = args.cycle_config.current_option
-   args.cycle_config.current_option = args.to_key
-   if args.cycle_config.options and args.cycle_config.options[args.to_key] then
-      args.cycle_config.current_option_val = args.cycle_config.options[args.to_key]
-      REWINDER.debug_log("UI", string.format("update_page: Updated current_option from %s to %s, current_option_val=%s", 
-         tostring(old_option), tostring(args.to_key), tostring(args.cycle_config.current_option_val)))
-   else
-      REWINDER.debug_log("UI", string.format("update_page: Updated current_option from %s to %s, but no option value found", 
-         tostring(old_option), tostring(args.to_key)))
-   end
-   
-   -- Force recalculation of the cycle's UIBox to update the display
-   -- Find the cycle node in the parent's siblings and update its config directly
-   local parent = saves_wrap.parent
-   if parent and parent.children then
-      for _, sibling in ipairs(parent.children) do
-         if sibling and sibling.config and sibling.config.cycle_config then
-            local sibling_cycle_config = sibling.config.cycle_config
-            if sibling_cycle_config.opt_callback == "rewinder_save_update_page" then
-               -- Update the sibling's cycle_config directly
-               sibling_cycle_config.current_option = args.to_key
-               if sibling_cycle_config.options and sibling_cycle_config.options[args.to_key] then
-                  sibling_cycle_config.current_option_val = sibling_cycle_config.options[args.to_key]
-               end
-               REWINDER.debug_log("UI", string.format("update_page: Updated sibling cycle_config, current_option=%s, current_option_val=%s", 
-                  tostring(sibling_cycle_config.current_option), tostring(sibling_cycle_config.current_option_val)))
-               if sibling.UIBox then
-                  sibling.UIBox:recalculate()
-                  REWINDER.debug_log("UI", "update_page: Cycle UIBox recalculated")
-               else
-                  REWINDER.debug_log("UI", "update_page: Cycle sibling has no UIBox")
-               end
-               break
-            end
-         end
-      end
-   else
-      REWINDER.debug_log("UI", "update_page: No parent or children to find cycle")
+   -- Force UI recalculation to update display
+   if cycle_node and cycle_node.UIBox then
+      cycle_node.UIBox:recalculate()
    end
 end

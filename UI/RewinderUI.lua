@@ -515,12 +515,17 @@ function REWINDER.get_saves_page(args)
       }
    end
 
+   -- Calculate minh based on per_page to keep consistent window size
+   -- Each entry ~0.8 height including spacing and padding, plus container padding (0.05 * 2 = 0.1)
+   -- Formula: per_page * entry_height + container_padding
+   local calculated_minh = per_page * 0.78 + 0.1
+   
    return {
       n = G.UIT.ROOT,
       config = {
          align = (#entries == 0 and "cm" or "tm"),
          minw = SAVE_ENTRY_W,
-         minh = 6,
+         minh = calculated_minh,
          r = 0.1,
          colour = G.C.CLEAR,
       },

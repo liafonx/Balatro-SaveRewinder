@@ -108,9 +108,37 @@ end
 
 Returns `create_UIBox_generic_options()` with:
 1. Saves list box (scrollable)
-2. Page cycle control
-3. "Current save" jump button
+2. Page cycle control (displays current page, allows navigation)
+3. "Current save" jump button (jumps to page containing current save)
 4. "Delete all" button
+
+---
+
+## Page Navigation & Jump to Current
+
+### Page Update Flow (`rewinder_save_update_page`)
+
+When user navigates pages or clicks "Current save":
+
+1. **Update page content**: Replace saves box with new page entries
+2. **Find DynaText ref_table**: Locate the actual config object that the page cycle display reads from
+3. **Update all config references**: Update both `args.cycle_config` and the DynaText's ref_table (if different)
+4. **Force UI recalculation**: Trigger cycle node recalculation to update displayed page number
+
+**Key optimization:**
+- Avoids loop if `cycle_args == args.cycle_config` (they're the same reference)
+- Direct assignment instead of iterating when references differ
+
+### Jump to Current (`rewinder_save_jump_to_current`)
+
+1. Find current save index via `find_current_index()` (O(1) hash lookup)
+2. Calculate target page: `math.ceil(index / per_page)`
+3. Call `rewinder_save_update_page()` with target page
+4. Snap focus to current save entry after page update
+
+**Performance:**
+- O(1) current index lookup (not O(N) scan)
+- Direct page calculation (not loop)
 
 ---
 

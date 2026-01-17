@@ -523,11 +523,23 @@ function M.load_and_start_from_file(file, opts)
    if entry then
       local blind_key = M.index_to_blind_key(entry[E.ENTRY_BLIND_IDX]) or "unknown"
       _reset_ordinal_state(entry[E.ENTRY_ANTE], blind_key, entry[E.ENTRY_ROUND])
-      ordinal_state.last_discards_used = entry[E.ENTRY_DISCARDS_USED] or 0
-      ordinal_state.last_hands_played = entry[E.ENTRY_HANDS_PLAYED] or 0
-      ordinal_state.last_display_type = entry[E.ENTRY_DISPLAY_TYPE]
-
+      
       local dtype = entry[E.ENTRY_DISPLAY_TYPE]
+      
+      -- For P/D saves: set counters to value BEFORE the action
+      -- This ensures next save comparison (hands_played > last) is true
+      if dtype == "P" then
+         ordinal_state.last_hands_played = (entry[E.ENTRY_HANDS_PLAYED] or 1) - 1
+         ordinal_state.last_discards_used = entry[E.ENTRY_DISCARDS_USED] or 0
+      elseif dtype == "D" then
+         ordinal_state.last_discards_used = (entry[E.ENTRY_DISCARDS_USED] or 1) - 1
+         ordinal_state.last_hands_played = entry[E.ENTRY_HANDS_PLAYED] or 0
+      else
+         ordinal_state.last_discards_used = entry[E.ENTRY_DISCARDS_USED] or 0
+         ordinal_state.last_hands_played = entry[E.ENTRY_HANDS_PLAYED] or 0
+      end
+      ordinal_state.last_display_type = dtype
+
       if dtype and ordinal_state.counters[dtype] then
          ordinal_state.counters[dtype] = entry[E.ENTRY_ORDINAL] or 1
       end
