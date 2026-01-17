@@ -19,6 +19,7 @@ return {
 
             -- Saves UI labels
             rewinder_state_shop = 'Reroll shop',
+            rewinder_state_after_pack = 'In shop',  -- Shop state after pack is closed (not reroll)
             rewinder_state_entering_shop = 'Entering shop',  -- First shop save in each blind
             rewinder_state_opening_pack = 'Opening pack in shop',
             rewinder_state_start_round = 'Start of round',

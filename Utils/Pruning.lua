@@ -58,41 +58,42 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
             removed_count, table.concat(antes, ", ", 1, limit)))
     end
 end
--- Prunes future saves (divergent timeline cleanup)
--- Note: pending_future_prune is passed by reference (table), so clearing it here affects the original
-function M.prune_future_saves(save_dir, pending_future_prune, save_cache, entry_constants)
-    if not pending_future_prune or not next(pending_future_prune) then return end
+-- Prunes future saves using timestamp boundary (O(1) setup, single-pass deletion)
+-- Deletes all saves with ENTRY_INDEX > boundary (these are "future" saves)
+function M.prune_future_saves(save_dir, prune_boundary, save_cache, entry_constants)
+    if not prune_boundary then return end
     
     local ENTRY_FILE = entry_constants.ENTRY_FILE
+    local ENTRY_INDEX = entry_constants.ENTRY_INDEX
     
-    M.debug_log("prune", "Pruning " .. #pending_future_prune .. " future saves")
-    
-    for _, file_to_delete in ipairs(pending_future_prune) do
-        love.filesystem.remove(save_dir .. "/" .. file_to_delete)
-        -- Also remove .meta file if it exists
-        if file_to_delete and file_to_delete:match("%.jkr$") then
-            local meta_file = file_to_delete:gsub("%.jkr$", ".meta")
-            love.filesystem.remove(save_dir .. "/" .. meta_file)
-        end
-    end
-    -- Create a set for quick lookup
-    local files_to_delete_set = {}
-    for _, file in ipairs(pending_future_prune) do 
-        files_to_delete_set[file] = true 
-    end
-    -- Remove from cache by iterating backwards
+    -- Single pass: find saves to delete and delete them
+    -- Entries are sorted newest-first, so "future" saves are at the start
+    local prune_count = 0
     if save_cache then
-        local i = #save_cache
-        while i >= 1 do
-            if save_cache[i] and files_to_delete_set[save_cache[i][ENTRY_FILE]] then 
-                table.remove(save_cache, i) 
+        local i = 1
+        while i <= #save_cache do
+            local entry = save_cache[i]
+            if entry and entry[ENTRY_INDEX] and entry[ENTRY_INDEX] > prune_boundary then
+                -- Delete files
+                local file = entry[ENTRY_FILE]
+                if file then
+                    love.filesystem.remove(save_dir .. "/" .. file)
+                    if file:match("%.jkr$") then
+                        love.filesystem.remove(save_dir .. "/" .. file:gsub("%.jkr$", ".meta"))
+                    end
+                end
+                table.remove(save_cache, i)
+                prune_count = prune_count + 1
+                -- Don't increment i since we removed an element
+            else
+                -- Once we hit an entry <= boundary, all remaining are older (sorted order)
+                break
             end
-            i = i - 1
         end
     end
     
-    -- Clear the pending list (tables are passed by reference in Lua)
-    -- Use wipe pattern: faster than repeated table.remove
-    for k in pairs(pending_future_prune) do pending_future_prune[k] = nil end
+    if prune_count > 0 then
+        M.debug_log("prune", "Pruning " .. prune_count .. " future saves")
+    end
 end
 return M

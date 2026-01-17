@@ -32,7 +32,7 @@ lovely.toml patches → GamePatches.defer_save_creation()
                               ↓
 Init.lua → SaveManager.preload_all_metadata() (at boot)
                               ↓
-SaveManager → StateSignature (fingerprinting)
+SaveManager → StateSignature (state info extraction)
             → FileIO (file read/write)
             → MetaFile (fast .meta read/write)
             → Pruning (retention policy, future prune)
@@ -59,7 +59,7 @@ Keybinds → SaveManager (step back, UI toggle)
 
 | File | Purpose | Key Functions | Used By |
 |------|---------|---------------|---------|
-| `StateSignature.lua` | Game state fingerprinting for duplicate detection | `get_signature`, `encode_signature`, `describe_signature`, `get_label_from_state` | SaveManager, GamePatches |
+| `StateSignature.lua` | Game state extraction and signature encoding | `get_state_info`, `encode_signature`, `signatures_equal`, `describe_save` | SaveManager, Init |
 | `MetaFile.lua` | Fast `.meta` file read/write (7 fields). Uses `NUMERIC_FIELDS` set for O(1) field type lookup | `read_meta_file`, `write_meta_file` | SaveManager |
 | `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file`, `get_save_dir` | SaveManager |
 | `Pruning.lua` | Retention policy (max antes), future save cleanup on restore | `apply_retention_policy`, `prune_future_saves` | SaveManager |
@@ -95,8 +95,11 @@ Keybinds → SaveManager (step back, UI toggle)
 
 | Doc | Content |
 |-----|---------|
-| `CACHE_ENTRY_EXAMPLE.md` | **12-field entry structure**, display type codes (S/F/O/R/P/D/H/E/B/?), meta file format, entry lifecycle |
-| `CLICK_LOAD_FLOW.md` | Complete save loading flow diagram with all steps from click to game restart |
+| `CACHE_ENTRY_EXAMPLE.md` | **12-field entry structure**, unified signature format, display type codes, meta file format, entry lifecycle |
+| `INIT_FLOW.md` | Mod initialization: namespace setup, cache preload during loading screen, save.jkr matching |
+| `CLICK_LOAD_FLOW.md` | Complete save loading flow from UI click to game restart |
+| `PRESS_S_FLOW.md` | Step-back hotkey (`S`) flow: find previous save, load, and start |
+| `SAVE_LIST_FLOW.md` | Save list UI rendering: pagination, lazy loading, entry node building |
 
 ---
 
@@ -120,14 +123,31 @@ All materials in `References/` are for development reference only, not distribut
 
 ## 5. Key Concepts
 
-### Entry Structure
+### Entry Structure (Unified)
 12-field arrays for memory efficiency. Access via `REWINDER.ENTRY_*` constants.
 
 **See `CACHE_ENTRY_EXAMPLE.md`** for:
 - All 12 field indices and types
+- Unified signature format (`"ante:round:display_type:discards_used:hands_played:money"`)
 - Display type codes and their meanings
 - Meta file format
-- Entry lifecycle (create, load, restore)
+- Entry lifecycle (create, compare, load, restore)
+
+### Signature Format (Unified)
+Single string format for fast comparison:
+```
+"ante:round:display_type:discards_used:hands_played:money"
+```
+Examples:
+- `"2:3:F:0:0:150"` — Ante 2 Round 3, Entering shop, $150
+- `"2:3:O:0:0:150"` — Ante 2 Round 3, Opening pack, $150
+- `"5:15:P:0:1:250"` — Ante 5 Round 15, Play action, $250
+
+**Key principle**: Display type is computed BEFORE signature creation, enabling simple string comparison.
+
+### State Info vs Entry
+- **state_info**: Temporary object from `StateSignature.get_state_info(run_data)` — raw state for display_type computation
+- **entry**: 12-field array stored in cache — the canonical persistent structure
 
 ### ordinal_state (O(1) Metadata)
 In-memory state machine in `SaveManager.lua` for computing `display_type` and `ordinal` at save time without cache scanning.
@@ -136,46 +156,58 @@ In-memory state machine in `SaveManager.lua` for computing `display_type` and `o
 ```lua
 ordinal_state = {
    ante = nil,              -- Current ante
-   blind_key = nil,         -- Current blind (e.g., "bl_small")
-   last_display_type = nil, -- For first_shop detection
+   blind_key = nil,         -- Current blind (e.g., "bl_small"), nil treated as "unknown"
+   last_display_type = nil, -- For first_shop/after_pack detection
    last_discards_used = 0,  -- For play/discard detection
    last_hands_played = 0,   -- For play/discard detection
    last_round = nil,        -- For post-boss shop detection
-   counters = { S=0, O=0, P=0, D=0, H=0, B=0, ["?"]=0 },  -- Per-type ordinals
+   last_saved_round = nil,  -- Round when counters were last reset (for per-round ordinal)
+   counters = { S=0, F=0, O=0, A=0, R=0, P=0, D=0, H=0, E=0, B=0, ["?"]=0 },
    defeated_boss_idx = nil, -- Boss blind index after defeat (nil = not in post-boss phase)
 }
 ```
 
 **Reset triggers:**
-- Ante or blind_key change during gameplay → resets counters but preserves `defeated_boss_idx`
+- Ante or round change during gameplay → resets all counters
+- blind_key change alone does NOT reset counters (allows B to increment when skipping)
 - Entering choose blind (B) → resets `defeated_boss_idx` and `last_round`
 - Save restore → re-initialized from entry's stored values
 
 **Boss tracking:**
 - Set when E save on round 3 or boss blind (index > 2)
-- Used by shop saves (F/S/O) to display defeated boss icon
+- Used by shop saves (F/S/O/A) to display defeated boss icon
 - Reset when entering choose blind screen
+
 
 ### Timeline Pruning (Deferred)
 When loading older save at index 5, saves 1-4 are marked in `pending_future_prune` but **not deleted immediately**. Deletion happens on next `create_save()` call. This allows "undo the undo" if user restarts before making new move.
 
 ### Duplicate Skip
-After restore, first auto-save often matches restored state. `mark_loaded_state()` records signature; `consume_skip_on_save()` compares and skips if identical.
+After restore, first auto-save often matches restored state. `load_and_start_from_file()` stores individual loaded fields (`_loaded_ante`, `_loaded_round`, etc.); `consume_skip_on_save()` computes current state and compares fields directly (O(1), no signature string formatting).
 
 ---
 
 ## 6. Core Flows
+
+### Initialization
+**See `INIT_FLOW.md`** for detailed diagram. Summary:
+1. `Init.lua` loaded during game start, creates `REWINDER` namespace
+2. Exports SaveManager API to `REWINDER.*`
+3. Hooks `Game:set_render_settings` (runs during loading screen)
+4. `preload_all_metadata()` — loads all `.meta` files synchronously
+5. Matches `save.jkr` to cache via `_rewinder_id` (O(1)) or field fallback (O(N))
 
 ### Save Writing
 1. Game calls `save_run()` → `G.culled_table` ready
 2. `lovely.toml` patch → `REWINDER.defer_save_creation()`
 3. Deep-copy `G.culled_table`, defer to next frame via `G.E_MANAGER`
 4. `SaveManager.create_save()`:
-   - Check ordinal_state reset (ante/blind change)
-   - O(1) action detection (compare discards_used/hands_played)
-   - O(1) first_shop detection (check last_display_type)
-   - Reset B counter if entering choose blind from non-B state
-   - Compute display_type and ordinal
+   - `StateSignature.get_state_info(run_data)` → extract raw state
+   - Check ordinal_state reset (ante/round/blind change)
+   - `_compute_display_type(state_info)` → single-char code using ordinal_state context
+   - `_create_signature(state_info, display_type)` → unified signature string
+   - Duplicate check via signature STRING comparison
+   - Compute ordinal using O(1) counter approach
    - Boss tracking: set defeated_boss_idx on E saves for boss rounds
    - Compute blind_idx: B→0, shop after boss→defeated_boss_idx, else→actual
    - Write `.jkr` + `.meta` files
@@ -184,10 +216,38 @@ After restore, first auto-save often matches restored state. `mark_loaded_state(
 ### Save Loading
 **See `CLICK_LOAD_FLOW.md`** for detailed diagram. Summary:
 1. Click/hotkey → `load_and_start_from_file(file)`
-2. Copy save to `save.jkr`, record `pending_future_prune`
-3. Initialize `ordinal_state` from entry
+2. Copy save to `save.jkr`, store loaded fields (`_loaded_ante`, `_loaded_round`, etc.)
+3. Initialize `ordinal_state` from entry (includes ante, blind_key, round for per-round ordinals)
 4. `G:delete_run()` → `G:start_run({savetext=...})` (fast path, no loading screen)
-5. `Game:start_run` marks loaded state, pre-sets shop CardAreas
+5. `consume_skip_on_save` uses direct field comparison (no signature string formatting)
+
+### Step Back (S Key)
+**See `PRESS_S_FLOW.md`** for detailed diagram. Summary:
+1. Find `current_index` from `_last_loaded_file` or `ENTRY_IS_CURRENT`
+2. Get previous entry at `current_index + 1`
+3. Call `load_and_start_from_file()` with previous entry
+
+### Save List Rendering
+**See `SAVE_LIST_FLOW.md`** for detailed diagram. Summary:
+1. `G.UIDEF.rewinder_saves()` calls `get_save_files()` (updates current flags)
+2. Calculate pagination, find page containing current save
+3. `get_saves_page()` renders only visible entries (O(per_page))
+4. `build_save_node()` uses pre-computed `ENTRY_DISPLAY_TYPE` and `ENTRY_ORDINAL`
+5. Lazy-load metadata on-demand when entry is first rendered
+
+### Continue from Main Menu
+When user clicks "Continue" without using our UI:
+1. `Init.lua` matches `save.jkr` to cached entries during loading screen
+2. **Primary**: O(1) lookup by `_rewinder_id` field (injected into save data by `defer_save_creation`)
+3. **Fallback**: Field comparison for legacy saves (ante, round, money, discards_used, hands_played, display_type)
+4. **Final fallback**: Use newest save if no match
+5. Sets `_last_loaded_file` and `current_index` for UI highlighting
+
+### Custom Save Field (`_rewinder_id`)
+- Injected into `G.culled_table` in `defer_save_creation()` BEFORE game writes `save.jkr`
+- Value is unique millisecond timestamp (same as `ENTRY_INDEX`)
+- Enables O(1) exact matching via `save_cache_by_id` hash table
+- Zero extra I/O — piggybacks on existing save.jkr write
 
 ---
 
@@ -197,13 +257,19 @@ After restore, first auto-save often matches restored state. `mark_loaded_state(
 > **No loops in create_save** — Use `ordinal_state` for O(1) access, never scan `save_cache` for action detection or ordinal computation.
 
 > [!IMPORTANT]
-> **Ordinal is per-blind, not per-ante** — Counters reset when `blind_key` changes. Each blind (Small/Big/Boss) has separate ordinal sequences.
+> **Ordinal is per-round, not per-blind** — All counters reset when `ante` or `round` changes. blind_key changes do NOT reset counters (this allows B1→B2→B3 when skipping blinds within same round).
 
 > [!WARNING]
 > **Restore resets ordinal_state** — Must re-initialize from entry's stored values (ante, blind_idx, discards_used, hands_played, display_type, ordinal for counter).
 
 > [!NOTE]
 > **TOML regex escaping** — Double-escape backslashes in `lovely.toml` patterns (e.g., `\\(` not `\(`).
+
+> [!NOTE]
+> **Signature comparison is string equality** — Display type is computed BEFORE signature creation, so `signatures_equal()` is just string comparison.
+
+> [!NOTE]
+> **No technical jargon in CHANGELOG** — CHANGELOG.md is for end users, not developers. Avoid terms like "O(1)", "hash table", "signature", "ordinal". Focus on user-visible behavior (e.g., "faster save list loading" not "O(1) lookup").
 
 ---
 
@@ -217,6 +283,14 @@ After restore, first auto-save often matches restored state. `mark_loaded_state(
 - **No build system**: Edit Lua files in-place, sync to game, restart Balatro
 - **Logs**: Check `References/lovely/log/` for crash traces and patch diagnostics
 - **Testing**: Launch Balatro with Steamodded/Lovely Loader, verify mod in mods list
+
+### Version Management
+
+When releasing a new version, update version in **4 places**:
+1. `SaveRewinder.json` — `"version": "X.Y.Z"` (Steamodded reads this)
+2. `manifest.json` — `"version_number": "X.Y.Z"` (Thunderstore/r2modman reads this)
+3. `CHANGELOG.md` — Add new version section at top
+4. `CHANGELOG_zh.md` — Same changes in Chinese
 
 ---
 
@@ -242,8 +316,23 @@ REWINDER.load_and_start_from_file("2-3-1609430.jkr")
 local file = entry[REWINDER.ENTRY_FILE]           -- index 1
 local display_type = entry[REWINDER.ENTRY_DISPLAY_TYPE]  -- index 11
 local blind_idx = entry[REWINDER.ENTRY_BLIND_IDX] -- index 10
+local signature = entry[REWINDER.ENTRY_SIGNATURE] -- index 6 (unified format)
 
 -- Convert blind_idx to key for sprite
 local blind_key = REWINDER.SaveManager.index_to_blind_key(blind_idx)
 local sprite = REWINDER.create_blind_sprite(blind_key)
+
+-- Get state info from run_data (for display_type computation)
+local state_info = StateSignature.get_state_info(run_data)
+
+-- Create signature string (after computing display_type)
+local signature = StateSignature.encode_signature(
+   state_info.ante, state_info.round, display_type,
+   state_info.discards_used, state_info.hands_played, state_info.money
+)
+
+-- Compare signatures (simple string equality)
+if StateSignature.signatures_equal(sig_a, sig_b) then
+   -- States match
+end
 ```

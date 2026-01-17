@@ -74,38 +74,81 @@ function Game:set_render_settings(...)
                local info = love.filesystem.getInfo(main_save_path)
                
                if info then
-                  -- Read and unpack save.jkr to get its signature
+                  -- Read and unpack save.jkr to get its state info
                   local data = get_compressed(main_save_path)
                   if data then
                      local ok, run_data = pcall(STR_UNPACK, data)
                      if ok and run_data then
-                        local sig = StateSignature.get_signature(run_data)
-                        if sig and sig.signature then
-                           -- Find matching entry in cache by signature
-                           for i, entry in ipairs(entries) do
-                              if entry[SaveManager.ENTRY_SIGNATURE] == sig.signature then
-                                 -- Found match - set as current
-                                 SaveManager._last_loaded_file = entry[SaveManager.ENTRY_FILE]
-                                 SaveManager.current_index = i
-                                 if SaveManager._set_cache_current_file then
-                                    SaveManager._set_cache_current_file(entry[SaveManager.ENTRY_FILE])
-                                 end
-                                 REWINDER._main_save_matched = true
-                                 REWINDER.debug_log("step", "Matched save.jkr to: " .. entry[SaveManager.ENTRY_FILE])
-                                 break
-                              end
-                           end
-                           
-                           -- Fallback: no exact match, use newest save
-                           if not REWINDER._main_save_matched and entries[1] then
-                              SaveManager._last_loaded_file = entries[1][SaveManager.ENTRY_FILE]
-                              SaveManager.current_index = 1
+                        -- PRIMARY: Try O(1) ID-based lookup using _rewinder_id
+                        local rewinder_id = run_data._rewinder_id
+                        if rewinder_id and SaveManager.get_entry_by_id then
+                           local entry, idx = SaveManager.get_entry_by_id(rewinder_id)
+                           if entry then
+                              -- Exact match found via ID!
+                              SaveManager._last_loaded_file = entry[SaveManager.ENTRY_FILE]
+                              SaveManager.current_index = idx
                               if SaveManager._set_cache_current_file then
-                                 SaveManager._set_cache_current_file(entries[1][SaveManager.ENTRY_FILE])
+                                 SaveManager._set_cache_current_file(entry[SaveManager.ENTRY_FILE])
                               end
                               REWINDER._main_save_matched = true
-                              REWINDER.debug_log("step", "No exact match, using newest: " .. entries[1][SaveManager.ENTRY_FILE])
+                              REWINDER.debug_log("step", "Matched save.jkr by ID: " .. entry[SaveManager.ENTRY_FILE])
                            end
+                        end
+                        
+                        -- FALLBACK: For legacy saves without _rewinder_id, use field matching
+                        if not REWINDER._main_save_matched then
+                           local state_info = StateSignature.get_state_info(run_data)
+                           if state_info then
+                              -- Compute basic display_type from state (B, O, R, E are computable)
+                              local save_display_type = nil
+                              local st = G and G.STATES
+                              if st then
+                                 if state_info.state == st.BLIND_SELECT then
+                                    save_display_type = "B"
+                                 elseif state_info.state == st.SHOP then
+                                    save_display_type = state_info.is_opening_pack and "O" or nil
+                                 elseif state_info.state == st.SELECTING_HAND then
+                                    if state_info.hands_played == 0 and state_info.discards_used == 0 then
+                                       save_display_type = "R"
+                                    end
+                                 elseif state_info.state == st.ROUND_EVAL or state_info.state == st.HAND_PLAYED then
+                                    save_display_type = "E"
+                                 end
+                              end
+                              
+                              -- Find matching entry by key fields AND display_type (when computable)
+                              for i, entry in ipairs(entries) do
+                                 local entry_dtype = entry[SaveManager.ENTRY_DISPLAY_TYPE]
+                                 local basic_match = entry[SaveManager.ENTRY_ANTE] == state_info.ante and
+                                    entry[SaveManager.ENTRY_ROUND] == state_info.round and
+                                    entry[SaveManager.ENTRY_MONEY] == state_info.money and
+                                    entry[SaveManager.ENTRY_DISCARDS_USED] == state_info.discards_used and
+                                    entry[SaveManager.ENTRY_HANDS_PLAYED] == state_info.hands_played
+                                 local dtype_match = (save_display_type == nil) or (entry_dtype == save_display_type)
+                                 
+                                 if basic_match and dtype_match then
+                                    SaveManager._last_loaded_file = entry[SaveManager.ENTRY_FILE]
+                                    SaveManager.current_index = i
+                                    if SaveManager._set_cache_current_file then
+                                       SaveManager._set_cache_current_file(entry[SaveManager.ENTRY_FILE])
+                                    end
+                                    REWINDER._main_save_matched = true
+                                    REWINDER.debug_log("step", "Matched save.jkr by fields: " .. entry[SaveManager.ENTRY_FILE])
+                                    break
+                                 end
+                              end
+                           end
+                        end
+                        
+                        -- FINAL FALLBACK: no match found, use newest save
+                        if not REWINDER._main_save_matched and entries[1] then
+                           SaveManager._last_loaded_file = entries[1][SaveManager.ENTRY_FILE]
+                           SaveManager.current_index = 1
+                           if SaveManager._set_cache_current_file then
+                              SaveManager._set_cache_current_file(entries[1][SaveManager.ENTRY_FILE])
+                           end
+                           REWINDER._main_save_matched = true
+                           REWINDER.debug_log("step", "No match, using newest: " .. entries[1][SaveManager.ENTRY_FILE])
                         end
                      end
                   end

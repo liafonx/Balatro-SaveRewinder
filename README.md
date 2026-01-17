@@ -82,6 +82,10 @@ Saves are stored in your Balatro profile folder:
 
 > ⚠️ **Note**: Saves are only kept for your **current run**. Saves persist even if you quit the game mid-run — when you reopen and continue your run, all saves will still be available. Starting a **new run** will delete all previous saves.
 
+> 💡 **Smart Continue**: When you quit and continue your run later, the mod remembers your exact position in the save list. Even if you stepped back before quitting, the current save will be correctly highlighted.
+
+> ℹ️ **Technical Note**: This mod adds a small `_rewinder_id` field to your save data for accurate position tracking. This does not affect normal gameplay or compatibility with other mods.
+
 ## Languages
 
 - English

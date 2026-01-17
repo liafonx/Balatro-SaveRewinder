@@ -27,13 +27,23 @@ REWINDER._start_run = Game.start_run
 REWINDER._update_shop = Game.update_shop
 function Game:start_run(args)
    args = args or {}
-   -- 1. Mark the loaded state and use pre-matched save file from init phase
+   -- 1. Mark the loaded state and derive _file from _rewinder_id if needed
    if args and args.savetext and REWINDER.mark_loaded_state then
       local BM = REWINDER._SaveManager
-      -- Use pre-matched file from init phase (if save.jkr was matched during loading)
-      -- Only need to set _file on savetext if not already set
-      if args.savetext and not args.savetext._file and BM and BM._last_loaded_file then
-         args.savetext._file = BM._last_loaded_file
+      
+      -- Derive _file from _rewinder_id if not already set (enables O(1) file lookup)
+      if args.savetext and not args.savetext._file then
+         -- Try _rewinder_id first (exact match)
+         if args.savetext._rewinder_id and BM and BM.get_entry_by_id then
+            local entry = BM.get_entry_by_id(args.savetext._rewinder_id)
+            if entry then
+               args.savetext._file = entry[BM.ENTRY_FILE]
+            end
+         end
+         -- Fallback to _last_loaded_file from init phase
+         if not args.savetext._file and BM and BM._last_loaded_file then
+            args.savetext._file = BM._last_loaded_file
+         end
       end
       
       -- Mark loaded state for skip-duplicate logic
@@ -72,7 +82,8 @@ function Game:start_run(args)
       if BM then
          BM._pending_skip_reason = nil
          BM._loaded_mark_applied = nil
-         BM._loaded_meta = nil
+         BM._loaded_signature = nil
+         BM._loaded_display_type = nil
          BM.current_index = nil
          BM._restore_active = nil
          BM._last_loaded_file = nil
@@ -80,7 +91,7 @@ function Game:start_run(args)
             REWINDER.debug_log("cache", "Reset _last_loaded_file (new run)")
          end
          BM.skip_next_save = false
-         BM.pending_future_prune = {}
+         BM.pending_future_prune_boundary = nil
          BM.skipping_pack_open = nil
          BM._last_save_sig = nil  -- Reset duplicate detection
          BM._last_save_time = nil
@@ -109,23 +120,31 @@ function Game:start_run(args)
           end
       end
    else
-      -- Preserve _last_loaded_file if savetext has _file set
-      -- This ensures highlight works after restore
+      -- Continue with existing savetext - derive file from _rewinder_id or use existing
       local BM = REWINDER._SaveManager
       if BM and args.savetext then
-         if args.savetext._file then
-            -- Ensure _last_loaded_file is set from savetext._file
-            if BM._last_loaded_file ~= args.savetext._file then
-               BM._last_loaded_file = args.savetext._file
-               -- Also update cache flags immediately
+         local file_to_use = args.savetext._file
+         
+         -- If no _file, try to derive from _rewinder_id
+         if not file_to_use and args.savetext._rewinder_id and BM.get_entry_by_id then
+            local entry, idx = BM.get_entry_by_id(args.savetext._rewinder_id)
+            if entry then
+               file_to_use = entry[BM.ENTRY_FILE]
+               args.savetext._file = file_to_use  -- Cache for later use
+               BM.current_index = idx
+            end
+         end
+         
+         -- Update tracking if we have a file
+         if file_to_use then
+            if BM._last_loaded_file ~= file_to_use then
+               BM._last_loaded_file = file_to_use
                if BM._set_cache_current_file then
-                  BM._set_cache_current_file(args.savetext._file)
+                  BM._set_cache_current_file(file_to_use)
                end
             end
          elseif BM._last_loaded_file then
-            -- If savetext exists but _file is not set, preserve existing _last_loaded_file
-            -- This handles cases where start_run is called multiple times
-            -- Only reset if it's truly a new run (handled above)
+            -- Preserve existing _last_loaded_file
             if REWINDER.debug_log then
                REWINDER.debug_log("cache", string.format("preserving _last_loaded_file=%s", BM._last_loaded_file))
             end
@@ -146,6 +165,12 @@ end
 -- injecting it directly into the game's save_run function.
 function REWINDER.defer_save_creation()
    if G.culled_table then
+      -- Generate unique ID BEFORE game writes save.jkr
+      -- This ID will be persisted in save.jkr by the game's save logic,
+      -- enabling exact O(1) matching when user clicks "Continue"
+      local unique_id = math.floor(love.timer.getTime() * 1000)
+      G.culled_table._rewinder_id = unique_id
+      
       -- To prevent recursive crashes with other mods that hook filesystem
       -- operations, we defer the save creation to the next frame.
       -- This breaks the synchronous call chain that can lead to a stack overflow.

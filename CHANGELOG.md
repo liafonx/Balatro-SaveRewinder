@@ -2,6 +2,25 @@
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.4.6] - 2026-01-17
+
+### Added
+- **Smart Continue matching** — When you continue a run, the mod automatically highlights your exact position in the save list (even if it's not the latest save)
+- **Custom save identifier** — Saves now include a unique `_rewinder_id` field for exact matching
+
+### Fixed
+- **First opening pack save blocked** — Opening pack saves now work correctly after restoring to "entering shop"
+- **Shop save after pack labeled as reroll** — Shop saves after closing a pack now labeled as "In shop" instead of "Reroll shop"
+- **Choose blind ordinal reset** — Sequential choose blind saves now increment correctly (B1, B2, B3)
+- **Duplicate saves after restore** — Fixed duplicate detection state not resetting on restore
+
+### Improved
+- Faster save list loading and highlighting
+- Better detection of duplicate saves
+- Cleaner internal code structure
+
+> ⚠️ **Note**: This version adds a `_rewinder_id` field to your save data. This does not affect normal gameplay but means **your save.jkr file will be slightly different with this mod installed**.
+
 ## [1.4.5] - 2026-01-09
 
 ### ⚠️ BREAKING CHANGES

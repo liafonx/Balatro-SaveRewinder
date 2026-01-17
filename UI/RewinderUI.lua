@@ -181,7 +181,8 @@ end
 -- Display type lookup table: maps display_type code to localization key and prefix
 -- Format: { loc_key, has_prefix, show_ordinal }
 local DISPLAY_TYPE_LABELS = {
-   S = { "rewinder_state_shop", false, true },           -- Shop
+   S = { "rewinder_state_shop", false, true },           -- Shop (reroll)
+   A = { "rewinder_state_after_pack", false, true },     -- After pack (shop after pack closed)
    F = { "rewinder_state_entering_shop", false, false },  -- First shop (entering)
    O = { "rewinder_state_opening_pack", false, true },   -- Opening pack
    R = { "rewinder_state_start_round", false, false },    -- Start of round (highlighted like entering shop)
@@ -539,13 +540,12 @@ function G.UIDEF.rewinder_saves()
       page_numbers[i] = string.format(pattern, i, total_pages)
    end
 
-   -- Find which page contains the current (highlighted) save
+   -- Find which page contains the current (highlighted) save - O(1) via index
    local initial_page = 1
-   for i, entry in ipairs(entries) do
-      if entry and entry[REWINDER.ENTRY_IS_CURRENT] == true then
-         initial_page = math.ceil(i / per_page)
-         break
-      end
+   local SM = REWINDER._SaveManager
+   local current_idx = SM and (SM.current_index or SM.find_current_index and SM.find_current_index())
+   if current_idx and current_idx >= 1 then
+      initial_page = math.ceil(current_idx / per_page)
    end
 
    local saves_box = UIBox({

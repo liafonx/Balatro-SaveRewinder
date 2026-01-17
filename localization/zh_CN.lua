@@ -19,6 +19,7 @@ return {
 
             -- Saves UI labels
             rewinder_state_shop = '重掷商店',
+            rewinder_state_after_pack = '在商店中',  -- 补充包关闭后的商店状态（非重掷）
             rewinder_state_entering_shop = '进入商店',  -- 每轮第一个商店存档
             rewinder_state_opening_pack = '在商店中打开补充包',
             rewinder_state_start_round = '回合开始',
