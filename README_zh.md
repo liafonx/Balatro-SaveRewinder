@@ -6,6 +6,17 @@
 
 Save Rewinder 在你游玩小丑牌时自动创建存档点，让你可以一键回溯到任意最近时刻。
 
+## 安装
+
+1. 为 Balatro 安装 [Steamodded](https://github.com/Steamopollys/Steamodded)
+2. 下载并解压[最新版本](https://github.com/Liafonx/Balatro-SaveRewinder/releases) — 其中包含一个 `SaveRewinder` 文件夹
+3. 将 `SaveRewinder` 文件夹复制到游戏的 `Mods` 文件夹中
+4. 启动 Balatro — 可以在 Mod 列表中看到 **Save Rewinder**
+
+> ⚠️ **重要**：确保 `Mods/SaveRewinder/` 中直接包含模组文件（如 `main.lua`），而不是另一个嵌套的 `SaveRewinder` 文件夹。
+
+> 📦 **Thunderstore 用户**：文件位于 zip 根目录。创建 `Mods/SaveRewinder/` 并将所有文件解压到其中。最终结构：`Mods/SaveRewinder/main.lua`。
+
 ## 为什么使用这个 Mod？
 
 - 🎯 **撤销失误** — 不小心弃错牌了？回退重来
@@ -24,15 +35,6 @@ Save Rewinder 在你游玩小丑牌时自动创建存档点，让你可以一键
 | ![回合数](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/存档列表（显示回合数）.jpeg) | ![设置](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Mod设置选项.jpeg) |
 
 ## 快速开始
-
-### 安装
-
-1. 为 Balatro 安装 [Steamodded](https://github.com/Steamopollys/Steamodded)
-2. 从 [Releases](../../releases) 页面下载 `SaveRewinder.zip`
-3. 解压到游戏的 `Mods` 文件夹（会创建 `Mods/SaveRewinder/`）
-4. 启动 Balatro — 可以在 Mod 列表中看到 **Save Rewinder**
-
-> ⚠️ 确保 `Mods/SaveRewinder/` 中直接包含 mod 文件（如 `main.lua`），而不是另一个 `SaveRewinder` 文件夹。
 
 ### 操作方式
 

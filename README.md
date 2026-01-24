@@ -6,6 +6,17 @@ English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/ma
 
 Save Rewinder automatically creates save points as you play Balatro, letting you rewind to any recent moment with a single keystroke.
 
+## Installation
+
+1. Install [Steamodded](https://github.com/Steamopollys/Steamodded) for Balatro
+2. Download and extract the [latest release](https://github.com/Liafonx/Balatro-SaveRewinder/releases) — it contains a `SaveRewinder` folder
+3. Copy the `SaveRewinder` folder into your game's `Mods` folder
+4. Launch Balatro — you'll see **Save Rewinder** in the mods list
+
+> ⚠️ **Important**: Ensure `Mods/SaveRewinder/` contains mod files directly (like `main.lua`), not another nested `SaveRewinder` folder.
+
+> 📦 **Thunderstore Users**: Files are at the zip root. Create `Mods/SaveRewinder/` and extract all files into it. Final structure: `Mods/SaveRewinder/main.lua`.
+
 ## Why Use This Mod?
 
 - 🎯 **Undo misplays** — Accidentally discarded the wrong card? Go back and try again
@@ -24,15 +35,6 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 | ![Round numbers](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Save_list_with_round_number.jpeg) | ![Settings](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Mod_settings.jpeg) |
 
 ## Quick Start
-
-### Installation
-
-1. Install [Steamodded](https://github.com/Steamopollys/Steamodded) for Balatro
-2. Download `SaveRewinder.zip` from the [Releases](../../releases) page
-3. Extract to your game's `Mods` folder (creates `Mods/SaveRewinder/`)
-4. Launch Balatro — you'll see **Save Rewinder** in the mods list
-
-> ⚠️ Make sure `Mods/SaveRewinder/` contains mod files directly (like `main.lua`), not another `SaveRewinder` folder.
 
 ### Controls
 

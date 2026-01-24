@@ -1,5 +1,7 @@
 # Changelog
 
+English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/main/CHANGELOG_zh.md)
+
 All notable changes to Save Rewinder will be documented in this file.
 
 ## [1.4.6] - 2026-01-17
@@ -13,11 +15,12 @@ All notable changes to Save Rewinder will be documented in this file.
 - **Shop save after pack labeled as reroll** — Shop saves after closing a pack now labeled as "In shop" instead of "Reroll shop"
 - **Choose blind ordinal reset** — Sequential choose blind saves now increment correctly (B1, B2, B3)
 - **Duplicate saves after restore** — Fixed duplicate detection state not resetting on restore
+- **Page number display not updating** — Page number now correctly updates when clicking "Current save" button
+- **Inconsistent window height** — Save list window now maintains consistent height regardless of number of saves displayed
 
 ### Improved
 - Faster save list loading and highlighting
 - Better detection of duplicate saves
-- Cleaner internal code structure
 
 > ⚠️ **Note**: This version adds a `_rewinder_id` field to your save data. This does not affect normal gameplay but means **your save.jkr file will be slightly different with this mod installed**.
 
