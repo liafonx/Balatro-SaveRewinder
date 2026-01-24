@@ -201,6 +201,6 @@ function G.FUNCS.rewinder_save_update_page(args)
    
    -- Force UI recalculation to update display
    if cycle_node and cycle_node.UIBox then
-      cycle_node.UIBox:recalculate()
+            cycle_node.UIBox:recalculate()
    end
 end

@@ -4,6 +4,15 @@ English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/ma
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.4.6.1] - 2026-01-17
+
+### Changed
+- **Release package structure** — Changed zip file structure: mod files are now wrapped in a `SaveRewinder` folder instead of being at the root
+
+> ℹ️ **Note**: This version contains **no new features or bug fixes**. It only changes the release zip structure for easier installation. If you had any trouble installing or updating to version 1.4.6, please use this version. Otherwise, **no update is needed** if you're already running 1.4.6 successfully.
+
+> 📦 **Thunderstore Users**: The Thunderstore package structure remains unchanged — files are still at the root directory (not wrapped in a folder).
+
 ## [1.4.6] - 2026-01-17
 
 ### Added
