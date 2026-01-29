@@ -16,6 +16,15 @@ return {
             rewinder_debug_saves = '调试：详细日志',
             rewinder_max_antes_per_run = '每局最多保留的盲注存档数',
             rewinder_delete_all_saves_button = '删除所有存档',
+            rewinder_tab_keybinds = '键位设置',
+            rewinder_keybinds_title = '键位设置',
+            rewinder_keybind_step_back = '回退一个存档',
+            rewinder_keybind_toggle_saves = '打开存档列表',
+            rewinder_keybind_quick_saveload = '快速读档',
+            rewinder_keybind_waiting = '等待输入中...',
+            rewinder_keybind_none = '[无]',
+            rewinder_keybind_hint = '点击按钮后按下键盘/手柄按键，按 Esc 清空。',
+            rewinder_keybind_reset = '恢复默认',
 
             -- Saves UI labels
             rewinder_state_shop = '重掷商店',

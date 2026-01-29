@@ -20,12 +20,12 @@ flowchart TD
     D --> E[Export API to REWINDER]
     E --> F[Hook Game:set_render_settings]
     F --> G{Loading screen visible?}
-    G -->|Yes| H[preload_all_metadata]
+    G -->|Yes| H[preload_all_metadata (index + warm meta window)]
     H --> I{save.jkr exists?}
     I -->|Yes| J[Read and unpack save.jkr]
     J --> K{Has _rewinder_id?}
     K -->|Yes| L[O(1) ID lookup]
-    K -->|No| M[Field matching fallback]
+    K -->|No| M[Use newest save]
     L --> N[Set _last_loaded_file]
     M --> N
     I -->|No| O[Skip matching]
@@ -80,8 +80,8 @@ local entries = SaveManager.preload_all_metadata(true)
 
 **Actions:**
 - Scans save directory for `.jkr` files
-- Reads all `.meta` files synchronously
 - Builds `save_cache`, `save_cache_by_file`, `save_cache_by_id`
+- Warms a bounded meta window (default 32 entries)
 
 ---
 
@@ -95,12 +95,7 @@ local rewinder_id = run_data._rewinder_id
 local entry, idx = SaveManager.get_entry_by_id(rewinder_id)
 ```
 
-**Fallback — Field matching (legacy saves):**
-```lua
--- Match: ante, round, money, discards_used, hands_played, display_type
-```
-
-**Final fallback:** Use newest save if no match.
+**Fallback:** Use newest save if no match (legacy saves without `_rewinder_id` are not supported).
 
 **Result:** Sets `_last_loaded_file`, `current_index`, `ENTRY_IS_CURRENT` flag.
 
@@ -122,9 +117,9 @@ local entry, idx = SaveManager.get_entry_by_id(rewinder_id)
 | Aspect | Optimization |
 |--------|-------------|
 | Timing | During loading screen (hidden from user) |
-| Metadata loading | All `.meta` files read once at boot |
+| Metadata loading | Bounded meta window warmed at boot |
 | ID matching | O(1) hash table lookup |
-| Field matching | O(N) but only for legacy saves |
+| Field matching | Not used (legacy saves not supported) |
 
 ---
 

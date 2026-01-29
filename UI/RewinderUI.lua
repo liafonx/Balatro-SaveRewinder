@@ -552,6 +552,9 @@ function G.UIDEF.rewinder_saves()
    if current_idx and current_idx >= 1 then
       initial_page = math.ceil(current_idx / per_page)
    end
+   if REWINDER.ensure_meta_window_for_page then
+      REWINDER.ensure_meta_window_for_page(initial_page, per_page, 4)
+   end
 
    local saves_box = UIBox({
       definition = REWINDER.get_saves_page({ entries = entries, per_page = per_page, page_num = initial_page }),
@@ -573,7 +576,7 @@ function G.UIDEF.rewinder_saves()
    }
    REWINDER._saves_ui_refs.cycle_config = cycle_config
    return create_UIBox_generic_options({
-      back_func = "exit_overlay_menu",
+      back_func = "rewinder_save_close",
       minw = SAVE_ENTRY_W,
       back_id = "rewinder_back",
       contents = {
@@ -653,11 +656,28 @@ function create_UIBox_options()
       local n3 = n2 and n2.nodes and n2.nodes[1]
 
       if n3 and n3.nodes then
+         -- Logic to find the current controller bind for toggle_saves
+         local focus_args = { nav = "wide" }
+         if REWINDER.keybinds and REWINDER.keybinds.get_binding then
+            local binding = REWINDER.keybinds.get_binding("toggle_saves")
+            if binding and binding.controller and not binding.controller["[none]"] then
+               -- Find the first button bound (usually just one)
+               for k, v in pairs(binding.controller) do
+                  if k:sub(1, 3) == "gp_" then
+                     local btn = k:sub(4)
+                     focus_args = { button = btn, set_button_pip = true, nav = "wide" }
+                     break
+                  end
+               end
+            end
+         end
+
          local button = UIBox_button({
             button = "rewinder_save_open",
             label = { (localize and localize("rewinder_saves_button")) or "Saves" },
             minw = 5,
-            colour = G.C.ORANGE or {1, 0.6, 0.2, 1},  -- Orange button to stand out
+            colour = G.C.ORANGE or {1, 0.6, 0.2, 1},
+            focus_args = focus_args,
          })
          table.insert(n3.nodes, button)
       end

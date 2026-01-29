@@ -16,6 +16,15 @@ return {
             rewinder_debug_saves = 'Debug: verbose logging',
             rewinder_max_antes_per_run = 'Max saved antes per run',
             rewinder_delete_all_saves_button = 'Delete all saves',
+            rewinder_tab_keybinds = 'Keybinds',
+            rewinder_keybinds_title = 'Keybinds',
+            rewinder_keybind_step_back = 'Step back one save',
+            rewinder_keybind_toggle_saves = 'Toggle saves list',
+            rewinder_keybind_quick_saveload = 'Quick saveload',
+            rewinder_keybind_waiting = 'Waiting for input...',
+            rewinder_keybind_none = '[none]',
+            rewinder_keybind_hint = 'Click a keybind and press keys or controller buttons. Esc clears it.',
+            rewinder_keybind_reset = 'Reset to defaults',
 
             -- Saves UI labels
             rewinder_state_shop = 'Reroll shop',

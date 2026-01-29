@@ -19,9 +19,13 @@ REWINDER.get_save_dir = SaveManager.get_save_dir
 REWINDER.get_save_files = SaveManager.get_save_files
 REWINDER.get_save_meta = SaveManager.get_save_meta
 REWINDER.preload_all_metadata = SaveManager.preload_all_metadata
+REWINDER.ensure_meta_window = SaveManager.ensure_meta_window
+REWINDER.ensure_meta_window_for_page = SaveManager.ensure_meta_window_for_page
+REWINDER.set_overlay_open = SaveManager.set_overlay_open
 REWINDER.load_save = SaveManager.load_save_file
 REWINDER.load_and_start_from_file = SaveManager.load_and_start_from_file
 REWINDER.revert_to_previous_save = SaveManager.revert_to_previous_save
+REWINDER.quick_continue_from_menu = SaveManager.quick_continue_from_menu
 REWINDER.load_save_at_index = SaveManager.load_save_at_index
 REWINDER.clear_all_saves = SaveManager.clear_all_saves
 REWINDER.find_current_index = SaveManager.find_current_index
@@ -44,6 +48,7 @@ REWINDER.set_current_index = function(v) SaveManager.current_index = v end
 REWINDER.saves_open = false
 -- Debug Logging (centralized via Logger module)
 local Logger = require("Logger")
+local log = Logger.create("Init")
 REWINDER._debug_alert = nil
 REWINDER.debug_log = Logger.log  -- Simple log without module name
 -- Cache initialization during game loading phase
@@ -64,7 +69,7 @@ function Game:set_render_settings(...)
          if SaveManager and SaveManager.preload_all_metadata then
             local entries = SaveManager.preload_all_metadata(true)
             local count = entries and #entries or 0
-            REWINDER.debug_log("step", "Preloaded " .. count .. " save(s)")
+            log("step", "Found " .. count .. " saves on disk (meta window: " .. tostring(SaveManager.META_CACHE_BASE_LIMIT or 32) .. ")")
             
             -- Step 2: Match save.jkr to a cache entry (for Continue game)
             -- This pre-computes the current save index during loading
@@ -90,56 +95,16 @@ function Game:set_render_settings(...)
                               if SaveManager._set_cache_current_file then
                                  SaveManager._set_cache_current_file(entry[SaveManager.ENTRY_FILE])
                               end
+                              if SaveManager.ensure_meta_window then
+                                 SaveManager.ensure_meta_window(idx, SaveManager.META_CACHE_BASE_LIMIT)
+                              end
                               REWINDER._main_save_matched = true
-                              REWINDER.debug_log("step", "Matched save.jkr by ID: " .. entry[SaveManager.ENTRY_FILE])
+                              log("step", "Matched save.jkr by ID: " .. entry[SaveManager.ENTRY_FILE])
+                           else
+                              log("step", "No match for _rewinder_id (" .. tostring(rewinder_id) .. ":" .. type(rewinder_id) .. ")")
                            end
                         end
-                        
-                        -- FALLBACK: For legacy saves without _rewinder_id, use field matching
-                        if not REWINDER._main_save_matched then
-                           local state_info = StateSignature.get_state_info(run_data)
-                           if state_info then
-                              -- Compute basic display_type from state (B, O, R, E are computable)
-                              local save_display_type = nil
-                              local st = G and G.STATES
-                              if st then
-                                 if state_info.state == st.BLIND_SELECT then
-                                    save_display_type = "B"
-                                 elseif state_info.state == st.SHOP then
-                                    save_display_type = state_info.is_opening_pack and "O" or nil
-                                 elseif state_info.state == st.SELECTING_HAND then
-                                    if state_info.hands_played == 0 and state_info.discards_used == 0 then
-                                       save_display_type = "R"
-                                    end
-                                 elseif state_info.state == st.ROUND_EVAL or state_info.state == st.HAND_PLAYED then
-                                    save_display_type = "E"
-                                 end
-                              end
-                              
-                              -- Find matching entry by key fields AND display_type (when computable)
-                              for i, entry in ipairs(entries) do
-                                 local entry_dtype = entry[SaveManager.ENTRY_DISPLAY_TYPE]
-                                 local basic_match = entry[SaveManager.ENTRY_ANTE] == state_info.ante and
-                                    entry[SaveManager.ENTRY_ROUND] == state_info.round and
-                                    entry[SaveManager.ENTRY_MONEY] == state_info.money and
-                                    entry[SaveManager.ENTRY_DISCARDS_USED] == state_info.discards_used and
-                                    entry[SaveManager.ENTRY_HANDS_PLAYED] == state_info.hands_played
-                                 local dtype_match = (save_display_type == nil) or (entry_dtype == save_display_type)
-                                 
-                                 if basic_match and dtype_match then
-                                    SaveManager._last_loaded_file = entry[SaveManager.ENTRY_FILE]
-                                    SaveManager.current_index = i
-                                    if SaveManager._set_cache_current_file then
-                                       SaveManager._set_cache_current_file(entry[SaveManager.ENTRY_FILE])
-                                    end
-                                    REWINDER._main_save_matched = true
-                                    REWINDER.debug_log("step", "Matched save.jkr by fields: " .. entry[SaveManager.ENTRY_FILE])
-                                    break
-                                 end
-                              end
-                           end
-                        end
-                        
+
                         -- FINAL FALLBACK: no match found, use newest save
                         if not REWINDER._main_save_matched and entries[1] then
                            SaveManager._last_loaded_file = entries[1][SaveManager.ENTRY_FILE]
@@ -147,8 +112,11 @@ function Game:set_render_settings(...)
                            if SaveManager._set_cache_current_file then
                               SaveManager._set_cache_current_file(entries[1][SaveManager.ENTRY_FILE])
                            end
+                           if SaveManager.ensure_meta_window then
+                              SaveManager.ensure_meta_window(1, SaveManager.META_CACHE_BASE_LIMIT)
+                           end
                            REWINDER._main_save_matched = true
-                           REWINDER.debug_log("step", "No match, using newest: " .. entries[1][SaveManager.ENTRY_FILE])
+                           log("step", "No match in init, using newest: " .. entries[1][SaveManager.ENTRY_FILE])
                         end
                      end
                   end
@@ -157,78 +125,11 @@ function Game:set_render_settings(...)
          end
       end)
       if not success then
-         REWINDER.debug_log("error", "Cache init failed: " .. tostring(err))
+         log("error", "Cache init failed: " .. tostring(err))
       end
    end
    
    return ret
-end
--- UI Helper (Alert Box) - Remains in Init.lua for now.
-function REWINDER.show_save_debug(ante, round, label)
-   if not G or not G.ROOM_ATTACH or not UIBox or not G.UIT then return end
-   label = label or ""
-   local text = string.format("Save: Ante %d  Round %d%s", ante or 0, round or 0,
-      (label ~= "" and ("  (" .. label .. ")")) or "")
-   REWINDER.debug_log("save", text)
-   if REWINDER._debug_alert and REWINDER._debug_alert.remove then
-      REWINDER._debug_alert:remove()
-      REWINDER._debug_alert = nil
-   end
-   local definition = {
-      n = G.UIT.ROOT,
-      config = { align = "tm", padding = 0.05, colour = G.C.CLEAR },
-      nodes = {
-         {
-            n = G.UIT.R,
-            config = {
-               align = "cm",
-               r = 0.1,
-               padding = 0.12,
-               minw = 3.8,
-               colour = G.C.BLACK,
-               shadow = true,
-            },
-            nodes = {
-               {
-                  n = G.UIT.T,
-                  config = {
-                     text = text,
-                     scale = 0.32,
-                     colour = G.C.UI.TEXT_LIGHT,
-                     shadow = true,
-                  },
-               },
-            },
-         },
-      },
-   }
-   local box = UIBox({
-      definition = definition,
-      config = {
-         instance_type = "ALERT",
-         align = "tm",
-         major = G.ROOM_ATTACH,
-         offset = { x = 0, y = -0.2 },
-         bond = "Weak",
-      },
-   })
-   REWINDER._debug_alert = box
-   if G.E_MANAGER and Event then
-      G.E_MANAGER:add_event(Event({
-         trigger = "after",
-         delay = 1.6,
-         no_delete = true,
-         blocking = false,
-         timer = "REAL",
-         func = function()
-            if REWINDER._debug_alert == box then
-               if box.remove then box:remove() end
-               REWINDER._debug_alert = nil
-            end
-            return true
-         end,
-      }))
-   end
 end
 G.FUNCS = G.FUNCS or {}
 G.FUNCS.rewinder_config_change = function(args)

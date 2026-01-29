@@ -1,35 +1,25 @@
 --- Save Rewinder - GamePatches.lua
 --
--- Contains the overrides for Game:start_run and Game:write_save_file.
+-- Contains the override for Game:start_run and the save_run hook.
 -- These functions are injected into the game via lovely.toml.
 if not REWINDER then REWINDER = {} end
+local Logger = require("Logger")
+local log = Logger.create("GamePatches")
 -- Guard against double-execution (e.g., if this file is patched multiple times)
 if REWINDER._game_patches_loaded then return end
 REWINDER._game_patches_loaded = true
--- Local deepcopy utility for safely copying tables
-local function deepcopy(orig)
-    if type(orig) ~= 'table' then return orig end
-    local copy = {}
-    for k, v in pairs(orig) do
-        copy[deepcopy(k)] = deepcopy(v)
-    end
-    return copy
-end
 -- Assume REWINDER is already defined and populated by Init.lua
--- REWINDER.hook_key_hold from Init.lua, now defined here.
-function REWINDER.hook_key_hold()
-   -- Previously used to hook long-press behaviour; kept as a no-op
-   -- initializer so existing calls from Game:start_run remain safe.
-   if REWINDER._key_hold_hooked then return end
-   REWINDER._key_hold_hooked = true
-end
 REWINDER._start_run = Game.start_run
-REWINDER._update_shop = Game.update_shop
 function Game:start_run(args)
    args = args or {}
    -- 1. Mark the loaded state and derive _file from _rewinder_id if needed
    if args and args.savetext and REWINDER.mark_loaded_state then
       local BM = REWINDER._SaveManager
+
+      -- Clear stale load markers when this is a plain Continue (no restore/step pending).
+      if BM and BM.reset_loaded_state_if_stale then
+         BM.reset_loaded_state_if_stale()
+      end
       
       -- Derive _file from _rewinder_id if not already set (enables O(1) file lookup)
       if args.savetext and not args.savetext._file then
@@ -45,7 +35,7 @@ function Game:start_run(args)
             args.savetext._file = BM._last_loaded_file
          end
       end
-      
+
       -- Mark loaded state for skip-duplicate logic
       local need_mark = BM and (not BM._loaded_mark_applied)
       if need_mark then
@@ -74,7 +64,6 @@ function Game:start_run(args)
    end
    -- 3. Reset REWINDER State for new run
    REWINDER.saves_open = false
-   REWINDER._save_counter = 0
    REWINDER._debug_alert = nil
    if not args or not args.savetext then
       -- Brand new run - reset SaveManager internal state directly
@@ -87,14 +76,15 @@ function Game:start_run(args)
          BM.current_index = nil
          BM._restore_active = nil
          BM._last_loaded_file = nil
-         if REWINDER.debug_log then
-            REWINDER.debug_log("cache", "Reset _last_loaded_file (new run)")
-         end
+         log("cache", "Reset _last_loaded_file (new run)")
          BM.skip_next_save = false
          BM.pending_future_prune_boundary = nil
          BM.skipping_pack_open = nil
          BM._last_save_sig = nil  -- Reset duplicate detection
          BM._last_save_time = nil
+         if BM.set_overlay_open then
+            BM.set_overlay_open(false)
+         end
          if BM.reset_ordinal_state then
             BM.reset_ordinal_state()  -- Reset ordinal counters for new run
          end
@@ -145,17 +135,13 @@ function Game:start_run(args)
             end
          elseif BM._last_loaded_file then
             -- Preserve existing _last_loaded_file
-            if REWINDER.debug_log then
-               REWINDER.debug_log("cache", string.format("preserving _last_loaded_file=%s", BM._last_loaded_file))
-            end
+            log("cache", string.format("preserving _last_loaded_file=%s", BM._last_loaded_file))
          end
       end
    end
 
    REWINDER._start_run(self, args)
 
-   -- Call the REWINDER.hook_key_hold defined in this file.
-   REWINDER.hook_key_hold()
 end
 -- The Game:write_save_file patch is no longer needed with the new save_run hook.
 -- The original function will be called automatically.
@@ -168,29 +154,19 @@ function REWINDER.defer_save_creation()
       -- Generate unique ID BEFORE game writes save.jkr
       -- This ID will be persisted in save.jkr by the game's save logic,
       -- enabling exact O(1) matching when user clicks "Continue"
-      local unique_id = math.floor(love.timer.getTime() * 1000)
-      G.culled_table._rewinder_id = unique_id
-      
-      -- To prevent recursive crashes with other mods that hook filesystem
-      -- operations, we defer the save creation to the next frame.
-      -- This breaks the synchronous call chain that can lead to a stack overflow.
-      
-      -- We must create a deep copy of the data, because G.culled_table is ephemeral
-      -- and will likely be gone or changed by the next frame.
-      local run_data_copy = deepcopy(G.culled_table)
-      
-      if G and G.E_MANAGER and Event then
-         G.E_MANAGER:add_event(Event({
-            trigger = 'after',
-            delay = 0,
-            blockable = false,  -- Don't block shop animation events
-            func = function()
-               -- require here since this runs in a new context
-               require("SaveManager").create_save(run_data_copy)
-               return true
-            end
-         }))
+      local unique_id = nil
+      if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager.generate_unique_id then
+         unique_id = REWINDER._SaveManager.generate_unique_id()
+      else
+         unique_id = math.floor(os.time() * 1000)
       end
-      -- If event manager isn't available, skip save creation (shouldn't happen during gameplay)
+      G.culled_table._rewinder_id = unique_id
+      -- Save immediately using the same table as the vanilla game save.
+      local SM = REWINDER and REWINDER._SaveManager
+      if SM and SM.create_save then
+         SM.create_save(G.culled_table)
+      else
+         require("SaveManager").create_save(G.culled_table)
+      end
    end
 end

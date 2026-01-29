@@ -2,12 +2,14 @@
   "id": "save_rewinder",
   "name": "Save Rewinder",
   "display_name": "Save Rewinder",
-  "author": ["Liafonx"],
+  "author": [
+    "Liafonx"
+  ],
   "description": "Undo mistakes, experiment freely. Auto-saves at key moments, press S to rewind or use the orange Saves button in game menu.",
   "prefix": "rewinder",
   "main_file": "main.lua",
   "priority": 26,
   "badge_colour": "ffffff",
   "badge_text_colour": "000000",
-  "version": "1.4.6.1"
+  "version": "1.4.7"
 }

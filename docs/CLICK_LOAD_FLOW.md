@@ -49,21 +49,21 @@ This is now a **single unified function** that handles all load logic (previousl
    -- ... other fields for direct comparison
    M._loaded_display_type = entry[E.ENTRY_DISPLAY_TYPE]
    ```
-3. **Set prune boundary** (O(1) instead of O(N) list building):
+4. **Set prune boundary** (O(1) instead of O(N) list building):
    ```lua
-   -- Instead of building a list of files, store just the timestamp boundary
+   -- Instead of building a list of files, store just the ENTRY_INDEX boundary
    M.pending_future_prune_boundary = entry[E.ENTRY_INDEX]
    -- During prune: delete all entries where INDEX > boundary
    ```
-4. **Initialize ordinal_state** from loaded entry (includes ante, blind_key, round for per-round ordinals)
-5. **Copy save file**: `M.copy_save_to_main(file)` — copies raw bytes to `save.jkr`
-6. **Let game read save.jkr** (uses same code path as normal "Continue"):
+5. **Initialize ordinal_state** from loaded entry (includes ante, blind_key, round; `P`/`D` loads use pre-action counters so identical state stays `P`/`D`, not `H`)
+6. **Copy save file**: `M.copy_save_to_main(file)` — copies raw bytes to `save.jkr`
+7. **Let game read save.jkr** (uses same code path as normal "Continue"):
    ```lua
    G.SAVED_GAME = nil  -- Clear stale cache
    local data = get_compressed(profile .. "/save.jkr")  -- Game's built-in
    local run_data = STR_UNPACK(data)                    -- Game's built-in
    ```
-7. **Start the run**:
+8. **Start the run**:
    - **Fast path** (`no_wipe = true`): `G:delete_run()` → `G:start_run({ savetext = ... })`
    - **Normal path**: `G.FUNCS.start_run(nil, { savetext = ... })`
 
@@ -76,8 +76,7 @@ This is now a **single unified function** that handles all load logic (previousl
 **Actions**:
 1. **Match save file** (if `_file` not set, for "Continue" from main menu):
    - **Primary**: O(1) lookup by `_rewinder_id` field in save.jkr (exact match)
-   - **Fallback**: Field comparison (ante, round, money, discards, hands, display_type) for legacy saves
-   - **Final fallback**: Use newest save if no match
+   - **Fallback**: Use newest save if no match (legacy saves without `_rewinder_id` are not supported)
 2. **Mark loaded state** (SKIPPED if `_loaded_mark_applied == true`):
    - When loading via `load_and_start_from_file`, signature is pre-computed
    - Only called for "Continue" from main menu (not through our UI)
@@ -116,7 +115,7 @@ This is now a **single unified function** that handles all load logic (previousl
 |----------|--------|---------|
 | `_last_loaded_file` | `load_and_start_from_file` | Tracks current save file for UI highlighting |
 | `pending_index` | `rewinder_save_restore` | Save index for timeline consistency |
-| `pending_future_prune_boundary` | `load_and_start_from_file` | Timestamp boundary for future prune (O(1) storage) |
+| `pending_future_prune_boundary` | `load_and_start_from_file` | ENTRY_INDEX boundary for future prune (O(1) storage) |
 | `skip_next_save` | `load_and_start_from_file` | Flag to skip duplicate save |
 | `_loaded_ante/round/money/...` | `load_and_start_from_file` | Individual fields for O(1) comparison (no signature string) |
 | `_loaded_display_type` | `load_and_start_from_file` | Display type of loaded state |
@@ -139,8 +138,8 @@ This is now a **single unified function** that handles all load logic (previousl
 - Non-destructive operation
 - Pruning happens on next real save (when timeline diverges)
 
-**How it works** (optimized with timestamp boundary):
-1. When loading save, store its `ENTRY_INDEX` (timestamp) as `pending_future_prune_boundary`
+**How it works** (optimized with ENTRY_INDEX boundary):
+1. When loading save, store its `ENTRY_INDEX` (epoch-based ID) as `pending_future_prune_boundary`
 2. This is **O(1)** instead of building a list of file names
 3. On next `create_save()`, `prune_future_saves()` deletes all entries where `INDEX > boundary`
 4. Since entries are sorted newest-first, this is a single-pass from the start of the list
@@ -162,7 +161,7 @@ This is now a **single unified function** that handles all load logic (previousl
 2. **Direct file copy**: `copy_save_to_main` copies binary file without decode/encode cycle
 3. **Fast restart path**: `no_wipe` option uses `G:delete_run()` → `G:start_run()` for faster restore
 4. **Deferred pruning**: Timeline cleanup happens on next save, not during load
-5. **O(1) prune setup**: Timestamp boundary instead of O(N) file list building
+5. **O(1) prune setup**: ENTRY_INDEX boundary instead of O(N) file list building
 6. **Pre-computed signature**: Eliminates redundant `mark_loaded_state` call in game hook
 7. **Unified load function**: Reduced function call overhead by inlining `start_from_file`
 8. **Game-native load**: Uses `get_compressed` + `STR_UNPACK` directly from `save.jkr` (same as "Continue")
@@ -194,6 +193,6 @@ Next save triggered
 consume_skip_on_save
     ↓ direct field comparison (no string formatting)
 prune_future_saves (if boundary set)
-    ↓ single-pass delete using timestamp boundary
+    ↓ single-pass delete using ENTRY_INDEX boundary
 Timeline cleaned up
 ```

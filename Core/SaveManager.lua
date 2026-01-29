@@ -38,12 +38,22 @@ local E = {
    ENTRY_MONEY = ENTRY_MONEY, ENTRY_SIGNATURE = ENTRY_SIGNATURE, ENTRY_DISCARDS_USED = ENTRY_DISCARDS_USED,
    ENTRY_HANDS_PLAYED = ENTRY_HANDS_PLAYED, ENTRY_IS_CURRENT = ENTRY_IS_CURRENT, ENTRY_BLIND_IDX = ENTRY_BLIND_IDX,
    ENTRY_DISPLAY_TYPE = ENTRY_DISPLAY_TYPE, ENTRY_ORDINAL = ENTRY_ORDINAL,
-   -- Also expose ante/round without prefix for fallback code
-   ANTE = ENTRY_ANTE, ROUND = ENTRY_ROUND,
 }
 
 M.PATHS = { SAVES = "SaveRewinder" }
 M.debug_log = Logger.create("SaveManager")
+M.META_CACHE_BASE_LIMIT = 32
+
+-- Epoch-based unique ID generator (monotonic across sessions)
+M._last_generated_id = 0
+function M.generate_unique_id()
+   local now_ms = os.time() * 1000
+   if now_ms <= (M._last_generated_id or 0) then
+      now_ms = (M._last_generated_id or 0) + 1
+   end
+   M._last_generated_id = now_ms
+   return now_ms
+end
 
 -- Blind key <-> index mapping for compact storage (string "bl_small" -> number 1)
 -- Index 0 is bl_undiscovered (for choose_blind state)
@@ -78,6 +88,15 @@ end
 
 -- Internal state
 local save_cache, save_cache_by_file, save_index_by_file, save_cache_by_id = nil, nil, nil, nil
+
+-- Metadata cache (bounded, elastic while overlay open)
+local meta_cache = {}
+local meta_cache_size = 0
+local meta_lru = {}
+local meta_cache_limit = M.META_CACHE_BASE_LIMIT
+M._overlay_open = false
+local _last_meta_window_start, _last_meta_window_finish = nil, nil
+local _last_eviction_log_time = 0
 
 M._last_loaded_file = nil
 M._pending_skip_reason = nil
@@ -126,6 +145,175 @@ local ordinal_state = {
    defeated_boss_idx = nil,
 }
 
+-- ============================================================================
+-- Meta Cache Helpers (bounded, elastic while overlay open)
+-- ============================================================================
+
+local function _remove_from_lru(file)
+   for i = #meta_lru, 1, -1 do
+      if meta_lru[i] == file then
+         table.remove(meta_lru, i)
+         return
+      end
+   end
+end
+
+local function _touch_lru(file)
+   if not file then return end
+   _remove_from_lru(file)
+   table.insert(meta_lru, file)
+end
+
+local function _apply_meta_to_entry(entry, meta)
+   if not entry or not meta then return end
+   entry[E.ENTRY_MONEY] = meta.money
+   entry[E.ENTRY_SIGNATURE] = meta.signature
+   entry[E.ENTRY_DISCARDS_USED] = meta.discards_used
+   entry[E.ENTRY_HANDS_PLAYED] = meta.hands_played
+   entry[E.ENTRY_BLIND_IDX] = meta.blind_idx
+   entry[E.ENTRY_DISPLAY_TYPE] = meta.display_type
+   entry[E.ENTRY_ORDINAL] = meta.ordinal
+end
+
+local function _clear_entry_meta(entry)
+   if not entry then return end
+   entry[E.ENTRY_MONEY] = nil
+   entry[E.ENTRY_SIGNATURE] = nil
+   entry[E.ENTRY_DISCARDS_USED] = nil
+   entry[E.ENTRY_HANDS_PLAYED] = nil
+   entry[E.ENTRY_BLIND_IDX] = nil
+   entry[E.ENTRY_DISPLAY_TYPE] = nil
+   entry[E.ENTRY_ORDINAL] = nil
+end
+
+local function _drop_meta(file)
+   if not file or not meta_cache[file] then return end
+   meta_cache[file] = nil
+   meta_cache_size = math.max(0, meta_cache_size - 1)
+   _remove_from_lru(file)
+   if save_cache_by_file then
+      local entry = save_cache_by_file[file]
+      if entry then _clear_entry_meta(entry) end
+   end
+end
+
+local function _get_current_file()
+   return M._last_loaded_file or (G and G.SAVED_GAME and G.SAVED_GAME._file) or nil
+end
+
+local function _is_pinned(file)
+   return file and file == _get_current_file()
+end
+
+local function _evict_meta_if_needed()
+   local evicted = 0
+   if M._overlay_open then
+      if meta_cache_size > meta_cache_limit then
+         meta_cache_limit = meta_cache_size
+      end
+      return
+   end
+   while meta_cache_size > meta_cache_limit do
+      local candidate = nil
+      for i = 1, #meta_lru do
+         if not _is_pinned(meta_lru[i]) then
+            candidate = meta_lru[i]
+            break
+         end
+      end
+      if not candidate then break end
+      _drop_meta(candidate)
+      evicted = evicted + 1
+   end
+   if evicted > 0 then
+      local now = love and love.timer and love.timer.getTime() or 0
+      if (now - _last_eviction_log_time) > 0.5 or evicted >= 4 then
+         M.debug_log("cache", "Meta cache evicted=" .. tostring(evicted))
+         _last_eviction_log_time = now
+      end
+   end
+end
+
+local function _cache_meta(file, meta)
+   if not file or not meta then return end
+   if not meta_cache[file] then
+      meta_cache_size = meta_cache_size + 1
+   end
+   meta_cache[file] = meta
+   _touch_lru(file)
+   _evict_meta_if_needed()
+end
+
+local function _purge_meta_cache()
+   if not save_cache_by_file then return end
+   for file in pairs(meta_cache) do
+      if not save_cache_by_file[file] then
+         _drop_meta(file)
+      end
+   end
+end
+
+function M.set_overlay_open(is_open)
+   M._overlay_open = is_open and true or false
+   if REWINDER then
+      REWINDER.saves_open = M._overlay_open
+   end
+   if not M._overlay_open then
+      meta_cache_limit = M.META_CACHE_BASE_LIMIT
+      _evict_meta_if_needed()
+   end
+end
+
+function M.is_overlay_open()
+   return M._overlay_open
+end
+
+function M.ensure_meta_window(center_idx, window_size, force_log, suppress_log)
+   local entries = save_cache or M.get_save_files()
+   if not entries or #entries == 0 then return end
+   local total = #entries
+   local size = window_size or M.META_CACHE_BASE_LIMIT
+   local half = math.floor(size / 2)
+   local start = math.max(1, (center_idx or 1) - half)
+   local finish = math.min(total, start + size - 1)
+   start = math.max(1, finish - size + 1)
+   if not suppress_log and (force_log or start ~= _last_meta_window_start or finish ~= _last_meta_window_finish) then
+      M.debug_log("cache", string.format("Meta window %d-%d (%d)", start, finish, size))
+      _last_meta_window_start, _last_meta_window_finish = start, finish
+   end
+   for i = start, finish do
+      M.get_save_meta(entries[i], { force = true })
+   end
+end
+
+function M.ensure_meta_window_for_page(page_num, per_page, window_pages, force_log, suppress_log)
+   local per = per_page or 8
+   local pages = window_pages or 4
+   local center_page = page_num or 1
+   local center_idx = (center_page - 1) * per + math.ceil(per / 2)
+   M.ensure_meta_window(center_idx, per * pages, force_log, suppress_log)
+end
+
+function M.calc_meta_window_bounds(center_idx, window_size)
+   local entries = save_cache or M.get_save_files()
+   if not entries or #entries == 0 then return nil, nil, window_size or M.META_CACHE_BASE_LIMIT end
+   local total = #entries
+   local size = window_size or M.META_CACHE_BASE_LIMIT
+   local half = math.floor(size / 2)
+   local start = math.max(1, (center_idx or 1) - half)
+   local finish = math.min(total, start + size - 1)
+   start = math.max(1, finish - size + 1)
+   return start, finish, size
+end
+
+function M.calc_meta_window_bounds_for_page(page_num, per_page, window_pages)
+   local per = per_page or 8
+   local pages = window_pages or 4
+   local center_page = page_num or 1
+   local center_idx = (center_page - 1) * per + math.ceil(per / 2)
+   return M.calc_meta_window_bounds(center_idx, per * pages)
+end
+
 -- Reset ordinal counters for new round, blind, or ante
 local function _reset_ordinal_state(ante, blind_key, round)
    ordinal_state.ante = ante
@@ -143,6 +331,66 @@ end
 function M.reset_ordinal_state()
    _reset_ordinal_state(nil, nil, nil)
    ordinal_state.defeated_boss_idx = nil
+end
+
+-- Clear stale load markers when entering a new start_run via Continue.
+-- We only do this when no restore/step is pending.
+function M.reset_loaded_state_if_stale()
+   if M._pending_skip_reason then return end
+   M._loaded_mark_applied = nil
+   M._loaded_ante = nil
+   M._loaded_round = nil
+   M._loaded_money = nil
+   M._loaded_discards = nil
+   M._loaded_hands = nil
+   M._loaded_display_type = nil
+   M.skip_next_save = false
+   M._restore_active = false
+   _reset_ordinal_state(nil, nil, nil)
+   ordinal_state.defeated_boss_idx = nil
+end
+
+-- Initialize ordinal_state context from a loaded cache entry.
+-- This keeps display_type detection consistent across restore/continue paths.
+local function _init_ordinal_state_from_entry(entry)
+   if not entry then
+      _reset_ordinal_state(nil, nil, nil)
+      ordinal_state.defeated_boss_idx = nil
+      return
+   end
+
+   local blind_key = M.index_to_blind_key(entry[E.ENTRY_BLIND_IDX]) or "unknown"
+   _reset_ordinal_state(entry[E.ENTRY_ANTE], blind_key, entry[E.ENTRY_ROUND])
+
+   local dtype = entry[E.ENTRY_DISPLAY_TYPE]
+
+   -- For P/D saves: set counters to value BEFORE the action.
+   -- This ensures the identical post-load state still computes as P/D (not H).
+   if dtype == "P" then
+      ordinal_state.last_hands_played = (entry[E.ENTRY_HANDS_PLAYED] or 1) - 1
+      ordinal_state.last_discards_used = entry[E.ENTRY_DISCARDS_USED] or 0
+   elseif dtype == "D" then
+      ordinal_state.last_discards_used = (entry[E.ENTRY_DISCARDS_USED] or 1) - 1
+      ordinal_state.last_hands_played = entry[E.ENTRY_HANDS_PLAYED] or 0
+   else
+      ordinal_state.last_discards_used = entry[E.ENTRY_DISCARDS_USED] or 0
+      ordinal_state.last_hands_played = entry[E.ENTRY_HANDS_PLAYED] or 0
+   end
+   ordinal_state.last_display_type = dtype
+
+   if dtype and ordinal_state.counters[dtype] then
+      ordinal_state.counters[dtype] = entry[E.ENTRY_ORDINAL] or 1
+   end
+
+   -- Restore boss tracking for shop saves
+   if (dtype == "F" or dtype == "S" or dtype == "O" or dtype == "A") and
+      entry[E.ENTRY_BLIND_IDX] and entry[E.ENTRY_BLIND_IDX] > 2 then
+      ordinal_state.defeated_boss_idx = entry[E.ENTRY_BLIND_IDX]
+      ordinal_state.last_round = 3
+   else
+      ordinal_state.defeated_boss_idx = nil
+      ordinal_state.last_round = nil
+   end
 end
 
 -- ============================================================================
@@ -259,7 +507,7 @@ local function _should_skip_duplicate(signature, display_type, ante, round)
           tonumber(last_ante) == ante and tonumber(last_round) == round then
          -- Don't skip if this is an opening pack save
          if display_type ~= "O" then
-            M.debug_log("filter", "Skipping rapid-fire save at same ante/round")
+            M.debug_log("save", "Skip rapid save at same ante/round")
             return true
          end
       end
@@ -272,7 +520,7 @@ local function _should_skip_duplicate(signature, display_type, ante, round)
          local last_ante, last_round, last_dtype = M._last_save_sig:match("^(%d+):(%d+):(%a+):")
          if last_dtype == "E" and 
              tonumber(last_ante) == ante and tonumber(last_round) == round then
-            M.debug_log("filter", "Skipping duplicate end of round save")
+            M.debug_log("save", "Skip duplicate end of round")
             return true
          end
       end
@@ -320,6 +568,12 @@ function M.get_entry_by_id(id)
    if not id then return nil end
    if not save_cache_by_id then _rebuild_file_index() end
    local result = save_cache_by_id and save_cache_by_id[id]
+   if not result and type(id) == "string" then
+      local num = tonumber(id)
+      if num then
+         result = save_cache_by_id and save_cache_by_id[num]
+      end
+   end
    return result and result.entry, result and result.index
 end
 
@@ -350,40 +604,45 @@ function M.clear_all_saves()
       end
    end
    save_cache = {}
+   meta_cache = {}
+   meta_cache_size = 0
+   meta_lru = {}
+   meta_cache_limit = M.META_CACHE_BASE_LIMIT
    _last_current_file = false  -- Reset sentinel for O(1) change detection
    _rebuild_file_index()
 end
 
 -- --- Save Listing & Metadata ---
-function M.get_save_meta(entry)
+function M.get_save_meta(entry, opts)
    if not entry or not entry[E.ENTRY_FILE] then return nil end
-   if entry[E.ENTRY_SIGNATURE] then return true end
-
-   local dir = M.get_save_dir()
-   local meta_path = dir .. "/" .. entry[E.ENTRY_FILE]:gsub("%.jkr$", ".meta")
-   local meta = MetaFile.read_meta_file(meta_path)
-
-   if meta and meta.display_type then
-      entry[E.ENTRY_MONEY] = meta.money
-      entry[E.ENTRY_SIGNATURE] = meta.signature
-      entry[E.ENTRY_DISCARDS_USED] = meta.discards_used
-      entry[E.ENTRY_HANDS_PLAYED] = meta.hands_played
-      entry[E.ENTRY_BLIND_IDX] = meta.blind_idx
-      entry[E.ENTRY_DISPLAY_TYPE] = meta.display_type
-      entry[E.ENTRY_ORDINAL] = meta.ordinal
+   opts = opts or {}
+   local file = entry[E.ENTRY_FILE]
+   if entry[E.ENTRY_SIGNATURE] and not opts.force then
+      if meta_cache[file] then _touch_lru(file) end
       return true
    end
 
-   -- Legacy save without .meta file - log warning and use defaults
-   M.debug_log("list", "No .meta file for: " .. entry[E.ENTRY_FILE] .. " (legacy save)")
-   entry[E.ENTRY_MONEY] = 0
-   entry[E.ENTRY_SIGNATURE] = "0:0:?:0:0:0"
-   entry[E.ENTRY_DISCARDS_USED] = 0
-   entry[E.ENTRY_HANDS_PLAYED] = 0
-   entry[E.ENTRY_BLIND_IDX] = 0
-   entry[E.ENTRY_DISPLAY_TYPE] = "?"
-   entry[E.ENTRY_ORDINAL] = 1
-   return true
+   local dir = M.get_save_dir()
+   local meta = meta_cache[file]
+   if meta then
+      _touch_lru(file)
+      _apply_meta_to_entry(entry, meta)
+      return true
+   end
+
+   local meta_path = dir .. "/" .. file:gsub("%.jkr$", ".meta")
+   meta = MetaFile.read_meta_file(meta_path)
+
+   if meta and meta.display_type then
+      _cache_meta(file, meta)
+      _apply_meta_to_entry(entry, meta)
+      return true
+   end
+
+   -- Missing .meta file (legacy saves not supported)
+   M.debug_log("error", "Missing .meta file for: " .. file)
+   _clear_entry_meta(entry)
+   return false
 end
 
 local function _list_and_sort_entries()
@@ -406,7 +665,7 @@ local function _list_and_sort_entries()
       end
    end
 
-   -- Sort by index (unique timestamp) descending (newest first)
+   -- Sort by index (epoch-based unique ID) descending (newest first)
    table.sort(entries, function(a, b)
       return a[E.ENTRY_INDEX] > b[E.ENTRY_INDEX]
    end)
@@ -416,10 +675,14 @@ end
 
 function M._set_cache_current_file(file)
    M._last_loaded_file = file
+   local entry = file and save_cache_by_file and save_cache_by_file[file]
+   if entry then
+      M.get_save_meta(entry, { force = true })
+   end
    _update_cache_current_flags()
 end
 
--- Returns sorted list of saves. Use sync=true to load all metadata synchronously.
+-- Returns sorted list of saves. Metadata is loaded on-demand (bounded cache).
 function M.get_save_files(force_reload)
    if save_cache and not force_reload then
       _update_cache_current_flags()
@@ -427,20 +690,22 @@ function M.get_save_files(force_reload)
       return save_cache
    end
    save_cache = _list_and_sort_entries()
-   _rebuild_file_index()
-
-   for i = 1, #save_cache do
-      if not save_cache[i][E.ENTRY_SIGNATURE] then
-         M.get_save_meta(save_cache[i])
-      end
+   if save_cache and save_cache[1] and save_cache[1][E.ENTRY_INDEX] then
+      M._last_generated_id = math.max(M._last_generated_id or 0, save_cache[1][E.ENTRY_INDEX])
    end
-
+   _rebuild_file_index()
+   _purge_meta_cache()
    _update_cache_current_flags()
    return save_cache
 end
 
--- Alias for backward compatibility
-M.preload_all_metadata = M.get_save_files
+function M.preload_all_metadata(force_reload)
+   local entries = M.get_save_files(force_reload)
+   if entries and #entries > 0 then
+      M.ensure_meta_window(1, M.META_CACHE_BASE_LIMIT)
+   end
+   return entries
+end
 
 function M.describe_save(opts)
    opts = opts or {}
@@ -475,6 +740,16 @@ function M.load_save_file(file) return FileIO.load_save_file(file, M.get_save_di
 
 -- start_from_file is now inlined into load_and_start_from_file for efficiency
 
+local function _load_main_save()
+   local profile = (G.SETTINGS and G.SETTINGS.profile) or "1"
+   local save_path = profile .. "/save.jkr"
+   local data = get_compressed(save_path)
+   if not data then return nil, "read" end
+   local ok, run_data = pcall(STR_UNPACK, data)
+   if not ok or not run_data then return nil, "unpack" end
+   return run_data
+end
+
 function M.load_and_start_from_file(file, opts)
    opts = opts or {}
    local mark_restore = not opts.skip_restore_identical
@@ -483,7 +758,11 @@ function M.load_and_start_from_file(file, opts)
    -- Get entry and ensure cache is loaded
    M.get_save_files()
    local entry = save_cache_by_file and save_cache_by_file[file]
+   if entry then M.get_save_meta(entry, { force = true }) end
    local idx_from_list = M.get_index_by_file(file)
+   if idx_from_list and M.ensure_meta_window then
+      M.ensure_meta_window(idx_from_list, M.META_CACHE_BASE_LIMIT)
+   end
    
    -- Reset state flags
    M._loaded_mark_applied = true  -- Pre-marked here, no need for Game:start_run to call mark_loaded_state
@@ -511,7 +790,7 @@ function M.load_and_start_from_file(file, opts)
       M._loaded_display_type = nil
    end
    
-   -- Calculate future prune boundary using timestamp (O(1) instead of O(N) list building)
+   -- Calculate future prune boundary using ENTRY_INDEX (O(1) instead of O(N) list building)
    -- Entries with ENTRY_INDEX > this boundary are "future" saves to prune
    if entry and idx_from_list and idx_from_list > 1 then
       M.pending_future_prune_boundary = entry[E.ENTRY_INDEX]
@@ -520,43 +799,7 @@ function M.load_and_start_from_file(file, opts)
    end
    
    -- Initialize ordinal_state from loaded entry
-   if entry then
-      local blind_key = M.index_to_blind_key(entry[E.ENTRY_BLIND_IDX]) or "unknown"
-      _reset_ordinal_state(entry[E.ENTRY_ANTE], blind_key, entry[E.ENTRY_ROUND])
-      
-      local dtype = entry[E.ENTRY_DISPLAY_TYPE]
-      
-      -- For P/D saves: set counters to value BEFORE the action
-      -- This ensures next save comparison (hands_played > last) is true
-      if dtype == "P" then
-         ordinal_state.last_hands_played = (entry[E.ENTRY_HANDS_PLAYED] or 1) - 1
-         ordinal_state.last_discards_used = entry[E.ENTRY_DISCARDS_USED] or 0
-      elseif dtype == "D" then
-         ordinal_state.last_discards_used = (entry[E.ENTRY_DISCARDS_USED] or 1) - 1
-         ordinal_state.last_hands_played = entry[E.ENTRY_HANDS_PLAYED] or 0
-      else
-         ordinal_state.last_discards_used = entry[E.ENTRY_DISCARDS_USED] or 0
-         ordinal_state.last_hands_played = entry[E.ENTRY_HANDS_PLAYED] or 0
-      end
-      ordinal_state.last_display_type = dtype
-
-      if dtype and ordinal_state.counters[dtype] then
-         ordinal_state.counters[dtype] = entry[E.ENTRY_ORDINAL] or 1
-      end
-      
-      -- Restore boss tracking for shop saves
-      if (dtype == "F" or dtype == "S" or dtype == "O" or dtype == "A") and 
-         entry[E.ENTRY_BLIND_IDX] and entry[E.ENTRY_BLIND_IDX] > 2 then
-         ordinal_state.defeated_boss_idx = entry[E.ENTRY_BLIND_IDX]
-         ordinal_state.last_round = 3
-      else
-         ordinal_state.defeated_boss_idx = nil
-         ordinal_state.last_round = nil
-      end
-   else
-      _reset_ordinal_state(nil, nil, nil)
-      ordinal_state.defeated_boss_idx = nil
-   end
+   _init_ordinal_state_from_entry(entry)
    
    if mark_restore then
       M.debug_log("restore", "Loading " .. M.describe_save({ file = file }))
@@ -577,16 +820,13 @@ function M.load_and_start_from_file(file, opts)
    -- Let the game read from save.jkr using its built-in functions
    -- This uses the same code path as normal "Continue" flow
    G.SAVED_GAME = nil  -- Clear stale cache
-   local profile = (G.SETTINGS and G.SETTINGS.profile) or "1"
-   local save_path = profile .. "/save.jkr"
-   local data = get_compressed(save_path)
-   if not data then
-      M.debug_log("error", "Failed to read save.jkr")
-      return false
-   end
-   local ok, run_data = pcall(STR_UNPACK, data)
-   if not ok or not run_data then
-      M.debug_log("error", "Failed to unpack save.jkr")
+   local run_data, err = _load_main_save()
+   if not run_data then
+      if err == "read" then
+         M.debug_log("error", "Failed to read save.jkr")
+      else
+         M.debug_log("error", "Failed to unpack save.jkr")
+      end
       return false
    end
    
@@ -629,7 +869,7 @@ function M.revert_to_previous_save()
    local target_entry = entries[target_idx]
    if not target_entry or not target_entry[E.ENTRY_FILE] then return end
    
-   M.debug_log("step", "hotkey S -> loading " .. M.describe_save({ entry = target_entry }))
+   M.debug_log("step", "Step back -> " .. M.describe_save({ entry = target_entry }))
    M.load_and_start_from_file(target_entry[E.ENTRY_FILE], { skip_restore_identical = true, no_wipe = true })
 end
 
@@ -641,6 +881,32 @@ function M.load_save_at_index(index)
    if not entry or not entry[E.ENTRY_FILE] then return end
    M.pending_index = index
    M.load_and_start_from_file(entry[E.ENTRY_FILE])
+end
+
+function M.quick_continue_from_menu()
+   if not (G and G.FUNCS and G.STAGES and G.SETTINGS) then return end
+   if G.STAGE ~= G.STAGES.RUN then return end
+
+   M.debug_log("step", "Saveload -> continue")
+   if G.OVERLAY_MENU and G.FUNCS.exit_overlay_menu then
+      G.FUNCS.exit_overlay_menu()
+   end
+   if not G.SAVED_GAME then
+      local run_data = _load_main_save()
+      if run_data then
+         G.SAVED_GAME = run_data
+      end
+   end
+   if not G.SAVED_GAME then
+      M.debug_log("error", "No save.jkr to continue")
+      return
+   end
+   G.SETTINGS.current_setup = "Continue"
+   if G.FUNCS.start_run then
+      G.FUNCS.start_run(nil, { savetext = G.SAVED_GAME })
+   else
+      M.debug_log("error", "start_run not found for continue")
+   end
 end
 
 -- --- Logic Hook for Save Skipping ---
@@ -657,19 +923,25 @@ function M.mark_loaded_state(run_data, opts)
    
    if not M._pending_skip_reason then M._pending_skip_reason = opts.reason end
    M._restore_active = (M._pending_skip_reason == "restore")
-   if opts.last_loaded_file and not M._last_loaded_file then
+   -- Always take the file provided by start_run (Continue/QuickLoad may load an older save.jkr)
+   if opts.last_loaded_file then
       M._last_loaded_file = opts.last_loaded_file
+      local idx = M.get_index_by_file and M.get_index_by_file(opts.last_loaded_file)
+      if idx then M.current_index = idx end
    end
 
    -- Get loaded fields from entry or run_data
    local entry = M._last_loaded_file and save_cache_by_file and save_cache_by_file[M._last_loaded_file]
    if entry then
+      M.get_save_meta(entry, { force = true })
       M._loaded_ante = entry[E.ENTRY_ANTE]
       M._loaded_round = entry[E.ENTRY_ROUND]
       M._loaded_money = entry[E.ENTRY_MONEY]
       M._loaded_discards = entry[E.ENTRY_DISCARDS_USED]
       M._loaded_hands = entry[E.ENTRY_HANDS_PLAYED]
       M._loaded_display_type = entry[E.ENTRY_DISPLAY_TYPE]
+      -- Keep display_type detection consistent with load_and_start_from_file.
+      _init_ordinal_state_from_entry(entry)
    else
       local state_info = StateSignature.get_state_info(run_data)
       local display_type = _compute_display_type(state_info)
@@ -682,6 +954,18 @@ function M.mark_loaded_state(run_data, opts)
    end
    M._loaded_mark_applied = true
    M.skip_next_save = (opts.set_skip ~= false)
+end
+
+local function _align_save_id_to_current(save_table, reason)
+   if not save_table then return end
+   local file = save_table._file or M._last_loaded_file
+   if not file then return end
+   local entry = M.get_entry_by_file and M.get_entry_by_file(file)
+   if entry and entry[E.ENTRY_INDEX] then
+      save_table._rewinder_id = entry[E.ENTRY_INDEX]
+      save_table._file = entry[E.ENTRY_FILE]
+      M.debug_log("cache", "Align save.jkr id -> " .. tostring(entry[E.ENTRY_INDEX]) .. (reason and (" (" .. reason .. ")") or ""))
+   end
 end
 
 function M.consume_skip_on_save(save_table)
@@ -729,6 +1013,9 @@ function M.consume_skip_on_save(save_table)
    M.skipping_pack_open = nil
    
    if save_table and should_skip then save_table.REWINDER_SKIP_SAVE = true end
+   if should_skip then
+      _align_save_id_to_current(save_table, "skip")
+   end
    if not should_skip then
       M.debug_log("save", "Saving: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
    end
@@ -765,11 +1052,14 @@ end
 
 function M.create_save(run_data)
    if M.consume_skip_on_save(run_data) then return end
-   
+
    -- Get state info and check if we should save this state
    local state_info = StateSignature.get_state_info(run_data)
    if not state_info then return end
-   if not _should_save_state(state_info.state, REWINDER and REWINDER.config) then return end
+   if not _should_save_state(state_info.state, REWINDER and REWINDER.config) then
+      _align_save_id_to_current(run_data, "filtered")
+      return
+   end
    
    local st = G and G.STATES
    
@@ -797,13 +1087,14 @@ function M.create_save(run_data)
    
    -- Check for duplicates using signature STRING
    if _should_skip_duplicate(signature, display_type, state_info.ante, state_info.round) then
+      _align_save_id_to_current(run_data, "duplicate")
       return
    end
    
    M.get_save_files()
    local dir = M.get_save_dir()
 
-   -- Prune future saves using timestamp boundary (O(1) setup vs O(N) list building)
+   -- Prune future saves using ENTRY_INDEX boundary (O(1) setup vs O(N) list building)
    if M.pending_future_prune_boundary then
       Pruning.prune_future_saves(dir, M.pending_future_prune_boundary, save_cache, E)
       M.pending_future_prune_boundary = nil  -- Clear after use
@@ -811,7 +1102,7 @@ function M.create_save(run_data)
    end
    -- Use _rewinder_id from run_data if available (injected by defer_save_creation)
    -- This ensures the filename matches the ID stored in save.jkr for exact Continue matching
-   local unique_id = run_data._rewinder_id or math.floor(love.timer.getTime() * 1000)
+   local unique_id = run_data._rewinder_id or M.generate_unique_id()
    local filename = string.format("%d-%d-%d.jkr", state_info.ante, state_info.round, unique_id)
 
    -- Update tracking for next save's action type detection
@@ -885,8 +1176,25 @@ function M.create_save(run_data)
       display_type = display_type,
       ordinal = ordinal,
    })
+   _cache_meta(filename, {
+      money = state_info.money,
+      signature = signature,
+      discards_used = state_info.discards_used,
+      hands_played = state_info.hands_played,
+      blind_idx = blind_idx,
+      display_type = display_type,
+      ordinal = ordinal,
+   })
+
+   -- Keep save.jkr aligned using the exact bytes we just wrote (fast path).
+   FileIO.copy_save_to_main(filename, dir)
 
    table.insert(save_cache, 1, new_entry)
+   if save_cache[2] and save_cache[1][ENTRY_INDEX] < save_cache[2][ENTRY_INDEX] then
+      table.sort(save_cache, function(a, b)
+         return a[ENTRY_INDEX] > b[ENTRY_INDEX]
+      end)
+   end
    new_entry[ENTRY_IS_CURRENT] = true  -- Set directly on new entry (before rebuild)
    run_data._file = filename
    M.current_index = 1

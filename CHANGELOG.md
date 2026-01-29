@@ -4,6 +4,20 @@ English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/ma
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.4.7] - 2026-01-29
+### Added
+- **Keybinds tab**: Customize shortcuts in mod settings (supports keyboard combos and controller buttons).
+- **OS-aware labels**: Key names display as Cmd/Option/Win where appropriate.
+- **Controller shortcut**: `X` (Pause Menu) opens the save list.
+
+### Changed
+- **Controller defaults**: `R3` = Quick saveload.
+- **Memory optimization**: Reduced memory usage for save entries.
+
+### Fixed
+- **Save list order**: Prevented saves from appearing out of order after quit/continue flows.
+- **Crash fix**: Resolved a crash when navigating the save list with controller D-Pad.
+
 ## [1.4.6.1] - 2026-01-17
 
 ### Changed
@@ -133,4 +147,3 @@ All notable changes to Save Rewinder will be documented in this file.
 - Press `Ctrl+S` to open saves browser
 - Save list UI with pagination
 - Current save highlighting
-

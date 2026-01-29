@@ -42,6 +42,9 @@ save.*
 jkrs/
 Contents/
 
+# Logs
+logs/
+
 # Documentation (if auto-generated)
 MCP_SUGGESTIONS.md/
 docs/NEXUSMODS_DESCRIPTION.txt

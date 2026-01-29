@@ -6,13 +6,27 @@ Detailed guidance for AI agents working on this repo. More comprehensive than `.
 
 ## 1. Big Picture
 
-This is a Balatro mod that snapshots game state and supports instant rewind/restore via a cached `.jkr` + `.meta` timeline. It uses **static patching** (via `lovely.toml`) and **deferred execution** (next-frame events) to avoid recursive hook conflicts with other mods.
+This is a Balatro mod that snapshots game state and supports instant rewind/restore via a cached `.jkr` + `.meta` timeline. It uses **static patching** (via `lovely.toml`) and same-frame save creation inside `save_run`.
 
 **Core objectives:**
 - Automatically create multiple saves during gameplay (sorted chronologically)
 - Allow players to restore runs from any save point ("undo / step back")
 - Provide save list UI with blind icons, hotkeys, and controller support
 - Run transparently, compatible with popular mods (`Steamodded`, `debugplus`, etc.)
+
+---
+
+## 1.1 Recent Changes (Notable)
+
+- **Dual Keybinding System (v1.4.7)**: Separate `keyboard` and `controller` tables for each action. Allows `S` for keyboard step-back while keeping `L3` for controller.
+- **Controller Navigation**: Hardcoded hooks for `LB`/`RB` (page flip) and `Y` (jump to current) in the saves overlay. Custom focus navigation logic prevents vanilla crashes.
+- **Controller Shortcuts**: `X` button (Pause Menu only) opens saves list.
+- **Keybinds.lua Refactor**: Centralized controller hooks, context-aware `format_binding`, and safe `update_binding` logic.
+- **Save ordering guard**: new saves re-sort if out-of-order to prevention timeline misordering.
+
+## 1.2 Unfinished / Open Requirements
+
+- **Docs/UI**: Refine UI labels to clearly show both active bindings (currently context-sensitive based on last input).
 
 ---
 
@@ -30,7 +44,7 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
 ```
 lovely.toml patches → GamePatches.defer_save_creation()
                               ↓
-Init.lua → SaveManager.preload_all_metadata() (at boot)
+Init.lua → SaveManager.preload_all_metadata() (at boot; warms bounded meta window)
                               ↓
 SaveManager → StateSignature (state info extraction)
             → FileIO (file read/write)
@@ -77,7 +91,7 @@ Keybinds → SaveManager (step back, UI toggle)
 
 | File | Purpose |
 |------|---------|
-| `Keybinds.lua` | `S` (step back), `Ctrl+S` (toggle UI), Controller: `L3`/`R3`, LB/RB for page nav |
+| `Keybinds.lua` | Keybinds manager (Dual Binding system). Handles input hooks, restricted execution (Run stage), and UI formatting. Contains specific hooks for Controller navigation (`navigate_focus`) and shortcuts. |
 | `main.lua` | Steamodded config tab integration (auto-save toggles, display options) |
 | `config.lua` | Default config values |
 | `lovely.toml` | Lovely Loader patches: injects `REWINDER.defer_save_creation()` after `save_run` |
@@ -105,7 +119,9 @@ Keybinds → SaveManager (step back, UI toggle)
 
 ## 4. References Directory (Not Part of Mod)
 
-All materials in `References/` are for development reference only, not distributed with mod:
+All materials in `References/` are for development reference only, not distributed with mod.
+
+**Note:** Most mod folders in `References/` are symlinks pointing to `/Users/liafo/Library/Application Support/Balatro/Mods/`. This allows References to use live versions of mods for code inspection and pattern reference. Actual mod files are in the Mods folder (used by the game).
 
 | Folder | Content | Use For |
 |--------|---------|---------|
@@ -194,13 +210,13 @@ After restore, first auto-save often matches restored state. `load_and_start_fro
 1. `Init.lua` loaded during game start, creates `REWINDER` namespace
 2. Exports SaveManager API to `REWINDER.*`
 3. Hooks `Game:set_render_settings` (runs during loading screen)
-4. `preload_all_metadata()` — loads all `.meta` files synchronously
-5. Matches `save.jkr` to cache via `_rewinder_id` (O(1)) or field fallback (O(N))
+4. `preload_all_metadata()` — loads the save index and warms a bounded meta window
+5. Matches `save.jkr` to cache via `_rewinder_id` (O(1)); fallback is newest save if no match
 
 ### Save Writing
 1. Game calls `save_run()` → `G.culled_table` ready
 2. `lovely.toml` patch → `REWINDER.defer_save_creation()`
-3. Deep-copy `G.culled_table`, defer to next frame via `G.E_MANAGER`
+3. Tag `G.culled_table` with `_rewinder_id` and call `SaveManager.create_save()` immediately (same frame, same table)
 4. `SaveManager.create_save()`:
    - `StateSignature.get_state_info(run_data)` → extract raw state
    - Check ordinal_state reset (ante/round/blind change)
@@ -235,17 +251,24 @@ After restore, first auto-save often matches restored state. `load_and_start_fro
 4. `build_save_node()` uses pre-computed `ENTRY_DISPLAY_TYPE` and `ENTRY_ORDINAL`
 5. Lazy-load metadata on-demand when entry is first rendered
 
+### Meta Cache (Bounded + Elastic UI)
+- Base meta cache size: 32 entries
+- Cache grows elastically while the Saves UI is open
+- On close, cache recenters to current save and trims back to base size
+- Current save meta is always pinned
+
 ### Continue from Main Menu
 When user clicks "Continue" without using our UI:
 1. `Init.lua` matches `save.jkr` to cached entries during loading screen
 2. **Primary**: O(1) lookup by `_rewinder_id` field (injected into save data by `defer_save_creation`)
-3. **Fallback**: Field comparison for legacy saves (ante, round, money, discards_used, hands_played, display_type)
-4. **Final fallback**: Use newest save if no match
-5. Sets `_last_loaded_file` and `current_index` for UI highlighting
+3. **Fallback**: Use newest save if no match (legacy saves without `_rewinder_id` are not supported)
+5. `Game:start_run` clears stale `_loaded_*` markers (and resets `ordinal_state`) when no restore/step is pending, then calls `mark_loaded_state`
+6. `mark_loaded_state` always updates `_last_loaded_file` (and `current_index` when known) from the file derived off `savetext._rewinder_id` — important for QuickLoad-style "load save.jkr" flows
+7. `create_save()` copies the freshly written rewinder `.jkr` to `save.jkr` (fast path), keeping base saves aligned for other mods
 
 ### Custom Save Field (`_rewinder_id`)
 - Injected into `G.culled_table` in `defer_save_creation()` BEFORE game writes `save.jkr`
-- Value is unique millisecond timestamp (same as `ENTRY_INDEX`)
+- Value is an epoch-based unique ID (milliseconds since Unix epoch + per-second sequence; same as `ENTRY_INDEX`)
 - Enables O(1) exact matching via `save_cache_by_id` hash table
 - Zero extra I/O — piggybacks on existing save.jkr write
 
@@ -261,9 +284,13 @@ When user clicks "Continue" without using our UI:
 
 > [!WARNING]
 > **Restore resets ordinal_state** — Must re-initialize from entry's stored values (ante, blind_idx, discards_used, hands_played, display_type, ordinal for counter).
+> For `P`/`D` loads, set last counters to **pre-action values** (`hands_played - 1` or `discards_used - 1`) so the identical post-load state still computes as `P`/`D` (not `H`).
 
 > [!NOTE]
 > **TOML regex escaping** — Double-escape backslashes in `lovely.toml` patterns (e.g., `\\(` not `\(`).
+
+> [!NOTE]
+> **match_indent not supported for regex patches** — `match_indent = true` only works for `[patches.pattern]`, not `[patches.regex]`. Remove it from regex patches to avoid Lovely Loader warnings.
 
 > [!NOTE]
 > **Signature comparison is string equality** — Display type is computed BEFORE signature creation, so `signatures_equal()` is just string comparison.
@@ -278,11 +305,36 @@ When user clicks "Continue" without using our UI:
 ```bash
 ./scripts/sync_to_mods.sh           # One-time sync
 ./scripts/sync_to_mods.sh --watch   # Auto-sync on file changes
+./scripts/create_release.sh         # Create release packages (auto-detects version)
+./scripts/create_release.sh 1.4.7  # Create release with specific version
 ```
 
 - **No build system**: Edit Lua files in-place, sync to game, restart Balatro
 - **Logs**: Check `References/lovely/log/` for crash traces and patch diagnostics
 - **Testing**: Launch Balatro with Steamodded/Lovely Loader, verify mod in mods list
+
+### Development Setup
+
+**References Folder Structure:**
+- `References/` contains symlinks pointing to actual mods in `/Users/liafo/Library/Application Support/Balatro/Mods/`
+- This allows References to use live versions of mods for development reference
+- Actual mod files are in Mods folder (used by the game)
+- References folder is for code inspection and pattern reference only
+
+**lovely.toml Configuration:**
+- `match_indent` is **not supported** for `[patches.regex]` patches (only for `[patches.pattern]`)
+- If you see warnings about `match_indent` in regex patches, remove that key
+- Pattern patches can use `match_indent = true` to match indentation
+- Regex patches match exact text regardless of indentation
+
+### Release Packages
+
+The `create_release.sh` script generates two zip files in `release/[VERSION]/`:
+- **General version** (`SaveRewinder-X.Y.Z.zip`): Files wrapped in `SaveRewinder/` folder (for GitHub releases, Nexus Mods)
+- **Thunderstore version** (`SaveRewinder-X.Y.Z-Thunderstore.zip`): Files at root directory (includes `README.md`, `CHANGELOG.md`, `icon.png`, `manifest.json`)
+
+**Base files** (both versions): Core mod files (main.lua, config.lua, Core/, UI/, Utils/, etc.)
+**Thunderstore additions**: README.md, CHANGELOG.md, icon.png, manifest.json
 
 ### Version Management
 
@@ -292,12 +344,14 @@ When releasing a new version, update version in **4 places**:
 3. `CHANGELOG.md` — Add new version section at top
 4. `CHANGELOG_zh.md` — Same changes in Chinese
 
+Then run `./scripts/create_release.sh` to generate release packages.
+
 ---
 
 ## 9. When to Ask Humans
 
 - Changes to entry structure, metadata layout, or signature format
-- Altering deferred-execution or timeline-pruning logic
+- Changing save timing or timeline-pruning logic
 - Adding new `lovely.toml` patches that might conflict with other mods
 - Changing `ordinal_state` reset/initialization behavior
 

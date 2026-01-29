@@ -109,7 +109,6 @@ payload = "if REWINDER and REWINDER._SaveManager then REWINDER._SaveManager.skip
 target = "functions/misc_functions.lua"
 pattern = "G.ARGS.save_run = G.culled_table"
 position = "after"
-match_indent = true
 payload = """
    if REWINDER and REWINDER.defer_save_creation then
       REWINDER.defer_save_creation()

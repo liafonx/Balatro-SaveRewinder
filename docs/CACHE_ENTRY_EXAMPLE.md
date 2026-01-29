@@ -15,7 +15,7 @@ local entry = {
     "2-3-1609430.jkr",  -- [1] ENTRY_FILE
     2,                   -- [2] ENTRY_ANTE
     3,                   -- [3] ENTRY_ROUND
-    1609430,             -- [4] ENTRY_INDEX (unique millisecond timestamp for sorting)
+    1609430,             -- [4] ENTRY_INDEX (epoch-based unique ID for sorting)
     150,                 -- [5] ENTRY_MONEY
     "2:3:F:0:0:150",     -- [6] ENTRY_SIGNATURE (unified format with display_type)
     0,                   -- [7] ENTRY_DISCARDS_USED
@@ -158,4 +158,3 @@ ordinal_state = {
 - **Set**: On E save when `round == 3` or `actual_blind_idx > 2`
 - **Reset**: On B save (entering choose blind)
 - **Used by**: Shop saves (F/S/O/A) to show defeated boss icon instead of next blind
-
