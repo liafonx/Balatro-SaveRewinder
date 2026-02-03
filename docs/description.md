@@ -7,7 +7,7 @@ Automatically creates save points as you play. Rewind to any moment instantly.
 ## Key Features
 - **Instant Undo** — Press `S` or `L3` to step back immediately.
 - **Quick Saveload** — Press `L` or `R3` to instantly reload.
-- **Rewind Freely** — Stepped-back saves are preserved until you make a new action (when trigger a new save).
+- **Rewind Freely** — Stepped-back saves are preserved until you make a new save.
 - **Save Browser** — Visual timeline with blind icons to easily find your spot.
 - **Smart Continue** — Resumes at your exact timeline position, even after restarting.
 - **Overflow Protection** — Rewind/save-load safely even with extreme (naneinf) scores.
