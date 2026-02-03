@@ -54,8 +54,10 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
     end
     
     if removed_count > 0 then
-        M.debug_log("prune", string.format("Removed %d saves from old antes (keeping antes: %s)", 
+        M.debug_log("info", string.format("Removed %d saves from old antes (keeping antes: %s)", 
             removed_count, table.concat(antes, ", ", 1, limit)))
+    else
+        M.debug_log("debug", "Retention policy: no pruning needed")
     end
 end
 -- Prunes future saves using timestamp boundary (O(1) setup, single-pass deletion)
@@ -93,7 +95,7 @@ function M.prune_future_saves(save_dir, prune_boundary, save_cache, entry_consta
     end
     
     if prune_count > 0 then
-        M.debug_log("prune", "Pruning " .. prune_count .. " future saves")
+        M.debug_log("info", "Pruning " .. prune_count .. " future saves")
     end
 end
 return M

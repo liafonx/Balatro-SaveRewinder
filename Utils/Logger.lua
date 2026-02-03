@@ -3,55 +3,63 @@
 -- Centralized logging utility. Provides a factory to create module-specific loggers.
 --
 -- Log Levels:
---   - "info": Verbose logs, only shown when rewinder_debug_saves is ENABLED
---   - Always-log tags (step, list, error, prune, restore, monitor): Always shown
---   - Other tags: Only shown when rewinder_debug_saves is ENABLED
+--   - "error": Critical failures, always shown
+--   - "warning": Unusual situations, always shown  
+--   - "info": Normal operational logs, only shown when debug_saves is ENABLED
+--   - "debug": Detailed technical logs, only shown when debug_saves is ENABLED
 
 local M = {}
 
 M._prefix = "[Rewinder]"
 
--- Tags that always log (regardless of debug_saves config)
--- These are critical operational logs that should always be visible
-M._always_log_tags = {
-    step = true,
-    list = true,
+-- Valid log levels
+M._LEVELS = {
     error = true,
-    prune = true,
-    restore = true,
-    monitor = true,
+    warning = true,
+    info = true,
+    debug = true,
 }
 
---- Check if a tag should be logged based on current config
--- @param tag string: The log tag
--- @return boolean: true if this tag should be logged
-local function should_log(tag)
-    -- Always-log tags bypass config check
-    if M._always_log_tags[tag] then
+--- Check if a log level should be displayed based on current config
+-- @param level string: The log level ("error", "warning", "info", "debug")
+-- @return boolean: true if this level should be logged
+local function should_log(level)
+    if not level or not M._LEVELS[level] then
+        -- Invalid level, log as error
         return true
     end
-    -- All other tags (including "info") require debug_saves to be enabled
+    
+    -- error and warning always show
+    if level == "error" or level == "warning" then
+        return true
+    end
+    
+    -- info and debug require debug_saves to be enabled
     if REWINDER and REWINDER.config and REWINDER.config.debug_saves then
         return true
     end
+    
     return false
 end
 
 --- Create a logger for a specific module
 -- @param module_name string: Name of the module (e.g., "SaveManager", "FileIO")
--- @return function: A debug_log(tag, msg) function for that module
+-- @return function: A debug_log(level, msg) function for that module
+--   level: "error", "warning", "info", or "debug"
+--   - error/warning: Always visible
+--   - info/debug: Only visible when debug_saves config is enabled
 function M.create(module_name)
-    return function(tag, msg)
-        -- Check if we should log this tag
-        if not should_log(tag) then
+    return function(level, msg)
+        -- Check if we should log this level
+        if not should_log(level) then
             return
         end
 
         -- Format message
         local full_msg
         if module_name and module_name ~= "" then
-            if tag and tag ~= "" then
-                full_msg = M._prefix .. "[" .. module_name .. "][" .. tostring(tag) .. "] " .. tostring(msg)
+            if level and level ~= "" then
+                full_msg = M._prefix .. "[" .. module_name .. "][" .. tostring(level) .. "] " .. tostring(msg)
             else
                 full_msg = M._prefix .. "[" .. module_name .. "] " .. tostring(msg)
             end
@@ -69,16 +77,16 @@ function M.create(module_name)
 end
 
 --- Simple log function (no module name, used by Init.lua)
--- @param tag string: Log category tag
+-- @param level string: Log level ("error", "warning", "info", or "debug")
 -- @param msg string: Log message
-function M.log(tag, msg)
-    if not should_log(tag) then
+function M.log(level, msg)
+    if not should_log(level) then
         return
     end
 
     local full_msg
-    if tag and tag ~= "" then
-        full_msg = M._prefix .. "[" .. tostring(tag) .. "] " .. tostring(msg)
+    if level and level ~= "" then
+        full_msg = M._prefix .. "[" .. tostring(level) .. "] " .. tostring(msg)
     else
         full_msg = M._prefix .. " " .. tostring(msg)
     end

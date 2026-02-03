@@ -6,6 +6,10 @@ if not REWINDER then REWINDER = {} end
 -- 1. Load Core Modules
 local StateSignature = require("StateSignature")
 local SaveManager = require("SaveManager")
+local NaNProtection = require("NaNProtection")
+
+-- Expose NaNProtection as global for lovely patches
+_G.NaNProtection = NaNProtection
 -- 2. Export API to REWINDER namespace (for UI and Hooks)
 REWINDER.PATHS = SaveManager.PATHS
 -- State & Logic
@@ -69,7 +73,7 @@ function Game:set_render_settings(...)
          if SaveManager and SaveManager.preload_all_metadata then
             local entries = SaveManager.preload_all_metadata(true)
             local count = entries and #entries or 0
-            log("step", "Found " .. count .. " saves on disk (meta window: " .. tostring(SaveManager.META_CACHE_BASE_LIMIT or 32) .. ")")
+            log("warning", "Found " .. count .. " saves on disk (meta window: " .. tostring(SaveManager.META_CACHE_BASE_LIMIT or 32) .. ")")
             
             -- Step 2: Match save.jkr to a cache entry (for Continue game)
             -- This pre-computes the current save index during loading
@@ -99,9 +103,9 @@ function Game:set_render_settings(...)
                                  SaveManager.ensure_meta_window(idx, SaveManager.META_CACHE_BASE_LIMIT)
                               end
                               REWINDER._main_save_matched = true
-                              log("step", "Matched save.jkr by ID: " .. entry[SaveManager.ENTRY_FILE])
+                              log("warning", "Matched save.jkr by ID: " .. entry[SaveManager.ENTRY_FILE])
                            else
-                              log("step", "No match for _rewinder_id (" .. tostring(rewinder_id) .. ":" .. type(rewinder_id) .. ")")
+                              log("debug", "No match for _rewinder_id (" .. tostring(rewinder_id) .. ":" .. type(rewinder_id) .. ")")
                            end
                         end
 
@@ -116,7 +120,7 @@ function Game:set_render_settings(...)
                               SaveManager.ensure_meta_window(1, SaveManager.META_CACHE_BASE_LIMIT)
                            end
                            REWINDER._main_save_matched = true
-                           log("step", "No match in init, using newest: " .. entries[1][SaveManager.ENTRY_FILE])
+                           log("debug", "No match in init, using newest: " .. entries[1][SaveManager.ENTRY_FILE])
                         end
                      end
                   end
@@ -151,3 +155,5 @@ G.FUNCS.rewinder_config_change = function(args)
       end
    end
 end
+
+

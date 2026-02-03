@@ -188,6 +188,17 @@ if SMODS and SMODS.current_mod then
                               }),
                            },
                         },
+                        {
+                           n = G.UIT.R,
+                           config = { align = "cl", padding = 0.02 },
+                           nodes = {
+                              create_toggle({
+                                 label = localize and localize("rewinder_clamp_infinity_scores") or "Clamp infinity scores",
+                                 ref_table = REWINDER.config,
+                                 ref_value = "clamp_infinity_scores",
+                              }),
+                           },
+                        },
                      },
                   },
                },

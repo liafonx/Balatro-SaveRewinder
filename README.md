@@ -11,6 +11,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - 🔁 **Quick Saveload** — Press `L` (keyboard) or `R3` (controller) to instantly reload.
 - 🧪 **Experiment Freely** — Test strategies without fear; stepped-back saves are preserved safely.
 - 🎮 **Full Controller Support** — Dedicated navigation and separate keybindings.
+- 🛡️ **Score Overflow Protection** — Rewind/save-load safely even with extreme scores (naneinf becomes 0 after reload).
 
 ## Screenshots
 
@@ -50,7 +51,8 @@ In the Steamodded config menu for Save Rewinder:
 - Choose when to save (Blind, Hand, Round, Shop).
 - Toggle blind icons and animations.
 - Set max antes to keep (Default: 4).
-- Customize keyboard and controller inputs separately.
+- Configure overflow score handling (cap at 1.8e308 or keep as naneinf).
+- Customize keyboard and controller keybinds.
 
 ## Save Data Location
 
