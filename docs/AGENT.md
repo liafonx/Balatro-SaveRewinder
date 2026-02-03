@@ -18,6 +18,8 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
 
 ## 1.1 Recent Changes (Notable)
 
+- **ScaleNumberHook Simplification**: For numbers > 1e290 (including infinity), `scale_number()` now returns the base scale directly instead of complex input/output capping. Much simpler implementation.
+- **Infinity Display by Context**: Continue panel always shows 0 for inf/nan scores (via `round_scores`). Stats screen respects `clamp_infinity_scores` setting (via `high_scores`).
 - **NaN Protection Module (v1.4.8+)**: Centralized `Utils/NaNProtection.lua` module handles all NaN/inf/nil sanitization. Converts infinity to DBL_MAX (not 0) so scores remain playable. Custom display formatting for numbers >1e290 to avoid game's display overflow.
 - **Dual Keybinding System (v1.4.7)**: Separate `keyboard` and `controller` tables for each action. Allows `S` for keyboard step-back while keeping `L3` for controller.
 - **Controller Navigation**: Hardcoded hooks for `LB`/`RB` (page flip) and `Y` (jump to current) in the saves overlay. Custom focus navigation logic prevents vanilla crashes.
@@ -294,6 +296,11 @@ Centralized defense-in-depth sanitization with configurable infinity handling:
 | `false` (default) | Shows as `inf` | Converts to `0` after save/load | Safe from crashes, but loses infinity value on reload |
 | `true` | Shows as `1.8e308` | Preserved as `1.8e308` | Maintains playability, caps at max safe value |
 
+**Context-Specific Infinity Handling:**
+- **Continue panel (`round_scores`)**: Always converts inf/nan to 0 (safe display)
+- **Stats screen (`high_scores`)**: Respects `clamp_infinity_scores` setting
+- This allows Stats to show "inf" while Continue screen shows "0" for the same game
+
 **Key Constants:**
 ```lua
 M.MAX_SAFE_SCORE = 1.7976931348623157e308  -- IEEE 754 DBL_MAX
@@ -356,20 +363,21 @@ end
 
 The game's `scale_number()` function determines text size based on the numeric value. For extremely large numbers (e.g., 1.8e308), this causes massive text that breaks the UI (especially on the Continue screen).
 
-**Solution:** Wrap `scale_number()` to cap input values at 1e100 for the scale calculation only. The actual displayed value is unaffected.
+**Solution:** For numbers > 1e290 (including `math.huge`), return the base `scale` parameter directly without any computation.
 
 **How it works:**
 1. Module loads early via `load_now = true, before = "globals.lua"` in lovely.toml
 2. `button_callbacks.lua` loads and defines `scale_number` (line 1905)
 3. `UI/ButtonCallbacks.lua` is appended to `button_callbacks.lua`
 4. At the top of `UI/ButtonCallbacks.lua`, we call `ScaleNumberHook.install()`
-5. The wrapper caps numbers > 1e100 before passing to the original `scale_number()`
+5. The wrapper checks `if number > 1e290 then return scale end`, else passes to original
 
 **Key Points:**
-- The hook only affects **scale calculation**, not the displayed value
-- Uses `pcall(print, ...)` for diagnostics, not Logger (works even if REWINDER not initialized)
+- Simple threshold check: `number > M.LARGE_NUMBER_THRESHOLD` (1e290)
+- For very large numbers, just returns the base scale - no computation needed
+- `math.huge > 1e290` is true, so infinity is handled automatically
 - Installation is done from `UI/ButtonCallbacks.lua`, NOT via lovely.toml pattern patch
-- See `docs/issue.md` for full history of failed approaches and lessons learned
+- Lovely modules are accessed via `require("ModuleName")`, NOT as globals
 
 ---
 
@@ -489,6 +497,15 @@ When user clicks "Continue" without using our UI:
 > [!WARNING]
 > **Prefer appending to pattern injection** — For function wrapping, append the hook installation to a file that's already being appended (e.g., add hook install to `UI/ButtonCallbacks.lua` which is appended to `button_callbacks.lua`). This is more reliable than pattern-matching a specific line.
 
+> [!NOTE]
+> **Lovely modules are NOT globals** — Modules loaded via `[patches.module]` must be accessed via `require("ModuleName")`, not as globals. If you try to access them as globals, you'll get `nil`.
+
+> [!NOTE]
+> **Simplify large number handling** — For very large numbers (>1e290), consider just returning a default value instead of complex capping logic. Example: `if num > 1e290 then return base_scale end` is simpler than input/output capping.
+
+> [!CAUTION]
+> **Context-specific infinity handling** — Different UI contexts may need different infinity behavior. Continue panel should show 0 (safe), while Stats can show inf (user preference). Use separate patches for `round_scores` vs `high_scores`.
+
 ---
 
 ## 8. Development
@@ -581,3 +598,66 @@ if StateSignature.signatures_equal(sig_a, sig_b) then
    -- States match
 end
 ```
+
+---
+
+## 11. Codebase Health & Refactoring Notes
+
+### File Size Analysis (Target: 700-800 lines max)
+
+| File | Lines | Status | Notes |
+|------|-------|--------|-------|
+| `SaveManager.lua` | 1220 | ⚠️ Over | Well-organized sections, hard to split without breaking cohesion |
+| `Keybinds.lua` | 842 | ⚠️ Slightly over | navigate_focus logic is complex but necessary for controller |
+| `RewinderUI.lua` | 687 | ✅ OK | Close to limit |
+| `NaNProtection.lua` | 241 | ✅ OK | Recently cleaned up (removed dead code) |
+| `ButtonCallbacks.lua` | 352 | ✅ OK | |
+| Other files | <200 | ✅ OK | |
+
+### Potential Future Refactoring
+
+**SaveManager.lua (1220 lines):**
+- Could extract `MetaCache` (~150 lines) as separate module
+- Could extract `OrdinalState` (~100 lines) as separate module
+- However, these are tightly coupled - splitting may hurt maintainability
+- **Recommendation:** Keep as-is unless it grows significantly
+
+**Keybinds.lua (842 lines):**
+- `navigate_focus` hook (~135 lines) is complex but necessary
+- Controller hook patterns are duplicated but minimal overhead
+- **Recommendation:** Keep as-is, complexity is inherent to controller support
+
+### Dead Code Removed
+
+- `NaNProtection.format_large_score()` - Replaced by `ScaleNumberHook` which is simpler
+
+### Reusable Patterns
+
+**Clamp config check (used in multiple NaNProtection functions):**
+```lua
+local should_clamp = false
+if REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores ~= nil then
+    should_clamp = REWINDER.config.clamp_infinity_scores
+end
+```
+Could be extracted to helper, but inlining avoids function call overhead in hot paths.
+
+**Controller hook pattern (used in Keybinds.lua):**
+```lua
+if not Controller._rewinder_X then
+    Controller._rewinder_X = Controller.X
+    function Controller:X(...)
+        local ret = Controller._rewinder_X(self, ...)
+        -- Custom logic
+        return ret
+    end
+end
+```
+
+### Code Quality Guidelines
+
+1. **Keep modules focused** — Each file should have a clear single responsibility
+2. **Prefer inlining over abstraction** — For hot paths, inline code is faster than function calls
+3. **Document magic numbers** — Constants like `1e290`, `1e100`, `0.35` should have comments explaining why
+4. **Test edge cases** — NaN, infinity, nil, very large numbers, negative numbers
+5. **Use pcall for diagnostics** — `pcall(print, ...)` works even when Logger fails
