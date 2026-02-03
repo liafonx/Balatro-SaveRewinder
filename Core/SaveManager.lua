@@ -228,7 +228,7 @@ local function _evict_meta_if_needed()
    if evicted > 0 then
       local now = love and love.timer and love.timer.getTime() or 0
       if (now - _last_eviction_log_time) > 0.5 or evicted >= 4 then
-         M.debug_log("cache", "Meta cache evicted=" .. tostring(evicted))
+         M.debug_log("debug", "Meta cache evicted=" .. tostring(evicted))
          _last_eviction_log_time = now
       end
    end
@@ -278,7 +278,7 @@ function M.ensure_meta_window(center_idx, window_size, force_log, suppress_log)
    local finish = math.min(total, start + size - 1)
    start = math.max(1, finish - size + 1)
    if not suppress_log and (force_log or start ~= _last_meta_window_start or finish ~= _last_meta_window_finish) then
-      M.debug_log("cache", string.format("Meta window %d-%d (%d)", start, finish, size))
+      M.debug_log("debug", string.format("Meta window %d-%d (%d)", start, finish, size))
       _last_meta_window_start, _last_meta_window_finish = start, finish
    end
    for i = start, finish do
@@ -507,7 +507,7 @@ local function _should_skip_duplicate(signature, display_type, ante, round)
           tonumber(last_ante) == ante and tonumber(last_round) == round then
          -- Don't skip if this is an opening pack save
          if display_type ~= "O" then
-            M.debug_log("save", "Skip rapid save at same ante/round")
+            M.debug_log("debug", "Skip rapid save at same ante/round")
             return true
          end
       end
@@ -520,7 +520,7 @@ local function _should_skip_duplicate(signature, display_type, ante, round)
          local last_ante, last_round, last_dtype = M._last_save_sig:match("^(%d+):(%d+):(%a+):")
          if last_dtype == "E" and 
              tonumber(last_ante) == ante and tonumber(last_round) == round then
-            M.debug_log("save", "Skip duplicate end of round")
+            M.debug_log("debug", "Skip duplicate end of round")
             return true
          end
       end
@@ -603,6 +603,7 @@ function M.clear_all_saves()
          love.filesystem.remove(dir .. "/" .. file)
       end
    end
+   M.debug_log("info", "Cleared all saves")
    save_cache = {}
    meta_cache = {}
    meta_cache_size = 0
@@ -802,7 +803,7 @@ function M.load_and_start_from_file(file, opts)
    _init_ordinal_state_from_entry(entry)
    
    if mark_restore then
-      M.debug_log("restore", "Loading " .. M.describe_save({ file = file }))
+      M.debug_log("info", "Loading " .. M.describe_save({ file = file }))
    end
    
    -- === Inlined start_from_file logic ===
@@ -850,7 +851,10 @@ end
 function M.revert_to_previous_save()
    -- Use existing cache if available (skip full reload)
    local entries = save_cache or M.get_save_files()
-   if not entries or #entries == 0 then return end
+   if not entries or #entries == 0 then
+      M.debug_log("warning", "Cannot step back: no saves available")
+      return
+   end
    
    -- Use current_index as primary source (always updated by load/save operations)
    -- Fallback to index lookup only if current_index is invalid
@@ -869,14 +873,17 @@ function M.revert_to_previous_save()
    local target_entry = entries[target_idx]
    if not target_entry or not target_entry[E.ENTRY_FILE] then return end
    
-   M.debug_log("step", "Step back -> " .. M.describe_save({ entry = target_entry }))
+   M.debug_log("info", "Step back -> " .. M.describe_save({ entry = target_entry }))
    M.load_and_start_from_file(target_entry[E.ENTRY_FILE], { skip_restore_identical = true, no_wipe = true })
 end
 
 function M.load_save_at_index(index)
    -- Use existing cache if available
    local entries = save_cache or M.get_save_files()
-   if not entries or index < 1 or index > #entries then return end
+   if not entries or index < 1 or index > #entries then
+      M.debug_log("warning", "Cannot load save at index " .. tostring(index) .. ": out of bounds")
+      return
+   end
    local entry = entries[index]
    if not entry or not entry[E.ENTRY_FILE] then return end
    M.pending_index = index
@@ -887,7 +894,7 @@ function M.quick_continue_from_menu()
    if not (G and G.FUNCS and G.STAGES and G.SETTINGS) then return end
    if G.STAGE ~= G.STAGES.RUN then return end
 
-   M.debug_log("step", "Saveload -> continue")
+   M.debug_log("info", "Saveload -> continue")
    if G.OVERLAY_MENU and G.FUNCS.exit_overlay_menu then
       G.FUNCS.exit_overlay_menu()
    end
@@ -964,7 +971,8 @@ local function _align_save_id_to_current(save_table, reason)
    if entry and entry[E.ENTRY_INDEX] then
       save_table._rewinder_id = entry[E.ENTRY_INDEX]
       save_table._file = entry[E.ENTRY_FILE]
-      M.debug_log("cache", "Align save.jkr id -> " .. tostring(entry[E.ENTRY_INDEX]) .. (reason and (" (" .. reason .. ")") or ""))
+      -- Only log in detail mode (too verbose for normal debug)
+      M.debug_log("debug", "Align id: " .. (reason or ""))
    end
 end
 
@@ -1017,7 +1025,7 @@ function M.consume_skip_on_save(save_table)
       _align_save_id_to_current(save_table, "skip")
    end
    if not should_skip then
-      M.debug_log("save", "Saving: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
+      M.debug_log("info", "Saving: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
    end
    
    M.skip_next_save = false
@@ -1058,6 +1066,7 @@ function M.create_save(run_data)
    if not state_info then return end
    if not _should_save_state(state_info.state, REWINDER and REWINDER.config) then
       _align_save_id_to_current(run_data, "filtered")
+      M.debug_log("debug", "Skipped save: state not configured for auto-save")
       return
    end
    
@@ -1166,6 +1175,7 @@ function M.create_save(run_data)
       M.debug_log("error", "Failed to write save")
       return
    end
+   M.debug_log("debug", "Wrote save file: " .. filename)
 
    MetaFile.write_meta_file(dir .. "/" .. filename:gsub("%.jkr$", ".meta"), {
       money = state_info.money,
@@ -1200,7 +1210,7 @@ function M.create_save(run_data)
    M.current_index = 1
    M._last_save_sig = signature
    M._last_save_time = love.timer.getTime()
-   M.debug_log("save", "Created: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
+   M.debug_log("info", "Created: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
    
    Pruning.apply_retention_policy(dir, save_cache, E)
    _rebuild_file_index()

@@ -57,6 +57,7 @@ function M.copy_save_to_main(file, save_dir)
         return false
     end
     
+    M.debug_log("debug", "Copied save to main: " .. source_path)
     return true
 end
 
@@ -118,6 +119,7 @@ function M.sync_to_main_save(run_data)
         M.debug_log("error", "Failed to write main save: " .. tostring(err_or_timings))
         return false
     end
+    M.debug_log("debug", "Synced to main save")
     return true
 end
 

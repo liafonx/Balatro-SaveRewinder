@@ -4,6 +4,13 @@ English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/ma
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.4.8] - 2026-01-29
+### Fixed
+- **Score overflow crash**: Fixed crashes when sl/rewind after score becomes overflowed (naneinf). The game now handles overflow scenarios instead of crashing.
+
+### Added
+- **Overflow score config**: New option to control how infinity scores are handled - cap at 1.8e308 (preserve through reload) or keep as naneinf (becomes 0 after reload). Default: keep as naneinf.
+
 ## [1.4.7] - 2026-01-29
 ### Added
 - **Keybinds tab**: Customize shortcuts in mod settings (supports keyboard combos and controller buttons).

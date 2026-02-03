@@ -18,6 +18,7 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
 
 ## 1.1 Recent Changes (Notable)
 
+- **NaN Protection Module (v1.4.8+)**: Centralized `Utils/NaNProtection.lua` module handles all NaN/inf/nil sanitization. Converts infinity to DBL_MAX (not 0) so scores remain playable. Custom display formatting for numbers >1e290 to avoid game's display overflow.
 - **Dual Keybinding System (v1.4.7)**: Separate `keyboard` and `controller` tables for each action. Allows `S` for keyboard step-back while keeping `L3` for controller.
 - **Controller Navigation**: Hardcoded hooks for `LB`/`RB` (page flip) and `Y` (jump to current) in the saves overlay. Custom focus navigation logic prevents vanilla crashes.
 - **Controller Shortcuts**: `X` button (Pause Menu only) opens saves list.
@@ -43,8 +44,10 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
 **Module Dependency Graph:**
 ```
 lovely.toml patches → GamePatches.defer_save_creation()
+                    → NaNProtection (pre-save, post-load, serialization, display)
                               ↓
 Init.lua → SaveManager.preload_all_metadata() (at boot; warms bounded meta window)
+         → NaNProtection (exposed as global for patches)
                               ↓
 SaveManager → StateSignature (state info extraction)
             → FileIO (file read/write)
@@ -57,17 +60,29 @@ Keybinds → SaveManager (step back, UI toggle)
 
 ### Documentation Files
 
-**IMPORTANT: CHANGELOG is user-facing**
-- `CHANGELOG.md` / `CHANGELOG_zh.md` are for **end users**, not developers
-- Focus on **what users will notice**, not implementation details
-- ✅ Good: "Shop saves now show previous boss blind icon"
-- ❌ Bad: "Refactored blind icon logic from display-time to save-time determination"
-- Skip technical details unless they directly impact user experience
+**IMPORTANT: User-facing docs hierarchy**
+| File | Purpose | Style |
+|------|---------|-------|
+| `README.md` / `README_zh.md` | Full project overview (GitHub landing page) | Comprehensive with screenshots |
+| `docs/description.md` | Concise feature summary (Thunderstore) | Short bullet points |
+| `docs/NEXUSMODS_DESCRIPTION.txt` | NexusMods listing (BBCode format) | Full description with BBCode |
+| `CHANGELOG.md` / `CHANGELOG_zh.md` | Version history | User-visible changes only |
 
-**Other docs:**
-- `README.md` / `README_zh.md`: User-facing project overview
+**Guidelines for user docs:**
+- Focus on **what users will notice**, not implementation details
+- ✅ Good: "NaN Protection — Prevents crashes from extreme score overflows"
+- ❌ Bad: "Added defense-in-depth patches to sanitize NaN values during serialization"
+- Keep `description.md` the most concise (used for package descriptions)
+- **IMPORTANT**: When adding features or changing behavior, **you must update ALL 4 user doc locations**:
+  1. `README.md` + `README_zh.md` (English + Chinese)
+  2. `docs/description.md` (concise Thunderstore version)
+  3. `docs/NEXUSMODS_DESCRIPTION.txt` (BBCode format)
+- All docs should have matching content, just different formats/lengths
+- **NOTE**: `description.md` uses an extremely concise style (short bullets, minimal detail) because it's used for package managers. Do NOT apply this terse style to README or other docs.
+
+**Developer docs:**
 - `docs/AGENT.md`: This file - AI agent development guide
-- `docs/*.md`: Technical documentation for developers
+- `docs/*.md` (other): Technical flow diagrams and architecture
 
 ### Utils/ — Utilities
 
@@ -77,7 +92,9 @@ Keybinds → SaveManager (step back, UI toggle)
 | `MetaFile.lua` | Fast `.meta` file read/write (7 fields). Uses `NUMERIC_FIELDS` set for O(1) field type lookup | `read_meta_file`, `write_meta_file` | SaveManager |
 | `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file`, `get_save_dir` | SaveManager |
 | `Pruning.lua` | Retention policy (max antes), future save cleanup on restore | `apply_retention_policy`, `prune_future_saves` | SaveManager |
-| `Logger.lua` | Centralized logging with module-specific tags | `Logger.create(module_name)` → returns logger with `step`, `list`, `error`, `prune`, `restore`, `info`, `detail` methods | All modules |
+| `Logger.lua` | Centralized logging with standard log levels | `Logger.create(module_name)` → returns logger function: `debug_log(level, msg)` where level is `"error"`, `"warning"`, `"info"`, or `"debug"`. **error/warning always show; info/debug only when debug_saves enabled** | All modules |
+| `NaNProtection.lua` | Defense-in-depth sanitization for NaN/inf/nil values | `sanitize`, `sanitize_round_scores`, `sanitize_round_scores_presave`, `sanitize_number_format`, `sanitize_serialize` | lovely.toml patches, SaveManager |
+| `ScaleNumberHook.lua` | Wraps `scale_number()` to cap large inputs for UI scaling | `install()`, `M.installed`, `M.SCALE_CAP` | None (uses pcall(print) directly) |
 | `G.STATES.lua` | Reference file for `G.STATES` enum and `G.P_BLINDS` table | **Not loaded at runtime** — IDE autocomplete only | None |
 
 ### UI/ — User Interface
@@ -94,7 +111,13 @@ Keybinds → SaveManager (step back, UI toggle)
 | `Keybinds.lua` | Keybinds manager (Dual Binding system). Handles input hooks, restricted execution (Run stage), and UI formatting. Contains specific hooks for Controller navigation (`navigate_focus`) and shortcuts. |
 | `main.lua` | Steamodded config tab integration (auto-save toggles, display options) |
 | `config.lua` | Default config values |
-| `lovely.toml` | Lovely Loader patches: injects `REWINDER.defer_save_creation()` after `save_run` |
+| `lovely.toml` | Lovely Loader patches: injects `REWINDER.defer_save_creation()` after `save_run`, NaN protection hooks |
+
+**Important Config Options:**
+- `debug_saves` (default: `false`) - Controls info/debug log visibility. See **Logging System** section below.
+- `clamp_infinity_scores` (default: `false`) - Infinity handling: `false` = show as "inf" but reset to 0 on reload; `true` = clamp to 1.8e308 and preserve.
+
+*Full config list: see `config.lua` or mod settings UI*
 
 ### Localization/
 
@@ -102,6 +125,53 @@ Keybinds → SaveManager (step back, UI toggle)
 |------|---------|
 | `localization/en-us.lua` | English strings for UI labels, state names, config options |
 | `localization/zh_CN.lua` | Chinese (Simplified) strings |
+
+---
+
+## 2.5. Logging System
+
+**Architecture:** Centralized `Utils/Logger.lua` provides module-specific loggers with standard log levels.
+
+**Log Levels:**
+
+| Level | Purpose | Visibility | When to Use |
+|-------|---------|------------|-------------|
+| `error` | Critical failures (file I/O, missing resources) | Always visible | Save write failed, missing functions, corrupted data |
+| `warning` | Unusual situations, invalid user actions | Always visible | Invalid index, no saves for step back, guard triggers |
+| `info` | Normal operations users should know about | Only when `debug_saves = true` | Save creation, loading, pruning, initialization |
+| `debug` | Internal details, technical information | Only when `debug_saves = true` | Cache operations, skip reasons, file write success |
+
+**Usage Pattern:**
+```lua
+local Logger = require("Logger")
+local M = {}
+M.debug_log = Logger.create("ModuleName")  -- Creates module-specific logger
+
+-- In functions:
+M.debug_log("error", "Failed to write save: " .. err)
+M.debug_log("warning", "Cannot step back: no saves available")
+M.debug_log("info", "Created save: Ante 2 Round 3")
+M.debug_log("debug", "Cache evicted 5 entries")
+```
+
+**Output Format:** `[Rewinder][ModuleName][level] message`  
+**Example:** `[Rewinder][SaveManager][info] Created save: Ante 2 Round 3`
+
+**Best Practices:**
+- Use `error` for failures that users need to know about
+- Use `warning` for recoverable issues or invalid actions  
+- Use `info` for normal operation logging (save/load/prune)
+- Use `debug` for internal details only developers care about
+- Keep messages concise and actionable
+- Include relevant context (file names, indices, counts)
+
+**Per-Module Guidelines:**
+- **SaveManager**: `error` for I/O failures, `warning` for invalid operations, `info` for saves/loads/steps, `debug` for cache
+- **NaNProtection**: `warning` for guard triggers, `info` for fixes applied, `debug` for sanitization details
+- **ScaleNumberHook**: Uses `pcall(print, ...)` directly (not Logger) for reliability
+- **Pruning**: `info` for pruning operations, `debug` for "no action needed"
+- **FileIO**: `error` for I/O failures, `debug` for success confirmations
+- **Init**: `error` for init failures, `info` for cache loading, `debug` for fallback matching
 
 ---
 
@@ -201,6 +271,106 @@ When loading older save at index 5, saves 1-4 are marked in `pending_future_prun
 ### Duplicate Skip
 After restore, first auto-save often matches restored state. `load_and_start_from_file()` stores individual loaded fields (`_loaded_ante`, `_loaded_round`, etc.); `consume_skip_on_save()` computes current state and compares fields directly (O(1), no signature string formatting).
 
+### NaN Protection (v1.4.8+)
+When score values overflow to extremely large numbers, they become NaN or infinity. Without protection, this causes crashes during save/load and arithmetic operations.
+
+**The Problem:**
+- Lua's `STR_PACK` serializes NaN as literal string `nan` and infinity as `inf`
+- When `loadstring()` unpacks these, they're undefined globals → become `nil`
+- Arithmetic operations on `nil` crash: `attempt to perform arithmetic on a nil value`
+
+**Solution: NaNProtection Module (`Utils/NaNProtection.lua`)**
+
+Centralized defense-in-depth sanitization with configurable infinity handling:
+
+**NaN Handling (Always Active):**
+- NaN values are **always converted to 0** to prevent crashes
+- Applied at save, load, serialization, and display
+
+**Infinity Handling (Configurable via `clamp_infinity_scores`):**
+
+| Config | Display | Save/Load Behavior | Notes |
+|--------|---------|-------------------|-------|
+| `false` (default) | Shows as `inf` | Converts to `0` after save/load | Safe from crashes, but loses infinity value on reload |
+| `true` | Shows as `1.8e308` | Preserved as `1.8e308` | Maintains playability, caps at max safe value |
+
+**Key Constants:**
+```lua
+M.MAX_SAFE_SCORE = 1.7976931348623157e308  -- IEEE 754 DBL_MAX
+M.LARGE_NUMBER_THRESHOLD = 1e290           -- Above this, custom formatting
+```
+
+**Key Functions:**
+| Function | Purpose |
+|----------|---------|
+| `sanitize(v, context)` | NaN→0 always; inf→MAX_SAFE_SCORE if clamping enabled, else preserved |
+| `sanitize_round_scores(game)` | Post-load: fix nil values from corrupted saves (NaN→0) |
+| `sanitize_round_scores_presave(game)` | Pre-save: NaN→0 always; inf→MAX_SAFE_SCORE if clamping enabled |
+| `sanitize_number_format(num)` | Display: NaN→0; inf handling per config; custom format for very large numbers |
+| `sanitize_serialize(v, k)` | Serialization: NaN→0 always; inf→MAX_SAFE_SCORE if clamping enabled |
+
+**Defense-in-depth patches in `lovely.toml`:**
+
+| Target | Purpose |
+|--------|---------|
+| `functions/misc_functions.lua` (after save_run) | Pre-save: `NaNProtection.sanitize_round_scores_presave(G.GAME)` |
+| `game.lua` (after load) | Post-load: `NaNProtection.sanitize_round_scores(self.GAME)` |
+| `engine/string_packer.lua` | Sanitize during serialization: `NaNProtection.sanitize_serialize(v, k)` |
+| `functions/state_events.lua` | Sanitize `ease_to` calculation at the source |
+| `engine/event.lua` (line 31, 62) | Sanitize ease event values |
+| `functions/misc_functions.lua` (number_format) | Handle NaN/inf in display formatting |
+| `functions/misc_functions.lua` (high scores) | Handle nil `.amt` in comparisons |
+| `functions/UI_definitions.lua` | Handle nil best hand in continue screen UI |
+| `state_events.lua`, `game.lua`, `blind.lua` | Handle nil chips in blind comparison expressions |
+
+**Key Insights:**
+- **NaN is always dangerous** → Always converted to 0
+- **Infinity is configurable** → User chooses between "display as inf but lose on reload" vs "cap at 1.8e308 and keep"
+- With clamping disabled, you won't crash on save/load, but infinity becomes 0 after reload
+- Event.lua line 62 OVERWRITES `start_val` set at line 30, so patching line 62 is essential
+- lovely.toml patches should call module functions, not inline logic (maintainability)
+
+**Lua Number Handling Notes:**
+```lua
+-- NaN check (only NaN fails self-equality)
+if v ~= v then -- v is NaN
+
+-- Infinity check
+if v == math.huge or v == -math.huge then -- v is ±infinity
+
+-- Lua has NO DBL_MAX constant (math.huge is infinity, not max finite)
+-- IEEE 754 DBL_MAX = (2 - 2^-52) * 2^1023
+-- Computing at runtime is tricky (2^1024 overflows), so hardcode it:
+local DBL_MAX = 1.7976931348623157e308
+
+-- Very large numbers (>1e290) may overflow game's display code
+-- Solution: format ourselves and return early
+if num >= 1e290 then
+    local exp = math.floor(math.log10(num))
+    local mantissa = num / (10 ^ exp)
+    return string.format("%.3fe%d", mantissa, exp)
+end
+```
+
+### Scale Number Hook (`Utils/ScaleNumberHook.lua`)
+
+The game's `scale_number()` function determines text size based on the numeric value. For extremely large numbers (e.g., 1.8e308), this causes massive text that breaks the UI (especially on the Continue screen).
+
+**Solution:** Wrap `scale_number()` to cap input values at 1e100 for the scale calculation only. The actual displayed value is unaffected.
+
+**How it works:**
+1. Module loads early via `load_now = true, before = "globals.lua"` in lovely.toml
+2. `button_callbacks.lua` loads and defines `scale_number` (line 1905)
+3. `UI/ButtonCallbacks.lua` is appended to `button_callbacks.lua`
+4. At the top of `UI/ButtonCallbacks.lua`, we call `ScaleNumberHook.install()`
+5. The wrapper caps numbers > 1e100 before passing to the original `scale_number()`
+
+**Key Points:**
+- The hook only affects **scale calculation**, not the displayed value
+- Uses `pcall(print, ...)` for diagnostics, not Logger (works even if REWINDER not initialized)
+- Installation is done from `UI/ButtonCallbacks.lua`, NOT via lovely.toml pattern patch
+- See `docs/issue.md` for full history of failed approaches and lessons learned
+
 ---
 
 ## 6. Core Flows
@@ -297,6 +467,27 @@ When user clicks "Continue" without using our UI:
 
 > [!NOTE]
 > **No technical jargon in CHANGELOG** — CHANGELOG.md is for end users, not developers. Avoid terms like "O(1)", "hash table", "signature", "ordinal". Focus on user-visible behavior (e.g., "faster save list loading" not "O(1) lookup").
+
+> [!CAUTION]
+> **Never sanitize infinity to 0** — If scores overflow to infinity and you convert to 0, the player cannot beat any blind. Use `MAX_SAFE_SCORE` (DBL_MAX) instead.
+
+> [!WARNING]
+> **Lua has no DBL_MAX constant** — `math.huge` is infinity, not max finite double. Must hardcode `1.7976931348623157e308`. Computing at runtime is tricky because `2^1024` overflows to infinity.
+
+> [!WARNING]
+> **Very large numbers cause display overflow** — Numbers above ~1e290 may display incorrectly (e.g., "nane9223372036854775807"). Use custom formatting via `NaNProtection.sanitize_number_format()` to bypass the game's display code.
+
+> [!NOTE]
+> **Keep sanitization logic in NaNProtection module** — lovely.toml patches should call module functions (`NaNProtection.sanitize_round_scores_presave(G.GAME)`), not inline the logic. This keeps constants like `MAX_SAFE_SCORE` in one place.
+
+> [!CAUTION]
+> **Pattern patches fail silently** — `[patches.pattern]` in lovely.toml can fail to match without any error. Prefer `[patches.copy]` with `position = "append"` when possible. If a pattern patch must be used, add `pcall(print, ...)` diagnostics to verify it runs.
+
+> [!CAUTION]
+> **Verify fixes with basic diagnostics first** — Before assuming a fix works, add `pcall(print, "[Module] checkpoint X")` at key points. Don't rely on Logger (it depends on REWINDER.config). Pattern patches that "look correct" may not match due to subtle whitespace or encoding differences.
+
+> [!WARNING]
+> **Prefer appending to pattern injection** — For function wrapping, append the hook installation to a file that's already being appended (e.g., add hook install to `UI/ButtonCallbacks.lua` which is appended to `button_callbacks.lua`). This is more reliable than pattern-matching a specific line.
 
 ---
 

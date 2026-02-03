@@ -13,6 +13,7 @@ return {
             rewinder_save_on_shop = 'Save in shop',
             rewinder_show_blind_image = 'Show blind image (instead of round number)',
             rewinder_animate_blind_image = 'Blind image effects (animation & hover sound)',
+            rewinder_clamp_infinity_scores = 'Limit max score to 1.8e308 (avoid naneinf)',
             rewinder_debug_saves = 'Debug: verbose logging',
             rewinder_max_antes_per_run = 'Max saved antes per run',
             rewinder_delete_all_saves_button = 'Delete all saves',

@@ -5,6 +5,14 @@ if not REWINDER then REWINDER = {} end
 local Logger = require("Logger")
 local log = Logger.create("UI")
 
+-- Install ScaleNumberHook here (after scale_number is defined in button_callbacks.lua)
+-- This file is appended to button_callbacks.lua via lovely.toml
+-- NOTE: Must use require() - lovely modules are NOT globals!
+local ScaleNumberHook = require("ScaleNumberHook")
+if ScaleNumberHook and not ScaleNumberHook.installed then
+    ScaleNumberHook.install()
+end
+
 local function _log_ui(action, start, finish, size)
    if start and finish then
       log("step", string.format("Saves UI: %s (meta %d-%d/%d)", action, start, finish, size))

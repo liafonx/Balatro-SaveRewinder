@@ -76,7 +76,7 @@ function Game:start_run(args)
          BM.current_index = nil
          BM._restore_active = nil
          BM._last_loaded_file = nil
-         log("cache", "Reset _last_loaded_file (new run)")
+         log("detail", "Reset state (new run)")
          BM.skip_next_save = false
          BM.pending_future_prune_boundary = nil
          BM.skipping_pack_open = nil

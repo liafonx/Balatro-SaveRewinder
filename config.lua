@@ -7,6 +7,7 @@ return {
 	keep_antes = 3,  -- Index: 1=1, 2=2, 3=4, 4=6, 5=8, 6=16, 7=All
 	show_blind_image = true,  -- Show blind image instead of round number in save list
 	animate_blind_image = true,  -- Enable animation and hover effects for blind images
+	clamp_infinity_scores = false,  -- Convert infinity scores to max safe value (1.8e308) to prevent crashes
 	keybinds = {
 		step_back = {
 			keyboard = { s = true },
