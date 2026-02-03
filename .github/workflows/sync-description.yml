@@ -1,0 +1,28 @@
+# Triggers a sync workflow in balatro-mod-index when description.md is updated.
+# Required secret: PAT_TOKEN - A personal access token with write access to the
+# target repository. Use 'repo' scope for private repos or 'public_repo' scope
+# for public repos. The token must have permission to create repository_dispatch
+# events in liafonx/balatro-mod-index.
+
+name: Sync Description to Mod Index
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/description.md'
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+    # No special GITHUB_TOKEN permissions needed; we use PAT_TOKEN for the dispatch
+    permissions: {}
+    
+    steps:
+      - name: Trigger sync workflow in balatro-mod-index
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          repository: liafonx/balatro-mod-index
+          event-type: saverewinder-description-update
