@@ -54,3 +54,13 @@ icon_single_border.ai
 Utils/G.STATES.lua
 docs/G.STATES.lua
 docs/issue.md
+
+# ========================================
+# AI Agent Files (local only)
+# ========================================
+.agent/
+.agents/
+.claude/
+INIT.md
+mod.config.json
+docs/knowledge-base.md
