@@ -6,6 +6,15 @@ local M = {}
 M.debug_log = Logger.create("Pruning")
 -- Config index to actual ante count mapping (matches main.lua options order)
 local KEEP_ANTES_VALUES = { 1, 2, 4, 6, 8, 16 }  -- Index 7 = "All" (nil)
+
+local function _remove_save_file_pair(save_dir, file)
+    if not file then return end
+    love.filesystem.remove(save_dir .. "/" .. file)
+    if file:match("%.jkr$") then
+        love.filesystem.remove(save_dir .. "/" .. file:gsub("%.jkr$", ".meta"))
+    end
+end
+
 -- Applies retention policy based on max antes per run
 function M.apply_retention_policy(save_dir, all_entries, entry_constants)
     if not all_entries then return end
@@ -33,24 +42,25 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
     for i = 1, limit do
         allowed[antes[i]] = true
     end
-    -- Remove files from older antes
-    -- Iterate backwards to safely remove items from the table we are iterating
+    -- Single-pass in-place compaction (O(N), avoids repeated table.remove shifts)
     local removed_count = 0
-    local i = #all_entries
-    while i >= 1 do
-        local e = all_entries[i]
+    local write = 1
+    local total = #all_entries
+    for read = 1, total do
+        local e = all_entries[read]
         if e[ENTRY_ANTE] and not allowed[e[ENTRY_ANTE]] then
             -- Remove old saves per retention policy
-            love.filesystem.remove(save_dir .. "/" .. e[ENTRY_FILE])
-            -- Also remove .meta file if it exists
-            if e[ENTRY_FILE] and e[ENTRY_FILE]:match("%.jkr$") then
-                local meta_file = e[ENTRY_FILE]:gsub("%.jkr$", ".meta")
-                love.filesystem.remove(save_dir .. "/" .. meta_file)
-            end
-            table.remove(all_entries, i)
+            _remove_save_file_pair(save_dir, e[ENTRY_FILE])
             removed_count = removed_count + 1
+        else
+            if write ~= read then
+                all_entries[write] = e
+            end
+            write = write + 1
         end
-        i = i - 1
+    end
+    for i = write, total do
+        all_entries[i] = nil
     end
     
     if removed_count > 0 then
@@ -60,41 +70,33 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
         M.debug_log("debug", "Retention policy: no pruning needed")
     end
 end
--- Prunes future saves using timestamp boundary (O(1) setup, single-pass deletion)
--- Deletes all saves with ENTRY_INDEX > boundary (these are "future" saves)
+-- Prunes future saves using timestamp boundary.
+-- Internal cache order is oldest-first, so "future" saves are a contiguous tail.
 function M.prune_future_saves(save_dir, prune_boundary, save_cache, entry_constants)
-    if not prune_boundary then return end
-    
+    if not prune_boundary or not save_cache then return end
+
     local ENTRY_FILE = entry_constants.ENTRY_FILE
     local ENTRY_INDEX = entry_constants.ENTRY_INDEX
-    
-    -- Single pass: find saves to delete and delete them
-    -- Entries are sorted newest-first, so "future" saves are at the start
+
+    -- Count/remove how many consecutive entries at the end are future saves.
     local prune_count = 0
-    if save_cache then
-        local i = 1
-        while i <= #save_cache do
-            local entry = save_cache[i]
-            if entry and entry[ENTRY_INDEX] and entry[ENTRY_INDEX] > prune_boundary then
-                -- Delete files
-                local file = entry[ENTRY_FILE]
-                if file then
-                    love.filesystem.remove(save_dir .. "/" .. file)
-                    if file:match("%.jkr$") then
-                        love.filesystem.remove(save_dir .. "/" .. file:gsub("%.jkr$", ".meta"))
-                    end
-                end
-                table.remove(save_cache, i)
-                prune_count = prune_count + 1
-                -- Don't increment i since we removed an element
-            else
-                -- Once we hit an entry <= boundary, all remaining are older (sorted order)
-                break
-            end
+    for i = #save_cache, 1, -1 do
+        local entry = save_cache[i]
+        if entry and entry[ENTRY_INDEX] and entry[ENTRY_INDEX] > prune_boundary then
+            -- Delete files from disk
+            _remove_save_file_pair(save_dir, entry[ENTRY_FILE])
+            prune_count = prune_count + 1
+        else
+            break  -- Remaining entries are <= boundary
         end
     end
-    
+
+    -- Trim contiguous tail in O(K) without shifting retained entries.
     if prune_count > 0 then
+        local start_idx = #save_cache - prune_count + 1
+        for i = start_idx, #save_cache do
+            save_cache[i] = nil
+        end
         M.debug_log("info", "Pruning " .. prune_count .. " future saves")
     end
 end

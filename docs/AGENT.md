@@ -1,6 +1,6 @@
 # Save Rewinder - AI Development Guide
 
-Detailed guidance for AI agents working on this repo. More comprehensive than `.github/copilot-instructions.md`.
+Detailed guidance for AI agents working on this repo.
 
 ---
 
@@ -18,6 +18,17 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
 
 ## 1.1 Recent Changes (Notable)
 
+- **Performance Optimizations (50+ saves lag fix)**: Eight optimizations to `create_save` hot path:
+  1. **Gated retention policy on ante change** — `Pruning.apply_retention_policy` now only runs when ante actually changes, not on every save.
+  2. **Hot file map + lazy derived index rebuild** — On normal saves, `save_cache_by_file` stays hot for current-flag updates; only `save_index_by_file` and `save_cache_by_id` are invalidated and rebuilt lazily on demand.
+  3. **Compressed bytes fast path** — `FileIO.write_save_file` returns compressed bytes as 3rd return value; `FileIO.write_bytes_to_main` writes them directly to `save.jkr` without re-reading from disk.
+  4. **Tail-trim future prune** — `Pruning.prune_future_saves` trims a contiguous tail in O(K) (no retained-entry shifts).
+  5. **O(1) LRU via counter** — Replaced `meta_lru` array with `meta_lru_ts` hash + `meta_lru_clock` counter. Touch/remove are O(1); eviction scans only on cache overflow.
+  6. **Removed dead conditional sort** — The `table.sort` guard for out-of-order IDs was dead code (monotonic ID generation guarantees order).
+  7. **O(1) save-cache append** — Internal `save_cache` storage is now oldest-first, so new saves append with `save_cache[#save_cache + 1]` instead of costly front insert/shifts.
+  8. **Newest-first view cache for UI/API** — `get_save_files()` returns a cached newest-first view, preserving UI/index semantics without making save creation pay O(N) reorder cost.
+- **Restore counter fix (duplicate ordinals)** — `_init_ordinal_state_from_entry` now scans cache entries at the same ante/round and restores ALL display type counters (not just the loaded entry's type). Previously, loading an A save reset the O counter to 0, so the next O save got ordinal 1 again (producing duplicates like O1, A1, O1, A2).
+- **Forward declarations for index helpers** — `_rebuild_file_index` and `_invalidate_file_index` are forward-declared before `_update_cache_current_flags` to fix Lua scoping crash.
 - **ScaleNumberHook Simplification**: For numbers > 1e290 (including infinity), `scale_number()` now returns the base scale directly instead of complex input/output capping. Much simpler implementation.
 - **Infinity Display by Context**: Continue panel always shows 0 for inf/nan scores (via `round_scores`). Stats screen respects `clamp_infinity_scores` setting (via `high_scores`).
 - **NaN Protection Module (v1.4.8+)**: Centralized `Utils/NaNProtection.lua` module handles all NaN/inf/nil sanitization. Converts infinity to DBL_MAX (not 0) so scores remain playable. Custom display formatting for numbers >1e290 to avoid game's display overflow.
@@ -25,7 +36,10 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
 - **Controller Navigation**: Hardcoded hooks for `LB`/`RB` (page flip) and `Y` (jump to current) in the saves overlay. Custom focus navigation logic prevents vanilla crashes.
 - **Controller Shortcuts**: `X` button (Pause Menu only) opens saves list.
 - **Keybinds.lua Refactor**: Centralized controller hooks, context-aware `format_binding`, and safe `update_binding` logic.
-- **Save ordering guard**: new saves re-sort if out-of-order to prevention timeline misordering.
+- **GamePatches cleanup**: `Game:start_run` now uses shared helpers for rewinder-id file derivation, new-run state reset, and deferred clear-all save cleanup.
+- **RewinderUI cleanup**: Added `loc(...)` and `build_page_cycle_config(...)` helpers, and simplified `build_save_node(entry, opts)` callsites.
+- **Logger cleanup**: Unified message formatting in `Utils/Logger.lua` and removed the undefined `tag` fallback path.
+- **NaNProtection cleanup**: Repeated clamp-config checks are centralized in `should_clamp_infinity()`.
 
 ## 1.2 Unfinished / Open Requirements
 
@@ -92,11 +106,11 @@ Keybinds → SaveManager (step back, UI toggle)
 |------|---------|---------------|---------|
 | `StateSignature.lua` | Game state extraction and signature encoding | `get_state_info`, `encode_signature`, `signatures_equal`, `describe_save` | SaveManager, Init |
 | `MetaFile.lua` | Fast `.meta` file read/write (7 fields). Uses `NUMERIC_FIELDS` set for O(1) field type lookup | `read_meta_file`, `write_meta_file` | SaveManager |
-| `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file`, `get_save_dir` | SaveManager |
+| `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file` (returns compressed bytes as 3rd value), `write_bytes_to_main`, `get_save_dir` | SaveManager |
 | `Pruning.lua` | Retention policy (max antes), future save cleanup on restore | `apply_retention_policy`, `prune_future_saves` | SaveManager |
 | `Logger.lua` | Centralized logging with standard log levels | `Logger.create(module_name)` → returns logger function: `debug_log(level, msg)` where level is `"error"`, `"warning"`, `"info"`, or `"debug"`. **error/warning always show; info/debug only when debug_saves enabled** | All modules |
 | `NaNProtection.lua` | Defense-in-depth sanitization for NaN/inf/nil values | `sanitize`, `sanitize_round_scores`, `sanitize_round_scores_presave`, `sanitize_number_format`, `sanitize_serialize` | lovely.toml patches, SaveManager |
-| `ScaleNumberHook.lua` | Wraps `scale_number()` to cap large inputs for UI scaling | `install()`, `M.installed`, `M.SCALE_CAP` | None (uses pcall(print) directly) |
+| `ScaleNumberHook.lua` | Wraps `scale_number()` to return base scale for very large values (>1e290) | `install()`, `M.installed`, `M.LARGE_NUMBER_THRESHOLD` | ButtonCallbacks |
 | `G.STATES.lua` | Reference file for `G.STATES` enum and `G.P_BLINDS` table | **Not loaded at runtime** — IDE autocomplete only | None |
 
 ### UI/ — User Interface
@@ -110,7 +124,7 @@ Keybinds → SaveManager (step back, UI toggle)
 
 | File | Purpose |
 |------|---------|
-| `Keybinds.lua` | Keybinds manager (Dual Binding system). Handles input hooks, restricted execution (Run stage), and UI formatting. Contains specific hooks for Controller navigation (`navigate_focus`) and shortcuts. |
+| `Utils/Keybinds.lua` | Keybinds manager (Dual Binding system). Handles input hooks, restricted execution (Run stage), and UI formatting. Contains specific hooks for controller navigation (`navigate_focus`) and shortcuts. |
 | `main.lua` | Steamodded config tab integration (auto-save toggles, display options) |
 | `config.lua` | Default config values |
 | `lovely.toml` | Lovely Loader patches: injects `REWINDER.defer_save_creation()` after `save_run`, NaN protection hooks |
@@ -170,7 +184,7 @@ M.debug_log("debug", "Cache evicted 5 entries")
 **Per-Module Guidelines:**
 - **SaveManager**: `error` for I/O failures, `warning` for invalid operations, `info` for saves/loads/steps, `debug` for cache
 - **NaNProtection**: `warning` for guard triggers, `info` for fixes applied, `debug` for sanitization details
-- **ScaleNumberHook**: Uses `pcall(print, ...)` directly (not Logger) for reliability
+- **ScaleNumberHook**: Keep it lightweight; it should not depend on logger state or REWINDER config
 - **Pruning**: `info` for pruning operations, `debug` for "no action needed"
 - **FileIO**: `error` for I/O failures, `debug` for success confirmations
 - **Init**: `error` for init failures, `info` for cache loading, `debug` for fallback matching
@@ -189,23 +203,13 @@ M.debug_log("debug", "Cache evicted 5 entries")
 
 ---
 
-## 4. References Directory (Not Part of Mod)
+## 4. References (External, Not Part of Repo)
 
-All materials in `References/` are for development reference only, not distributed with mod.
-
-**Note:** Most mod folders in `References/` are symlinks pointing to `/Users/liafo/Library/Application Support/Balatro/Mods/`. This allows References to use live versions of mods for code inspection and pattern reference. Actual mod files are in the Mods folder (used by the game).
-
-| Folder | Content | Use For |
-|--------|---------|---------|
-| `balatro_src/` | Unpacked vanilla Balatro source (`game.lua`, `functions/misc_functions.lua`, `functions/button_callbacks.lua`, etc.) | Understanding original implementations (`save_run`, `start_run`), writing `lovely.toml` regex patterns |
-| `lovely/` | Lovely Loader files including `log/` directory | Debugging patches, crash logs, patch diagnostics |
-| `Steamodded/` | Steamodded loader scripts and config | Understanding mod loading, config tab patterns |
-| `Balatro-History/` | Another save history mod | Timeline and backup logic reference |
-| `Brainstorm-Rerolled/` | Fast restart mod | Borrowed `G:delete_run()` → `G:start_run({savetext=...})` pattern for instant restore |
-| `QuickLoad/` | Fast save loading mod | Borrowed `get_compressed()` + `STR_UNPACK()` flow for `.jkr` unpacking |
-| `BetterMouseandGamepad/` | Controller navigation mod | Focus management, L3/R3 mapping patterns |
-| `UnBlind/` | Boss blind preview mod | Blind sprite creation with `AnimatedSprite`, dissolve shader, shadow effects |
-| `JokerDisplay/` | Joker info display mod | Config UI organization (two-column layout) |
+Reference game source and mod code is configured via `mod.config.json` `source_paths`:
+- `game_desktop` / `game_mobile`: Vanilla Balatro source for understanding `save_run`, `start_run`, writing lovely.toml patterns
+- `steamodded`: Steamodded loader source
+- `lovely`: Lovely Loader source
+- `mods`: Installed mods directory for pattern reference
 
 ---
 
@@ -237,6 +241,11 @@ Examples:
 - **state_info**: Temporary object from `StateSignature.get_state_info(run_data)` — raw state for display_type computation
 - **entry**: 12-field array stored in cache — the canonical persistent structure
 
+### Cache Ordering Model
+- **Internal storage (`save_cache`)**: oldest-first (optimized for O(1) append in `create_save`)
+- **Public view (`get_save_files`)**: newest-first cached view (UI and callbacks continue to use newest-first indices)
+- **Index maps (`get_index_by_file`, `get_entry_by_id`)**: report newest-first indices to match UI pagination and step-back logic
+
 ### ordinal_state (O(1) Metadata)
 In-memory state machine in `SaveManager.lua` for computing `display_type` and `ordinal` at save time without cache scanning.
 
@@ -259,7 +268,7 @@ ordinal_state = {
 - Ante or round change during gameplay → resets all counters
 - blind_key change alone does NOT reset counters (allows B to increment when skipping)
 - Entering choose blind (B) → resets `defeated_boss_idx` and `last_round`
-- Save restore → re-initialized from entry's stored values
+- Save restore → re-initialized from entry's stored values; scans cache to restore ALL counters at same ante/round (not just the loaded type)
 
 **Boss tracking:**
 - Set when E save on round 3 or boss blind (index > 2)
@@ -268,7 +277,7 @@ ordinal_state = {
 
 
 ### Timeline Pruning (Deferred)
-When loading older save at index 5, saves 1-4 are marked in `pending_future_prune` but **not deleted immediately**. Deletion happens on next `create_save()` call. This allows "undo the undo" if user restarts before making new move.
+When loading older save at index 5, saves 1-4 are marked via `pending_future_prune_boundary` but **not deleted immediately**. Deletion happens on next `create_save()` call. This allows "undo the undo" if user restarts before making new move.
 
 ### Duplicate Skip
 After restore, first auto-save often matches restored state. `load_and_start_from_file()` stores individual loaded fields (`_loaded_ante`, `_loaded_round`, etc.); `consume_skip_on_save()` computes current state and compares fields directly (O(1), no signature string formatting).
@@ -404,8 +413,11 @@ The game's `scale_number()` function determines text size based on the numeric v
    - Compute ordinal using O(1) counter approach
    - Boss tracking: set defeated_boss_idx on E saves for boss rounds
    - Compute blind_idx: B→0, shop after boss→defeated_boss_idx, else→actual
-   - Write `.jkr` + `.meta` files
-   - Update cache, apply retention policy
+   - Write `.jkr` + `.meta` files (captures compressed bytes from write)
+   - Write compressed bytes directly to `save.jkr` (avoids re-read from disk)
+   - Append new entry in O(1) to internal oldest-first cache
+   - Update `save_cache_by_file` immediately; lazily invalidate derived index maps (`save_index_by_file`, `save_cache_by_id`)
+   - Apply retention policy only on ante change (full index rebuild only when pruning changes indices)
 
 ### Save Loading
 **See `CLICK_LOAD_FLOW.md`** for detailed diagram. Summary:
@@ -426,14 +438,15 @@ The game's `scale_number()` function determines text size based on the numeric v
 1. `G.UIDEF.rewinder_saves()` calls `get_save_files()` (updates current flags)
 2. Calculate pagination, find page containing current save
 3. `get_saves_page()` renders only visible entries (O(per_page))
-4. `build_save_node()` uses pre-computed `ENTRY_DISPLAY_TYPE` and `ENTRY_ORDINAL`
+4. `build_save_node(entry, opts)` uses pre-computed `ENTRY_DISPLAY_TYPE` and `ENTRY_ORDINAL`
 5. Lazy-load metadata on-demand when entry is first rendered
 
-### Meta Cache (Bounded + Elastic UI)
+### Meta Cache (Bounded + Elastic UI, O(1) LRU)
 - Base meta cache size: 32 entries
 - Cache grows elastically while the Saves UI is open
 - On close, cache recenters to current save and trims back to base size
 - Current save meta is always pinned
+- LRU uses counter-based timestamps (`meta_lru_ts` hash + `meta_lru_clock`): touch/remove are O(1), eviction scans only when cache overflows
 
 ### Continue from Main Menu
 When user clicks "Continue" without using our UI:
@@ -442,7 +455,7 @@ When user clicks "Continue" without using our UI:
 3. **Fallback**: Use newest save if no match (legacy saves without `_rewinder_id` are not supported)
 5. `Game:start_run` clears stale `_loaded_*` markers (and resets `ordinal_state`) when no restore/step is pending, then calls `mark_loaded_state`
 6. `mark_loaded_state` always updates `_last_loaded_file` (and `current_index` when known) from the file derived off `savetext._rewinder_id` — important for QuickLoad-style "load save.jkr" flows
-7. `create_save()` copies the freshly written rewinder `.jkr` to `save.jkr` (fast path), keeping base saves aligned for other mods
+7. `create_save()` writes compressed bytes directly to `save.jkr` (fallback: file copy) to keep base saves aligned for other mods
 
 ### Custom Save Field (`_rewinder_id`)
 - Injected into `G.culled_table` in `defer_save_creation()` BEFORE game writes `save.jkr`
@@ -506,6 +519,12 @@ When user clicks "Continue" without using our UI:
 > [!CAUTION]
 > **Context-specific infinity handling** — Different UI contexts may need different infinity behavior. Continue panel should show 0 (safe), while Stats can show inf (user preference). Use separate patches for `round_scores` vs `high_scores`.
 
+> [!CAUTION]
+> **Lua forward declarations required for local functions** — In Lua, `local function foo()` is only visible AFTER its definition. If function A calls function B, but A is defined before B, you must forward-declare B with `local B` before A, then assign `B = function() ... end` at the actual definition site. This caused a crash when `_update_cache_current_flags` (line ~404) called `_rebuild_file_index` (line ~539).
+
+> [!WARNING]
+> **Restore resets ALL ordinal counters** — `_init_ordinal_state_from_entry` calls `_reset_ordinal_state` which zeros every counter, then must restore counters for ALL display types at the same ante/round by scanning the cache. Without this, loading an A save would reset the O counter, causing the next O save to get ordinal 1 again (duplicate).
+
 ---
 
 ## 8. Development
@@ -518,22 +537,8 @@ When user clicks "Continue" without using our UI:
 ```
 
 - **No build system**: Edit Lua files in-place, sync to game, restart Balatro
-- **Logs**: Check `References/lovely/log/` for crash traces and patch diagnostics
+- **Logs**: Check `~/Library/Application Support/Balatro/Mods/lovely/log/` and repo-local `logs/` for crash traces and patch diagnostics
 - **Testing**: Launch Balatro with Steamodded/Lovely Loader, verify mod in mods list
-
-### Development Setup
-
-**References Folder Structure:**
-- `References/` contains symlinks pointing to actual mods in `/Users/liafo/Library/Application Support/Balatro/Mods/`
-- This allows References to use live versions of mods for development reference
-- Actual mod files are in Mods folder (used by the game)
-- References folder is for code inspection and pattern reference only
-
-**lovely.toml Configuration:**
-- `match_indent` is **not supported** for `[patches.regex]` patches (only for `[patches.pattern]`)
-- If you see warnings about `match_indent` in regex patches, remove that key
-- Pattern patches can use `match_indent = true` to match indentation
-- Regex patches match exact text regardless of indentation
 
 ### Release Packages
 
@@ -581,7 +586,7 @@ local blind_idx = entry[REWINDER.ENTRY_BLIND_IDX] -- index 10
 local signature = entry[REWINDER.ENTRY_SIGNATURE] -- index 6 (unified format)
 
 -- Convert blind_idx to key for sprite
-local blind_key = REWINDER.SaveManager.index_to_blind_key(blind_idx)
+local blind_key = REWINDER.index_to_blind_key(blind_idx)
 local sprite = REWINDER.create_blind_sprite(blind_key)
 
 -- Get state info from run_data (for display_type computation)
@@ -603,61 +608,29 @@ end
 
 ## 11. Codebase Health & Refactoring Notes
 
-### File Size Analysis (Target: 700-800 lines max)
+### Current File Sizes
 
 | File | Lines | Status | Notes |
 |------|-------|--------|-------|
-| `SaveManager.lua` | 1220 | ⚠️ Over | Well-organized sections, hard to split without breaking cohesion |
-| `Keybinds.lua` | 842 | ⚠️ Slightly over | navigate_focus logic is complex but necessary for controller |
-| `RewinderUI.lua` | 687 | ✅ OK | Close to limit |
-| `NaNProtection.lua` | 241 | ✅ OK | Recently cleaned up (removed dead code) |
-| `ButtonCallbacks.lua` | 352 | ✅ OK | |
-| Other files | <200 | ✅ OK | |
+| `Core/SaveManager.lua` | 1292 | ⚠️ Over | Core orchestration remains cohesive but large; keep splits cautious. |
+| `Utils/Keybinds.lua` | 841 | ⚠️ Slightly over | `navigate_focus` controller logic is the largest block. |
+| `UI/RewinderUI.lua` | 710 | ⚠️ Near limit | Recent cleanup reduced duplication, still a candidate for future split. |
+| `UI/ButtonCallbacks.lua` | 336 | ✅ OK | Second-pass refactor applied shared helpers for page/frame updates. |
+| `Utils/NaNProtection.lua` | 233 | ✅ OK | Clamp logic now centralized via `should_clamp_infinity()`. |
+| `Core/GamePatches.lua` | 175 | ✅ OK | Final-pass helper extraction reduced duplicate branches. |
+| `Utils/Logger.lua` | 92 | ✅ OK | Shared `format_message(...)` and no undefined fallback vars. |
 
-### Potential Future Refactoring
+### Refactor Baseline (latest passes)
 
-**SaveManager.lua (1220 lines):**
-- Could extract `MetaCache` (~150 lines) as separate module
-- Could extract `OrdinalState` (~100 lines) as separate module
-- However, these are tightly coupled - splitting may hurt maintainability
-- **Recommendation:** Keep as-is unless it grows significantly
+- Save creation hot path no longer pays O(N) front-insert costs; cache internals are oldest-first with cached newest-first public view.
+- Pruning and retention are now single-pass/tail-trim oriented where possible.
+- UI page-cycle configuration and localized fallback handling were deduplicated in `RewinderUI`.
+- `Game:start_run` rewinder-specific logic is centralized in local helpers for maintainability.
 
-**Keybinds.lua (842 lines):**
-- `navigate_focus` hook (~135 lines) is complex but necessary
-- Controller hook patterns are duplicated but minimal overhead
-- **Recommendation:** Keep as-is, complexity is inherent to controller support
+### Quality Guidelines
 
-### Dead Code Removed
-
-- `NaNProtection.format_large_score()` - Replaced by `ScaleNumberHook` which is simpler
-
-### Reusable Patterns
-
-**Clamp config check (used in multiple NaNProtection functions):**
-```lua
-local should_clamp = false
-if REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores ~= nil then
-    should_clamp = REWINDER.config.clamp_infinity_scores
-end
-```
-Could be extracted to helper, but inlining avoids function call overhead in hot paths.
-
-**Controller hook pattern (used in Keybinds.lua):**
-```lua
-if not Controller._rewinder_X then
-    Controller._rewinder_X = Controller.X
-    function Controller:X(...)
-        local ret = Controller._rewinder_X(self, ...)
-        -- Custom logic
-        return ret
-    end
-end
-```
-
-### Code Quality Guidelines
-
-1. **Keep modules focused** — Each file should have a clear single responsibility
-2. **Prefer inlining over abstraction** — For hot paths, inline code is faster than function calls
-3. **Document magic numbers** — Constants like `1e290`, `1e100`, `0.35` should have comments explaining why
-4. **Test edge cases** — NaN, infinity, nil, very large numbers, negative numbers
-5. **Use pcall for diagnostics** — `pcall(print, ...)` works even when Logger fails
+1. Keep `create_save()` and per-frame UI paths allocation-light.
+2. Prefer small shared helpers when repeated logic appears in 2+ places.
+3. Keep localization fallbacks centralized (`loc(...)`) instead of repeating `(localize and localize(...))`.
+4. Test edge cases: nil/NaN/inf scores, restore-then-save duplicate skip, and 50+ save pagination behavior.
+5. Use `pcall(print, ...)` for early patch diagnostics, then move stable logs back to `Logger`.

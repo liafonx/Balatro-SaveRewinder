@@ -94,6 +94,40 @@ local function _snap_saves_focus_to_current()
       end
    end
 end
+
+local function _run_after_frame(func)
+   if G and G.E_MANAGER and Event then
+      G.E_MANAGER:add_event(Event({
+         trigger = "after",
+         delay = 0,
+         func = function()
+            func()
+            return true
+         end,
+      }))
+   else
+      func()
+   end
+end
+
+local function _resolve_cycle_config(refs, current_option, per_page, entries)
+   if not refs or not refs.saves_box then return nil end
+   local cycle_config = refs.cycle_config
+   if not cycle_config then
+      cycle_config = {
+         options = refs.page_numbers or {},
+         current_option = current_option,
+         opt_callback = "rewinder_save_update_page",
+         opt_args = {},
+      }
+   end
+   cycle_config.opt_args = cycle_config.opt_args or {}
+   cycle_config.opt_args.ui = refs.saves_box
+   cycle_config.opt_args.per_page = per_page
+   cycle_config.opt_args.entries = entries
+   return cycle_config
+end
+
 function G.FUNCS.rewinder_save_open(e)
    if not G.FUNCS or not G.FUNCS.overlay_menu then return end
    _ensure_exit_overlay_wrapped()
@@ -107,18 +141,7 @@ function G.FUNCS.rewinder_save_open(e)
    })
    local start, finish, size = _recenter_meta_on_open()
    _log_ui("opened", start, finish, size)
-   if G and G.E_MANAGER and Event then
-      G.E_MANAGER:add_event(Event({
-         trigger = "after",
-         delay = 0,
-         func = function()
-            _snap_saves_focus_to_current()
-            return true
-         end,
-      }))
-   else
-      _snap_saves_focus_to_current()
-   end
+   _run_after_frame(_snap_saves_focus_to_current)
 end
 function G.FUNCS.rewinder_save_jump_to_current(e)
    local refs = REWINDER._saves_ui_refs
@@ -134,40 +157,14 @@ function G.FUNCS.rewinder_save_jump_to_current(e)
    if idx then
       target_page = math.ceil(idx / per_page)
    end
-   
-   -- Use stored cycle_config or reconstruct it
-   local cycle_config = refs.cycle_config
-   if not cycle_config then
-      cycle_config = {
-         options = refs.page_numbers or {},
-         current_option = target_page,
-         opt_callback = "rewinder_save_update_page",
-         opt_args = { ui = refs.saves_box, per_page = per_page, entries = entries },
-      }
-   end
-   
-   -- Update the opt_args with fresh entries
-   if cycle_config.opt_args then
-      cycle_config.opt_args.entries = entries
-      cycle_config.opt_args.ui = refs.saves_box
-   end
+   local cycle_config = _resolve_cycle_config(refs, target_page, per_page, entries)
+   if not cycle_config then return end
    
    G.FUNCS.rewinder_save_update_page({
       cycle_config = cycle_config,
       to_key = target_page,
    })
-   if G and G.E_MANAGER and Event then
-      G.E_MANAGER:add_event(Event({
-         trigger = "after",
-         delay = 0,
-         func = function()
-            _snap_saves_focus_to_current()
-            return true
-         end,
-      }))
-   else
-      _snap_saves_focus_to_current()
-   end
+   _run_after_frame(_snap_saves_focus_to_current)
 end
 function REWINDER.rewinder_save_jump_to_current()
    if G.FUNCS.rewinder_save_jump_to_current then
@@ -188,23 +185,8 @@ local function _navigate_page(dir)
    local target_page = current_page + dir
    if target_page < 1 then target_page = total_pages
    elseif target_page > total_pages then target_page = 1 end
-   
-    -- Use stored cycle_config or reconstruct it
-   local cycle_config = refs.cycle_config
-   if not cycle_config then
-      cycle_config = {
-         options = refs.page_numbers or {},
-         current_option = current_page,
-         opt_callback = "rewinder_save_update_page",
-         opt_args = { ui = refs.saves_box, per_page = per_page, entries = entries },
-      }
-   end
-   
-    -- Update the opt_args with fresh entries
-   if cycle_config.opt_args then
-      cycle_config.opt_args.entries = entries
-      cycle_config.opt_args.ui = refs.saves_box
-   end
+   local cycle_config = _resolve_cycle_config(refs, current_page, per_page, entries)
+   if not cycle_config then return end
    
    G.FUNCS.rewinder_save_update_page({
       cycle_config = cycle_config,
@@ -278,11 +260,13 @@ function G.FUNCS.rewinder_save_update_page(args)
    if not args or not args.cycle_config then return end
    
    local callback_args = args.cycle_config.opt_args
+   if not callback_args or not callback_args.ui then return end
+   local per_page = callback_args.per_page or 8
    local saves_object = callback_args.ui
    local saves_wrap = saves_object.parent
    local entries = REWINDER.get_save_files()
    if REWINDER.ensure_meta_window_for_page then
-      REWINDER.ensure_meta_window_for_page(args.to_key, callback_args.per_page, 4)
+      REWINDER.ensure_meta_window_for_page(args.to_key, per_page, 4)
    end
    local total = args.cycle_config.options and #args.cycle_config.options or 1
    _log_ui_action(string.format("page %d/%d", args.to_key or 1, total))
@@ -290,7 +274,7 @@ function G.FUNCS.rewinder_save_update_page(args)
    saves_wrap.config.object = UIBox({
       definition = REWINDER.get_saves_page({
          entries = entries,
-         per_page = callback_args.per_page,
+         per_page = per_page,
          page_num = args.to_key,
       }),
       config = { parent = saves_wrap, type = "cm" },

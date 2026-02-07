@@ -144,16 +144,10 @@ G.FUNCS.rewinder_config_change = function(args)
       
       -- If keep_antes changed, immediately apply retention policy
       if ref_value == "keep_antes" and SaveManager then
-         local Pruning = require("Pruning")
-         local dir = SaveManager.get_save_dir()
-         local entries = SaveManager.get_save_files()
-         if entries and #entries > 0 then
-            Pruning.apply_retention_policy(dir, entries, SaveManager)
-            -- Force reload to rebuild cache index after pruning
-            SaveManager.get_save_files(true)
+         if SaveManager.apply_retention_policy_now then
+            SaveManager.apply_retention_policy_now()
          end
       end
    end
 end
-
 

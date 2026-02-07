@@ -20,6 +20,20 @@ M._LEVELS = {
     debug = true,
 }
 
+local function format_message(module_name, level, msg)
+    if module_name and module_name ~= "" then
+        if level and level ~= "" then
+            return M._prefix .. "[" .. module_name .. "][" .. tostring(level) .. "] " .. tostring(msg)
+        end
+        return M._prefix .. "[" .. module_name .. "] " .. tostring(msg)
+    end
+
+    if level and level ~= "" then
+        return M._prefix .. "[" .. tostring(level) .. "] " .. tostring(msg)
+    end
+    return M._prefix .. " " .. tostring(msg)
+end
+
 --- Check if a log level should be displayed based on current config
 -- @param level string: The log level ("error", "warning", "info", "debug")
 -- @return boolean: true if this level should be logged
@@ -55,21 +69,7 @@ function M.create(module_name)
             return
         end
 
-        -- Format message
-        local full_msg
-        if module_name and module_name ~= "" then
-            if level and level ~= "" then
-                full_msg = M._prefix .. "[" .. module_name .. "][" .. tostring(level) .. "] " .. tostring(msg)
-            else
-                full_msg = M._prefix .. "[" .. module_name .. "] " .. tostring(msg)
-            end
-        else
-            if tag and tag ~= "" then
-                full_msg = M._prefix .. "[" .. tostring(tag) .. "] " .. tostring(msg)
-            else
-                full_msg = M._prefix .. " " .. tostring(msg)
-            end
-        end
+        local full_msg = format_message(module_name, level, msg)
 
         -- Protected print (prevents crash if another mod has buggy print hook)
         pcall(print, full_msg)
@@ -84,15 +84,9 @@ function M.log(level, msg)
         return
     end
 
-    local full_msg
-    if level and level ~= "" then
-        full_msg = M._prefix .. "[" .. tostring(level) .. "] " .. tostring(msg)
-    else
-        full_msg = M._prefix .. " " .. tostring(msg)
-    end
+    local full_msg = format_message(nil, level, msg)
 
     pcall(print, full_msg)
 end
 
 return M
-

@@ -87,12 +87,31 @@ function M.index_to_blind_key(index)
 end
 
 -- Internal state
-local save_cache, save_cache_by_file, save_index_by_file, save_cache_by_id = nil, nil, nil, nil
+local save_cache, save_cache_view, save_cache_by_file, save_index_by_file, save_cache_by_id = nil, nil, nil, nil, nil
+
+-- Internal storage is oldest-first for O(1) append on save creation.
+-- Public callers use newest-first order via this cached view.
+local function _invalidate_save_cache_view()
+   save_cache_view = nil
+end
+
+local function _get_save_cache_view()
+   if not save_cache then return nil end
+   if save_cache_view then return save_cache_view end
+   local total = #save_cache
+   local view = {}
+   for i = 1, total do
+      view[i] = save_cache[total - i + 1]
+   end
+   save_cache_view = view
+   return save_cache_view
+end
 
 -- Metadata cache (bounded, elastic while overlay open)
 local meta_cache = {}
 local meta_cache_size = 0
-local meta_lru = {}
+local meta_lru_ts = {}    -- file -> timestamp (counter-based LRU, O(1) touch)
+local meta_lru_clock = 0  -- monotonic counter for LRU ordering
 local meta_cache_limit = M.META_CACHE_BASE_LIMIT
 M._overlay_open = false
 local _last_meta_window_start, _last_meta_window_finish = nil, nil
@@ -150,18 +169,13 @@ local ordinal_state = {
 -- ============================================================================
 
 local function _remove_from_lru(file)
-   for i = #meta_lru, 1, -1 do
-      if meta_lru[i] == file then
-         table.remove(meta_lru, i)
-         return
-      end
-   end
+   meta_lru_ts[file] = nil
 end
 
 local function _touch_lru(file)
    if not file then return end
-   _remove_from_lru(file)
-   table.insert(meta_lru, file)
+   meta_lru_clock = meta_lru_clock + 1
+   meta_lru_ts[file] = meta_lru_clock
 end
 
 local function _apply_meta_to_entry(entry, meta)
@@ -214,11 +228,11 @@ local function _evict_meta_if_needed()
       return
    end
    while meta_cache_size > meta_cache_limit do
-      local candidate = nil
-      for i = 1, #meta_lru do
-         if not _is_pinned(meta_lru[i]) then
-            candidate = meta_lru[i]
-            break
+      -- Find least-recently-used non-pinned entry by min timestamp
+      local candidate, min_ts = nil, nil
+      for file, ts in pairs(meta_lru_ts) do
+         if not _is_pinned(file) and (not min_ts or ts < min_ts) then
+            candidate, min_ts = file, ts
          end
       end
       if not candidate then break end
@@ -269,7 +283,7 @@ function M.is_overlay_open()
 end
 
 function M.ensure_meta_window(center_idx, window_size, force_log, suppress_log)
-   local entries = save_cache or M.get_save_files()
+   local entries = M.get_save_files()
    if not entries or #entries == 0 then return end
    local total = #entries
    local size = window_size or M.META_CACHE_BASE_LIMIT
@@ -295,7 +309,7 @@ function M.ensure_meta_window_for_page(page_num, per_page, window_pages, force_l
 end
 
 function M.calc_meta_window_bounds(center_idx, window_size)
-   local entries = save_cache or M.get_save_files()
+   local entries = M.get_save_files()
    if not entries or #entries == 0 then return nil, nil, window_size or M.META_CACHE_BASE_LIMIT end
    local total = #entries
    local size = window_size or M.META_CACHE_BASE_LIMIT
@@ -378,8 +392,24 @@ local function _init_ordinal_state_from_entry(entry)
    end
    ordinal_state.last_display_type = dtype
 
-   if dtype and ordinal_state.counters[dtype] then
-      ordinal_state.counters[dtype] = entry[E.ENTRY_ORDINAL] or 1
+   -- Restore counters for ALL display types at the same ante/round (not just the loaded type).
+   -- Without this, loading an A save resets the O counter to 0, so the next O save gets ordinal 1
+   -- again — producing duplicates like O1, A1, O1, A2.
+   local load_ante = entry[E.ENTRY_ANTE]
+   local load_round = entry[E.ENTRY_ROUND]
+   local load_id = entry[E.ENTRY_INDEX]
+   if save_cache and load_ante and load_round then
+      for _, e in ipairs(save_cache) do
+         -- Only count entries at same ante/round that aren't newer than the loaded entry
+         if e[E.ENTRY_ANTE] == load_ante and e[E.ENTRY_ROUND] == load_round
+            and (not load_id or not e[E.ENTRY_INDEX] or e[E.ENTRY_INDEX] <= load_id) then
+            local dt = e[E.ENTRY_DISPLAY_TYPE]
+            local ord = e[E.ENTRY_ORDINAL]
+            if dt and ord and ordinal_state.counters[dt] ~= nil and ord > ordinal_state.counters[dt] then
+               ordinal_state.counters[dt] = ord
+            end
+         end
+      end
    end
 
    -- Restore boss tracking for shop saves
@@ -401,15 +431,18 @@ end
 -- Use sentinel value to distinguish "never set" from "set to nil"
 local _last_current_file = false  -- false = never initialized, nil = explicitly no current
 
+-- Forward declarations for functions defined in Index Helpers section
+local _rebuild_file_index
+
 -- Update is_current flag - O(1) via change detection and hash lookup
-local function _update_cache_current_flags()
+local function _update_cache_current_flags(force)
    if not save_cache then return end
    
    local current_file = M._last_loaded_file or (G and G.SAVED_GAME and G.SAVED_GAME._file)
    
    -- Skip if no change (O(1) check)
    -- Note: _last_current_file == false means first run, must process
-   if _last_current_file ~= false and current_file == _last_current_file then return end
+   if not force and _last_current_file ~= false and current_file == _last_current_file then return end
    
    -- Ensure index is built for O(1) lookup
    if not save_cache_by_file then _rebuild_file_index() end
@@ -533,24 +566,33 @@ end
 -- Index Helpers
 -- ============================================================================
 
-local function _rebuild_file_index()
+_rebuild_file_index = function()
    if not save_cache then
       save_cache_by_file, save_index_by_file, save_cache_by_id = nil, nil, nil
       return
    end
+   local total = #save_cache
    save_cache_by_file, save_index_by_file, save_cache_by_id = {}, {}, {}
    for i, entry in ipairs(save_cache) do
       local file = entry and entry[E.ENTRY_FILE]
       local entry_id = entry and entry[E.ENTRY_INDEX]  -- ENTRY_INDEX is the unique ID
+      -- Public/display order is newest-first.
+      local display_index = total - i + 1
       if file then
          save_cache_by_file[file] = entry
-         save_index_by_file[file] = i
+         save_index_by_file[file] = display_index
       end
       if entry_id then
-         save_cache_by_id[entry_id] = { entry = entry, index = i }
+         save_cache_by_id[entry_id] = { entry = entry, index = display_index }
       end
    end
 end
+
+local function _invalidate_derived_indexes()
+   -- Keep save_cache_by_file hot for current-flag updates.
+   save_index_by_file, save_cache_by_id = nil, nil
+end
+
 function M.get_entry_by_file(file)
    if not file then return nil end
    if not save_cache_by_file then _rebuild_file_index() end
@@ -583,8 +625,11 @@ function M.find_current_index()
       if idx then return idx end
    end
    if save_cache then
+      local total = #save_cache
       for i, entry in ipairs(save_cache) do
-         if entry and entry[E.ENTRY_IS_CURRENT] then return i end
+         if entry and entry[E.ENTRY_IS_CURRENT] then
+            return total - i + 1
+         end
       end
    end
    return nil
@@ -605,9 +650,11 @@ function M.clear_all_saves()
    end
    M.debug_log("info", "Cleared all saves")
    save_cache = {}
+   save_cache_view = nil
    meta_cache = {}
    meta_cache_size = 0
-   meta_lru = {}
+   meta_lru_ts = {}
+   meta_lru_clock = 0
    meta_cache_limit = M.META_CACHE_BASE_LIMIT
    _last_current_file = false  -- Reset sentinel for O(1) change detection
    _rebuild_file_index()
@@ -666,9 +713,9 @@ local function _list_and_sort_entries()
       end
    end
 
-   -- Sort by index (epoch-based unique ID) descending (newest first)
+   -- Internal order: ascending by index (oldest first)
    table.sort(entries, function(a, b)
-      return a[E.ENTRY_INDEX] > b[E.ENTRY_INDEX]
+      return a[E.ENTRY_INDEX] < b[E.ENTRY_INDEX]
    end)
    return entries
 end
@@ -688,16 +735,18 @@ function M.get_save_files(force_reload)
    if save_cache and not force_reload then
       _update_cache_current_flags()
       if not save_cache_by_file then _rebuild_file_index() end
-      return save_cache
+      return _get_save_cache_view()
    end
    save_cache = _list_and_sort_entries()
-   if save_cache and save_cache[1] and save_cache[1][E.ENTRY_INDEX] then
-      M._last_generated_id = math.max(M._last_generated_id or 0, save_cache[1][E.ENTRY_INDEX])
+   _invalidate_save_cache_view()
+   local newest = save_cache and save_cache[#save_cache]
+   if newest and newest[E.ENTRY_INDEX] then
+      M._last_generated_id = math.max(M._last_generated_id or 0, newest[E.ENTRY_INDEX])
    end
    _rebuild_file_index()
    _purge_meta_cache()
-   _update_cache_current_flags()
-   return save_cache
+   _update_cache_current_flags(true)
+   return _get_save_cache_view()
 end
 
 function M.preload_all_metadata(force_reload)
@@ -706,6 +755,18 @@ function M.preload_all_metadata(force_reload)
       M.ensure_meta_window(1, M.META_CACHE_BASE_LIMIT)
    end
    return entries
+end
+
+function M.apply_retention_policy_now()
+   if not save_cache then
+      M.get_save_files()
+   end
+   if not save_cache or #save_cache == 0 then return end
+   local dir = M.get_save_dir()
+   Pruning.apply_retention_policy(dir, save_cache, E)
+   _invalidate_save_cache_view()
+   _rebuild_file_index()
+   _update_cache_current_flags(true)
 end
 
 function M.describe_save(opts)
@@ -849,8 +910,7 @@ function M.load_and_start_from_file(file, opts)
 end
 
 function M.revert_to_previous_save()
-   -- Use existing cache if available (skip full reload)
-   local entries = save_cache or M.get_save_files()
+   local entries = M.get_save_files()
    if not entries or #entries == 0 then
       M.debug_log("warning", "Cannot step back: no saves available")
       return
@@ -878,8 +938,7 @@ function M.revert_to_previous_save()
 end
 
 function M.load_save_at_index(index)
-   -- Use existing cache if available
-   local entries = save_cache or M.get_save_files()
+   local entries = M.get_save_files()
    if not entries or index < 1 or index > #entries then
       M.debug_log("warning", "Cannot load save at index " .. tostring(index) .. ": out of bounds")
       return
@@ -1070,15 +1129,13 @@ function M.create_save(run_data)
       return
    end
    
-   local st = G and G.STATES
-   
    -- Check if we need to reset ordinal state
    -- Counters reset on ante or round change, NOT on blind change
    -- This allows B counter to increment when skipping blinds within same round
    local blind_key = state_info.blind_key or "unknown"
    local ante_changed = ordinal_state.ante ~= state_info.ante
    local round_changed = ordinal_state.last_saved_round ~= state_info.round
-   
+
    if ante_changed or round_changed then
       _reset_ordinal_state(state_info.ante, blind_key, state_info.round)
    else
@@ -1100,13 +1157,17 @@ function M.create_save(run_data)
       return
    end
    
-   M.get_save_files()
+   -- Ensure internal cache is loaded once; avoid rebuilding the public view every save.
+   if not save_cache then
+      M.get_save_files()
+   end
    local dir = M.get_save_dir()
 
    -- Prune future saves using ENTRY_INDEX boundary (O(1) setup vs O(N) list building)
    if M.pending_future_prune_boundary then
       Pruning.prune_future_saves(dir, M.pending_future_prune_boundary, save_cache, E)
       M.pending_future_prune_boundary = nil  -- Clear after use
+      _invalidate_save_cache_view()
       _rebuild_file_index()
    end
    -- Use _rewinder_id from run_data if available (injected by defer_save_creation)
@@ -1171,8 +1232,9 @@ function M.create_save(run_data)
    }
 
    local full_path = dir .. "/" .. filename
-   if not FileIO.write_save_file(run_data, full_path) then
-      M.debug_log("error", "Failed to write save")
+   local write_ok, write_err, compressed_bytes = FileIO.write_save_file(run_data, full_path)
+   if not write_ok then
+      M.debug_log("error", "Failed to write save: " .. tostring(write_err))
       return
    end
    M.debug_log("debug", "Wrote save file: " .. filename)
@@ -1196,25 +1258,35 @@ function M.create_save(run_data)
       ordinal = ordinal,
    })
 
-   -- Keep save.jkr aligned using the exact bytes we just wrote (fast path).
-   FileIO.copy_save_to_main(filename, dir)
-
-   table.insert(save_cache, 1, new_entry)
-   if save_cache[2] and save_cache[1][ENTRY_INDEX] < save_cache[2][ENTRY_INDEX] then
-      table.sort(save_cache, function(a, b)
-         return a[ENTRY_INDEX] > b[ENTRY_INDEX]
-      end)
+   -- Keep save.jkr aligned using the bytes we just compressed (skip re-read from disk).
+   if compressed_bytes then
+      FileIO.write_bytes_to_main(compressed_bytes)
+   else
+      FileIO.copy_save_to_main(filename, dir)
    end
+
+   -- Internal order is oldest-first. Append newest entry in O(1).
+   save_cache[#save_cache + 1] = new_entry
+   _invalidate_save_cache_view()
    new_entry[ENTRY_IS_CURRENT] = true  -- Set directly on new entry (before rebuild)
+   if save_cache_by_file then
+      save_cache_by_file[filename] = new_entry
+   end
    run_data._file = filename
    M.current_index = 1
    M._last_save_sig = signature
    M._last_save_time = love.timer.getTime()
    M.debug_log("info", "Created: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
    
-   Pruning.apply_retention_policy(dir, save_cache, E)
-   _rebuild_file_index()
-   M._set_cache_current_file(filename)  -- Update tracking variable AFTER index built
+   if ante_changed then
+      Pruning.apply_retention_policy(dir, save_cache, E)
+      _invalidate_save_cache_view()
+      _rebuild_file_index()  -- Full rebuild needed after pruning changes indices
+   else
+      -- Keep file->entry lookup hot (for current flag updates), lazily rebuild derived maps.
+      _invalidate_derived_indexes()
+   end
+   M._set_cache_current_file(filename)
 end
 
 return M

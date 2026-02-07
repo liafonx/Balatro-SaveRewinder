@@ -8,12 +8,62 @@ local log = Logger.create("GamePatches")
 -- Guard against double-execution (e.g., if this file is patched multiple times)
 if REWINDER._game_patches_loaded then return end
 REWINDER._game_patches_loaded = true
+
+local function derive_file_from_rewinder_id(bm, savetext)
+   if not bm or not savetext or savetext._file or not savetext._rewinder_id or not bm.get_entry_by_id then
+      return nil, nil
+   end
+   local entry, idx = bm.get_entry_by_id(savetext._rewinder_id)
+   if not entry then return nil, nil end
+   local file = entry[bm.ENTRY_FILE]
+   savetext._file = file
+   return file, idx
+end
+
+local function reset_save_manager_for_new_run(bm)
+   if not bm then return end
+   bm._pending_skip_reason = nil
+   bm._loaded_mark_applied = nil
+   bm._loaded_signature = nil
+   bm._loaded_display_type = nil
+   bm.current_index = nil
+   bm._restore_active = nil
+   bm._last_loaded_file = nil
+   bm.skip_next_save = false
+   bm.pending_future_prune_boundary = nil
+   bm.skipping_pack_open = nil
+   bm._last_save_sig = nil
+   bm._last_save_time = nil
+   if bm.set_overlay_open then
+      bm.set_overlay_open(false)
+   end
+   if bm.reset_ordinal_state then
+      bm.reset_ordinal_state()
+   end
+end
+
+local function clear_all_saves_next_frame()
+   if not REWINDER.clear_all_saves then return end
+   -- Defer cleanup to avoid recursive call chains through hooked filesystem operations.
+   if G and G.E_MANAGER and Event then
+      G.E_MANAGER:add_event(Event({
+         trigger = 'after',
+         delay = 0,
+         func = function()
+            REWINDER.clear_all_saves()
+            return true
+         end
+      }))
+      return
+   end
+   REWINDER.clear_all_saves()
+end
 -- Assume REWINDER is already defined and populated by Init.lua
 REWINDER._start_run = Game.start_run
 function Game:start_run(args)
    args = args or {}
    -- 1. Mark the loaded state and derive _file from _rewinder_id if needed
-   if args and args.savetext and REWINDER.mark_loaded_state then
+   if args.savetext and REWINDER.mark_loaded_state then
       local BM = REWINDER._SaveManager
 
       -- Clear stale load markers when this is a plain Continue (no restore/step pending).
@@ -22,14 +72,8 @@ function Game:start_run(args)
       end
       
       -- Derive _file from _rewinder_id if not already set (enables O(1) file lookup)
-      if args.savetext and not args.savetext._file then
-         -- Try _rewinder_id first (exact match)
-         if args.savetext._rewinder_id and BM and BM.get_entry_by_id then
-            local entry = BM.get_entry_by_id(args.savetext._rewinder_id)
-            if entry then
-               args.savetext._file = entry[BM.ENTRY_FILE]
-            end
-         end
+      if not args.savetext._file then
+         derive_file_from_rewinder_id(BM, args.savetext)
          -- Fallback to _last_loaded_file from init phase
          if not args.savetext._file and BM and BM._last_loaded_file then
             args.savetext._file = BM._last_loaded_file
@@ -65,50 +109,14 @@ function Game:start_run(args)
    -- 3. Reset REWINDER State for new run
    REWINDER.saves_open = false
    REWINDER._debug_alert = nil
-   if not args or not args.savetext then
+   if not args.savetext then
       -- Brand new run - reset SaveManager internal state directly
       local BM = REWINDER._SaveManager
-      if BM then
-         BM._pending_skip_reason = nil
-         BM._loaded_mark_applied = nil
-         BM._loaded_signature = nil
-         BM._loaded_display_type = nil
-         BM.current_index = nil
-         BM._restore_active = nil
-         BM._last_loaded_file = nil
-         log("detail", "Reset state (new run)")
-         BM.skip_next_save = false
-         BM.pending_future_prune_boundary = nil
-         BM.skipping_pack_open = nil
-         BM._last_save_sig = nil  -- Reset duplicate detection
-         BM._last_save_time = nil
-         if BM.set_overlay_open then
-            BM.set_overlay_open(false)
-         end
-         if BM.reset_ordinal_state then
-            BM.reset_ordinal_state()  -- Reset ordinal counters for new run
-         end
-      end
+      reset_save_manager_for_new_run(BM)
+      log("detail", "Reset state (new run)")
       
       -- Prune all saves (new run destroys future of previous run)
-      if REWINDER.clear_all_saves then
-          -- Defer the cleanup to the next frame to avoid recursive crashes
-          -- caused by other mods hooking filesystem operations. This breaks the
-          -- synchronous call chain (start_run -> clear -> getInfo -> hook -> start_run).
-          if G and G.E_MANAGER and Event then
-              G.E_MANAGER:add_event(Event({
-                  trigger = 'after',
-                  delay = 0,
-                  func = function()
-                      REWINDER.clear_all_saves()
-                      return true
-                  end
-              }))
-          else
-              -- Fallback for safety, though G.E_MANAGER should exist here.
-              REWINDER.clear_all_saves()
-          end
-      end
+      clear_all_saves_next_frame()
    else
       -- Continue with existing savetext - derive file from _rewinder_id or use existing
       local BM = REWINDER._SaveManager
@@ -116,13 +124,8 @@ function Game:start_run(args)
          local file_to_use = args.savetext._file
          
          -- If no _file, try to derive from _rewinder_id
-         if not file_to_use and args.savetext._rewinder_id and BM.get_entry_by_id then
-            local entry, idx = BM.get_entry_by_id(args.savetext._rewinder_id)
-            if entry then
-               file_to_use = entry[BM.ENTRY_FILE]
-               args.savetext._file = file_to_use  -- Cache for later use
-               BM.current_index = idx
-            end
+         if not file_to_use then
+            file_to_use, BM.current_index = derive_file_from_rewinder_id(BM, args.savetext)
          end
          
          -- Update tracking if we have a file

@@ -86,11 +86,9 @@ function M.load_save_file(file, save_dir)
     return result
 end
 
--- Write a save file (pack + compress + write). Returns (ok, timings|err).
--- opts.timing=true returns per-stage timings in milliseconds.
-function M.write_save_file(run_data, full_path, opts)
-    opts = opts or {}
-
+-- Write a save file (pack + compress + write). Returns (ok, err_or_nil, compressed_bytes).
+-- Third return value is the compressed bytes for reuse (avoids re-reading from disk).
+function M.write_save_file(run_data, full_path)
     -- Note: Amulet/Talisman OmegaNum compatibility is handled by their STR_PACK/STR_UNPACK overrides
     -- We don't need to call sanitize - it corrupts the data
 
@@ -106,6 +104,19 @@ function M.write_save_file(run_data, full_path, opts)
         return false, "write:" .. tostring(write_err)
     end
 
+    return true, nil, compressed
+end
+
+-- Write pre-compressed bytes directly to save.jkr (avoids re-reading from disk)
+function M.write_bytes_to_main(compressed_bytes)
+    if not compressed_bytes then return false end
+    local profile = M.get_profile()
+    local save_path = profile .. "/save.jkr"
+    local ok, err = pcall(love.filesystem.write, save_path, compressed_bytes)
+    if not ok then
+        M.debug_log("error", "Failed to write main save: " .. tostring(err))
+        return false
+    end
     return true
 end
 
@@ -114,9 +125,9 @@ function M.sync_to_main_save(run_data)
     if not run_data then return false end
     local profile = M.get_profile()
     local save_path = profile .. "/save.jkr"
-    local ok, err_or_timings = M.write_save_file(run_data, save_path, { timing = false })
+    local ok, err = M.write_save_file(run_data, save_path)
     if not ok then
-        M.debug_log("error", "Failed to write main save: " .. tostring(err_or_timings))
+        M.debug_log("error", "Failed to write main save: " .. tostring(err))
         return false
     end
     M.debug_log("debug", "Synced to main save")

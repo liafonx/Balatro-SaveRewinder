@@ -233,10 +233,7 @@ function Keybinds.format_binding(binding)
    
    local kb_str = fmt_sub(binding.keyboard)
    local gp_str = fmt_sub(binding.controller)
-   
-   local kb_str = fmt_sub(binding.keyboard)
-   local gp_str = fmt_sub(binding.controller)
-   
+
    -- Context sensitive display
    local mode = Keybinds.last_input_type or "keyboard"
    if mode == "controller" then
@@ -521,14 +518,16 @@ local function snap_to_id(self, id)
 end
 
 local function snap_to_current_save_entry(self)
-   if not (REWINDER and REWINDER.find_current_index and G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return end
+   if not (REWINDER and REWINDER.find_current_index and G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return false end
    local idx = REWINDER.find_current_index()
-   if not idx then return end
+   if not idx then return false end
    local node = G.OVERLAY_MENU:get_UIE_by_ID("rewinder_save_entry_" .. tostring(idx))
    if node then
       self:snap_to({ node = node })
       if self.update_cursor then self:update_cursor() end
+      return true
    end
+   return false
 end
 
 _ensure_config_keybinds()
@@ -580,26 +579,29 @@ local function quick_saveload_from_menu()
    end
 end
 
+local function _cooldown_gate(last_trigger, cooldown)
+   if not love or not love.timer then
+      return true, last_trigger
+   end
+   local now = love.timer.getTime()
+   if last_trigger and (now - last_trigger) < cooldown then
+      return false, last_trigger
+   end
+   return true, now
+end
+
 local _last_quick_revert_time = nil
 local function can_trigger_quick_revert()
-   if not love or not love.timer then return true end
-   local now = love.timer.getTime()
-   if _last_quick_revert_time and (now - _last_quick_revert_time) < 0.25 then
-      return false
-   end
-   _last_quick_revert_time = now
-   return true
+   local ok, updated = _cooldown_gate(_last_quick_revert_time, 0.25)
+   _last_quick_revert_time = updated
+   return ok
 end
 
 local _last_quick_saveload_time = nil
 local function can_trigger_quick_saveload()
-   if not love or not love.timer then return true end
-   local now = love.timer.getTime()
-   if _last_quick_saveload_time and (now - _last_quick_saveload_time) < 0.25 then
-      return false
-   end
-   _last_quick_saveload_time = now
-   return true
+   local ok, updated = _cooldown_gate(_last_quick_saveload_time, 0.25)
+   _last_quick_saveload_time = updated
+   return ok
 end
 
 local function toggle_saves_window()
@@ -781,11 +783,8 @@ local function hook_controller_navigate_focus()
                 -- Try snapping to last one, if fail try one before (safety)
                 if snap_to_id(self, last_id) then return end
              else
-                -- Fallback blind check if refs missing
-                for k=1, 100 do -- Check reasonable range backwards? unlikely to work well without refs
-                   -- Just try generic safety snap
-                   if snap_to_current_save_entry(self) then return end 
-                end
+                -- Fallback to current save entry when page refs are unavailable
+                if snap_to_current_save_entry(self) then return end
              end
              return
          end

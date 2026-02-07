@@ -6,6 +6,13 @@ if not REWINDER then REWINDER = {} end
 
 local SAVE_ENTRY_W = 8.9  -- Reduced from 8.8 to give arrow more space
 
+local function loc(key, fallback)
+   if localize then
+      return localize(key) or fallback
+   end
+   return fallback
+end
+
 -- Custom triangle arrow indicator (replaces built-in 'chosen' which has hardcoded positioning)
 -- Extends Moveable to create a custom drawable object
 local TriangleArrow = Moveable:extend()
@@ -101,6 +108,15 @@ end
 -- Clear blind config cache (call when game reloads or mods change)
 function REWINDER.clear_blind_cache()
    blind_config_cache = {}
+end
+
+local function build_page_cycle_config(page_numbers, initial_page, saves_box, per_page, entries)
+   return {
+      options = page_numbers,
+      current_option = initial_page,
+      opt_callback = "rewinder_save_update_page",
+      opt_args = { ui = saves_box, per_page = per_page, entries = entries },
+   }
 end
 
 -- Setup common sprite properties (shadow, shaders, hover effects)
@@ -204,7 +220,7 @@ local function get_label_from_display_type(display_type)
    return text, show_ordinal
 end
 
-function REWINDER.build_save_node(entry, is_first_entry, opts)
+function REWINDER.build_save_node(entry, opts)
    -- Use entry as array (no keys, accessed by index)
    if not entry then return nil end
    opts = opts or {}
@@ -216,13 +232,13 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
    -- Build ante text
    local ante_text = ""
    if entry[REWINDER.ENTRY_ANTE] then
-      local ante_label = (localize and localize("rewinder_ante_label")) or "Ante"
+      local ante_label = loc("rewinder_ante_label", "Ante")
       ante_text = ante_label .. " " .. tostring(entry[REWINDER.ENTRY_ANTE])
    end
 
    -- Fast path: use pre-computed display_type from entry
    local state_text = ""
-      local show_ordinal = true
+   local show_ordinal = true
    local display_type = entry[REWINDER.ENTRY_DISPLAY_TYPE]
    
    if display_type then
@@ -230,14 +246,14 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
       state_text, show_ordinal = get_label_from_display_type(display_type)
    else
       -- Fallback for saves without display_type (shouldn't happen with new format)
-      state_text = localize and localize("rewinder_state_in_run") or "in run"
+      state_text = loc("rewinder_state_in_run", "in run")
    end
 
    -- Build tailing number text using pre-computed ordinal
    local tailing_number_text = ""
    local ordinal = entry[REWINDER.ENTRY_ORDINAL]
    
-      if show_ordinal and ordinal and ordinal > 0 then
+   if show_ordinal and ordinal and ordinal > 0 then
       tailing_number_text = tostring(ordinal)
    end
 
@@ -314,7 +330,7 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
             })
          else
             -- Fallback to separator if sprite creation fails
-            local separator = (localize and localize("rewinder_separator")) or " | "
+            local separator = loc("rewinder_separator", " | ")
             table.insert(text_nodes, {
                n = G.UIT.T,
                config = {
@@ -328,8 +344,8 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
          -- Show colored separator with round number (original behavior)
          local round_text = ""
          if entry[REWINDER.ENTRY_ROUND] ~= nil then
-            local round_label = (localize and localize("rewinder_round_label")) or "Round"
-            local spacing = (localize and localize("rewinder_ante_round_spacing")) or " "
+            local round_label = loc("rewinder_round_label", "Round")
+            local spacing = loc("rewinder_ante_round_spacing", " ")
             round_text = spacing .. round_label .. " " .. tostring(entry[REWINDER.ENTRY_ROUND])
          end
          
@@ -344,7 +360,7 @@ function REWINDER.build_save_node(entry, is_first_entry, opts)
             })
          end
          
-         local separator = (localize and localize("rewinder_separator")) or " | "
+         local separator = loc("rewinder_separator", " | ")
          table.insert(text_nodes, {
             n = G.UIT.T,
             config = {
@@ -479,7 +495,7 @@ function REWINDER.get_saves_page(args)
       content = {
          n = G.UIT.T,
          config = {
-            text = (localize and localize("rewinder_no_saves")) or "No saves yet",
+            text = loc("rewinder_no_saves", "No saves yet"),
             colour = G.C.UI.TEXT_LIGHT,
             scale = 0.5,
          },
@@ -500,11 +516,9 @@ function REWINDER.get_saves_page(args)
             REWINDER.get_save_meta(entry)
          end
 
-         local is_first_entry = (global_index == 1)
-                  table.insert(nodes, REWINDER.build_save_node(entry, is_first_entry, {
+         table.insert(nodes, REWINDER.build_save_node(entry, {
             id = "rewinder_save_entry_" .. tostring(global_index),
             snap_to = (entry and entry[REWINDER.ENTRY_IS_CURRENT] == true),
-            entries = entries,  -- Pass entries list for boss blind lookup
          }))
       end
 
@@ -541,7 +555,7 @@ function G.UIDEF.rewinder_saves()
    local total_pages = math.max(1, math.ceil(#entries / per_page))
    local page_numbers = {}
    for i = 1, total_pages do
-      local pattern = (localize and localize("rewinder_page_label")) or "Page %d/%d"
+      local pattern = loc("rewinder_page_label", "Page %d/%d")
       page_numbers[i] = string.format(pattern, i, total_pages)
    end
 
@@ -568,13 +582,22 @@ function G.UIDEF.rewinder_saves()
    REWINDER._saves_ui_refs.page_numbers = page_numbers
    
    -- Create cycle config and store it for jump_to_current
-   local cycle_config = {
-      options = page_numbers,
-      current_option = initial_page,
-      opt_callback = "rewinder_save_update_page",
-      opt_args = { ui = saves_box, per_page = per_page, entries = entries },
-   }
+   local cycle_config = build_page_cycle_config(page_numbers, initial_page, saves_box, per_page, entries)
    REWINDER._saves_ui_refs.cycle_config = cycle_config
+
+   local cycle_ui_config = {
+      id = "rewinder_page_cycle",
+      options = cycle_config.options,
+      current_option = cycle_config.current_option,
+      opt_callback = cycle_config.opt_callback,
+      opt_args = cycle_config.opt_args,
+      w = 4.5,
+      colour = G.C.BLUE,
+      cycle_shoulders = true,
+      no_pips = true,
+      focus_args = { nav = "wide" },
+   }
+
    return create_UIBox_generic_options({
       back_func = "rewinder_save_close",
       minw = SAVE_ENTRY_W,
@@ -592,16 +615,16 @@ function G.UIDEF.rewinder_saves()
             config = { align = "cm", colour = G.C.CLEAR },
             nodes = {
                create_option_cycle({
-                  id = "rewinder_page_cycle",
-                  options = page_numbers,
-                  current_option = initial_page,
-                  opt_callback = "rewinder_save_update_page",
-                  opt_args = { ui = saves_box, per_page = per_page, entries = entries },
-                  w = 4.5,
-                  colour = G.C.BLUE,
-                  cycle_shoulders = true,
-                  no_pips = true,
-                  focus_args = { nav = "wide" },
+                  id = cycle_ui_config.id,
+                  options = cycle_ui_config.options,
+                  current_option = cycle_ui_config.current_option,
+                  opt_callback = cycle_ui_config.opt_callback,
+                  opt_args = cycle_ui_config.opt_args,
+                  w = cycle_ui_config.w,
+                  colour = cycle_ui_config.colour,
+                  cycle_shoulders = cycle_ui_config.cycle_shoulders,
+                  no_pips = cycle_ui_config.no_pips,
+                  focus_args = cycle_ui_config.focus_args,
                }),
             },
          },

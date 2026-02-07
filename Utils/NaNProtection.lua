@@ -25,6 +25,13 @@ M.MAX_SAFE_SCORE = 1.7976931348623157e308
 -- Threshold above which we format numbers ourselves to avoid display overflow
 M.LARGE_NUMBER_THRESHOLD = 1e290
 
+local function should_clamp_infinity()
+    if REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores ~= nil then
+        return REWINDER.config.clamp_infinity_scores
+    end
+    return false
+end
+
 --- Sanitize a value, replacing NaN/nil with 0 and inf with MAX_SAFE_SCORE (if enabled)
 -- @param v any: The value to check
 -- @param context string|nil: Optional context for debug logging
@@ -44,11 +51,7 @@ function M.sanitize(v, context)
             return 0
         end
         if v == math.huge or v == -math.huge then -- Infinity check
-            -- Check config for clamping behavior (default: false)
-            local should_clamp = false
-            if REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores ~= nil then
-                should_clamp = REWINDER.config.clamp_infinity_scores
-            end
+            local should_clamp = should_clamp_infinity()
             if should_clamp then
                 if context then
                     debug_log("debug", context .. ": inf detected, returning MAX_SAFE_SCORE (" .. M.MAX_SAFE_SCORE .. ")")
@@ -126,11 +129,7 @@ end
 function M.sanitize_round_scores_presave(game)
     if not game or not game.round_scores then return end
 
-    -- Check config for clamping behavior (default: false)
-    local should_clamp = false
-    if REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores ~= nil then
-        should_clamp = REWINDER.config.clamp_infinity_scores
-    end
+    local should_clamp = should_clamp_infinity()
 
     local fixed_nan, fixed_inf = {}, {}
     for k, v in pairs(game.round_scores) do
@@ -187,11 +186,7 @@ function M.sanitize_number_format(num)
 
     -- Infinity check - respect config for clamping behavior
     if num == math.huge or num == -math.huge then
-        -- Check config for clamping behavior (default: false)
-        local should_clamp = false
-        if REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores ~= nil then
-            should_clamp = REWINDER.config.clamp_infinity_scores
-        end
+        local should_clamp = should_clamp_infinity()
         if should_clamp then
             num = M.MAX_SAFE_SCORE
         else
@@ -222,11 +217,7 @@ function M.sanitize_serialize(v, k)
             debug_log("debug", "NaN in key=" .. tostring(k) .. ", sanitizing to 0")
             return 0
         elseif v == math.huge or v == -math.huge then -- Infinity check
-            -- Check config for clamping behavior (default: false)
-            local should_clamp = false
-            if REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores ~= nil then
-                should_clamp = REWINDER.config.clamp_infinity_scores
-            end
+            local should_clamp = should_clamp_infinity()
             if should_clamp then
                 debug_log("debug", "inf in key=" .. tostring(k) .. ", sanitizing to MAX_SAFE_SCORE")
                 return M.MAX_SAFE_SCORE
