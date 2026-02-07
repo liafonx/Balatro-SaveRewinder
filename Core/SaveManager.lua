@@ -13,19 +13,20 @@ local Logger = require("Logger")
 -- ============================================================================
 -- Entry Constants - Cache entry array indices (1-based in Lua)
 -- Format: {file, ante, round, index, money, signature, discards_used,
---          hands_played, is_current, blind_idx, display_type, ordinal}
+--          hands_played, is_current, blind_idx, display_type, ordinal, is_key}
 -- ============================================================================
--- Single source of truth: name -> index mapping (12 fields)
+-- Single source of truth: name -> index mapping (13 fields)
 local ENTRY_KEYS = {
    "FILE", "ANTE", "ROUND", "INDEX",
    "MONEY", "SIGNATURE", "DISCARDS_USED", "HANDS_PLAYED",
-   "IS_CURRENT", "BLIND_IDX", "DISPLAY_TYPE", "ORDINAL",
+   "IS_CURRENT", "BLIND_IDX", "DISPLAY_TYPE", "ORDINAL", "IS_KEY",
 }
 
 -- Local shorthand variables (for internal use)
 local ENTRY_FILE, ENTRY_ANTE, ENTRY_ROUND, ENTRY_INDEX = 1, 2, 3, 4
 local ENTRY_MONEY, ENTRY_SIGNATURE, ENTRY_DISCARDS_USED, ENTRY_HANDS_PLAYED = 5, 6, 7, 8
 local ENTRY_IS_CURRENT, ENTRY_BLIND_IDX, ENTRY_DISPLAY_TYPE, ENTRY_ORDINAL = 9, 10, 11, 12
+local ENTRY_IS_KEY = 13
 
 -- Auto-export constants to module (UI can access via REWINDER.ENTRY_* or SaveManager.ENTRY_*)
 for i, key in ipairs(ENTRY_KEYS) do
@@ -37,7 +38,7 @@ local E = {
    ENTRY_FILE = ENTRY_FILE, ENTRY_ANTE = ENTRY_ANTE, ENTRY_ROUND = ENTRY_ROUND, ENTRY_INDEX = ENTRY_INDEX,
    ENTRY_MONEY = ENTRY_MONEY, ENTRY_SIGNATURE = ENTRY_SIGNATURE, ENTRY_DISCARDS_USED = ENTRY_DISCARDS_USED,
    ENTRY_HANDS_PLAYED = ENTRY_HANDS_PLAYED, ENTRY_IS_CURRENT = ENTRY_IS_CURRENT, ENTRY_BLIND_IDX = ENTRY_BLIND_IDX,
-   ENTRY_DISPLAY_TYPE = ENTRY_DISPLAY_TYPE, ENTRY_ORDINAL = ENTRY_ORDINAL,
+   ENTRY_DISPLAY_TYPE = ENTRY_DISPLAY_TYPE, ENTRY_ORDINAL = ENTRY_ORDINAL, ENTRY_IS_KEY = ENTRY_IS_KEY,
 }
 
 M.PATHS = { SAVES = "SaveRewinder" }
@@ -187,6 +188,7 @@ local function _apply_meta_to_entry(entry, meta)
    entry[E.ENTRY_BLIND_IDX] = meta.blind_idx
    entry[E.ENTRY_DISPLAY_TYPE] = meta.display_type
    entry[E.ENTRY_ORDINAL] = meta.ordinal
+   entry[E.ENTRY_IS_KEY] = meta.is_key or false
 end
 
 local function _clear_entry_meta(entry)
@@ -198,6 +200,7 @@ local function _clear_entry_meta(entry)
    entry[E.ENTRY_BLIND_IDX] = nil
    entry[E.ENTRY_DISPLAY_TYPE] = nil
    entry[E.ENTRY_ORDINAL] = nil
+   entry[E.ENTRY_IS_KEY] = nil
 end
 
 local function _drop_meta(file)
@@ -635,6 +638,36 @@ function M.find_current_index()
    return nil
 end
 
+function M.get_entry_with_meta(file)
+   if not file then return nil end
+   local entry = M.get_entry_by_file(file)
+   if not entry then
+      M.debug_log("warning", "get_entry_with_meta: entry not found for file=" .. tostring(file))
+      return nil
+   end
+   if entry[E.ENTRY_IS_KEY] == nil then
+      local ok = M.get_save_meta(entry)
+      M.debug_log("debug", string.format("get_entry_with_meta: loaded key metadata file=%s ok=%s", tostring(file), tostring(ok)))
+   end
+   return entry
+end
+
+function M.update_entry_is_key(file, is_key)
+   if not file then return end
+   local entry = M.get_entry_by_file(file)
+   local normalized = (is_key == true)
+   if entry then
+      entry[E.ENTRY_IS_KEY] = normalized
+   else
+      M.debug_log("warning", "update_entry_is_key: cache entry missing for file=" .. tostring(file))
+   end
+   if meta_cache[file] then
+      meta_cache[file].is_key = normalized
+      _touch_lru(file)
+   end
+   M.debug_log("debug", string.format("update_entry_is_key: file=%s is_key=%s", tostring(file), tostring(normalized)))
+end
+
 -- --- File System Helpers ---
 
 function M.get_profile() return FileIO.get_profile() end
@@ -704,10 +737,10 @@ local function _list_and_sort_entries()
          if info and info.type == "file" then
             local ante_str, round_str, index_str = file:match("^(%d+)%-(%d+)%-(%d+)%.jkr$")
             local ante, round, index = tonumber(ante_str) or 0, tonumber(round_str) or 0, tonumber(index_str) or 0
-            -- 12-field entry: file, ante, round, index, money, sig, discards, hands, is_current, blind_idx, display_type, ordinal
+            -- 13-field entry: file, ante, round, index, money, sig, discards, hands, is_current, blind_idx, display_type, ordinal, is_key
             entries[#entries + 1] = {
                file, ante, round, index,
-               nil, nil, nil, nil, false, nil, nil, nil
+               nil, nil, nil, nil, false, nil, nil, nil, nil
             }
          end
       end
@@ -757,13 +790,45 @@ function M.preload_all_metadata(force_reload)
    return entries
 end
 
+local function _ensure_key_flags_loaded(entries)
+   if not entries then return end
+   local loaded = 0
+   for i = 1, #entries do
+      local entry = entries[i]
+      if entry and entry[E.ENTRY_IS_KEY] == nil then
+         if M.get_save_meta(entry) then
+            loaded = loaded + 1
+         end
+      end
+   end
+   if loaded > 0 then
+      M.debug_log("debug", "Loaded missing key flags before retention prune: " .. tostring(loaded))
+   end
+end
+
+local function _retention_should_preserve_entry(entry)
+   return entry and entry[E.ENTRY_IS_KEY] == true
+end
+
+local function _prepare_entries_for_retention(entries)
+   _ensure_key_flags_loaded(entries)
+end
+
+local function _apply_retention_policy(save_dir, entries)
+   if not entries or #entries == 0 then return end
+   _prepare_entries_for_retention(entries)
+   Pruning.apply_retention_policy(save_dir, entries, E, {
+      should_preserve_entry = _retention_should_preserve_entry,
+   })
+end
+
 function M.apply_retention_policy_now()
    if not save_cache then
       M.get_save_files()
    end
    if not save_cache or #save_cache == 0 then return end
    local dir = M.get_save_dir()
-   Pruning.apply_retention_policy(dir, save_cache, E)
+   _apply_retention_policy(dir, save_cache)
    _invalidate_save_cache_view()
    _rebuild_file_index()
    _update_cache_current_flags(true)
@@ -1189,8 +1254,8 @@ function M.create_save(run_data)
    -- Update last_display_type for next save's first_shop/after_pack detection
    ordinal_state.last_display_type = display_type
 
-   -- 12-field entry: file, ante, round, index, money, signature,
-   --                 discards_used, hands_played, is_current, blind_idx, display_type, ordinal
+   -- 13-field entry: file, ante, round, index, money, signature,
+   --                 discards_used, hands_played, is_current, blind_idx, display_type, ordinal, is_key
    
    -- Get the actual blind_idx for current state
    local actual_blind_idx = M.blind_key_to_index(state_info.blind_key)
@@ -1228,7 +1293,7 @@ function M.create_save(run_data)
    local new_entry = {
       filename, state_info.ante, state_info.round, unique_id,
       state_info.money, signature, state_info.discards_used, state_info.hands_played,
-      false, blind_idx, display_type, ordinal,
+      false, blind_idx, display_type, ordinal, false,
    }
 
    local full_path = dir .. "/" .. filename
@@ -1279,7 +1344,7 @@ function M.create_save(run_data)
    M.debug_log("info", "Created: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
    
    if ante_changed then
-      Pruning.apply_retention_policy(dir, save_cache, E)
+      _apply_retention_policy(dir, save_cache)
       _invalidate_save_cache_view()
       _rebuild_file_index()  -- Full rebuild needed after pruning changes indices
    else

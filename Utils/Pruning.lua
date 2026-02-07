@@ -16,11 +16,14 @@ local function _remove_save_file_pair(save_dir, file)
 end
 
 -- Applies retention policy based on max antes per run
-function M.apply_retention_policy(save_dir, all_entries, entry_constants)
+function M.apply_retention_policy(save_dir, all_entries, entry_constants, opts)
     if not all_entries then return end
+    opts = opts or {}
     
     local ENTRY_ANTE = entry_constants.ENTRY_ANTE
     local ENTRY_FILE = entry_constants.ENTRY_FILE
+    local ENTRY_IS_KEY = entry_constants.ENTRY_IS_KEY
+    local should_preserve_entry = opts.should_preserve_entry
     
     -- Read retention policy from config (1-7, where 7 = "All")
     local keep_antes_config = (REWINDER and REWINDER.config and REWINDER.config.keep_antes) or 7
@@ -49,9 +52,25 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
     for read = 1, total do
         local e = all_entries[read]
         if e[ENTRY_ANTE] and not allowed[e[ENTRY_ANTE]] then
-            -- Remove old saves per retention policy
-            _remove_save_file_pair(save_dir, e[ENTRY_FILE])
-            removed_count = removed_count + 1
+            local keep = false
+            if should_preserve_entry then
+                local ok, preserve = pcall(should_preserve_entry, e)
+                keep = ok and preserve == true
+            elseif ENTRY_IS_KEY and e[ENTRY_IS_KEY] == true then
+                -- Backward-compatible fallback for callers without policy callback.
+                keep = true
+            end
+
+            if keep then
+                if write ~= read then
+                    all_entries[write] = e
+                end
+                write = write + 1
+            else
+                -- Remove old saves per retention policy
+                _remove_save_file_pair(save_dir, e[ENTRY_FILE])
+                removed_count = removed_count + 1
+            end
         else
             if write ~= read then
                 all_entries[write] = e
@@ -69,6 +88,8 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants)
     else
         M.debug_log("debug", "Retention policy: no pruning needed")
     end
+
+    return removed_count
 end
 -- Prunes future saves using timestamp boundary.
 -- Internal cache order is oldest-first, so "future" saves are a contiguous tail.

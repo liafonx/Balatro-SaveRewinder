@@ -6,6 +6,7 @@ if not REWINDER then REWINDER = {} end
 -- 1. Load Core Modules
 local StateSignature = require("StateSignature")
 local SaveManager = require("SaveManager")
+local KeySaves = require("KeySaves")
 local NaNProtection = require("NaNProtection")
 
 -- Expose NaNProtection as global for lovely patches
@@ -18,6 +19,7 @@ REWINDER.consume_skip_on_save = SaveManager.consume_skip_on_save
 REWINDER.describe_save = SaveManager.describe_save
 -- StateSignature helpers
 REWINDER.StateSignature = StateSignature -- Expose StateSignature module itself for GamePatches to pass to SaveManager
+REWINDER.KeySaves = KeySaves
 -- File/Save Management
 REWINDER.get_save_dir = SaveManager.get_save_dir
 REWINDER.get_save_files = SaveManager.get_save_files
@@ -33,6 +35,13 @@ REWINDER.quick_continue_from_menu = SaveManager.quick_continue_from_menu
 REWINDER.load_save_at_index = SaveManager.load_save_at_index
 REWINDER.clear_all_saves = SaveManager.clear_all_saves
 REWINDER.find_current_index = SaveManager.find_current_index
+REWINDER.key_saves_is_key = KeySaves.is_key
+REWINDER.key_saves_effective_is_key = KeySaves.effective_is_key
+REWINDER.key_saves_toggle_pending = KeySaves.toggle_pending
+REWINDER.key_saves_commit_pending = KeySaves.commit_pending
+REWINDER.key_saves_discard_pending = KeySaves.discard_pending
+REWINDER.key_saves_has_pending = KeySaves.has_pending
+REWINDER.key_saves_get_key_saves = KeySaves.get_key_saves
 -- Internal State Access (via module reference, since scalars are copied by value)
 -- Expose the SaveManager module itself so callbacks can access/modify internal state
 REWINDER._SaveManager = SaveManager

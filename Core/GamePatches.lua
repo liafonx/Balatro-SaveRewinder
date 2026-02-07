@@ -113,7 +113,7 @@ function Game:start_run(args)
       -- Brand new run - reset SaveManager internal state directly
       local BM = REWINDER._SaveManager
       reset_save_manager_for_new_run(BM)
-      log("detail", "Reset state (new run)")
+      log("debug", "Reset state (new run)")
       
       -- Prune all saves (new run destroys future of previous run)
       clear_all_saves_next_frame()
@@ -138,7 +138,7 @@ function Game:start_run(args)
             end
          elseif BM._last_loaded_file then
             -- Preserve existing _last_loaded_file
-            log("cache", string.format("preserving _last_loaded_file=%s", BM._last_loaded_file))
+            log("debug", string.format("preserving _last_loaded_file=%s", BM._last_loaded_file))
          end
       end
    end

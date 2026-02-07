@@ -6,11 +6,11 @@ Entry is the **single canonical structure** used for both storage and comparison
 
 ## Entry Array Format
 
-Cache entries use **12-field arrays** for memory efficiency. Access via `REWINDER.ENTRY_*` constants.
+Cache entries use **13-field arrays** for memory efficiency. Access via `REWINDER.ENTRY_*` constants.
 
 ```lua
--- 12-field entry: {file, ante, round, index, money, signature,
---                  discards_used, hands_played, is_current, blind_idx, display_type, ordinal}
+-- 13-field entry: {file, ante, round, index, money, signature,
+--                  discards_used, hands_played, is_current, blind_idx, display_type, ordinal, is_key}
 local entry = {
     "2-3-1609430.jkr",  -- [1] ENTRY_FILE
     2,                   -- [2] ENTRY_ANTE
@@ -24,6 +24,7 @@ local entry = {
     15,                  -- [10] ENTRY_BLIND_IDX (number, use index_to_blind_key for string)
     "F",                 -- [11] ENTRY_DISPLAY_TYPE
     1,                   -- [12] ENTRY_ORDINAL
+    false,               -- [13] ENTRY_IS_KEY
 }
 ```
 
@@ -33,7 +34,7 @@ local entry = {
 ENTRY_KEYS = {
    "FILE", "ANTE", "ROUND", "INDEX",
    "MONEY", "SIGNATURE", "DISCARDS_USED", "HANDS_PLAYED",
-   "IS_CURRENT", "BLIND_IDX", "DISPLAY_TYPE", "ORDINAL",
+   "IS_CURRENT", "BLIND_IDX", "DISPLAY_TYPE", "ORDINAL", "IS_KEY",
 }
 ```
 
@@ -108,6 +109,7 @@ hands_played=0
 blind_idx=15
 display_type=F
 ordinal=1
+is_key=1
 ```
 
 ## Entry Lifecycle
@@ -119,7 +121,7 @@ ordinal=1
 4. Duplicate check via signature STRING comparison
 5. `counters[display_type]++` → ordinal
 6. Boss tracking for shop blind icons
-7. 12-element entry array constructed
+7. 13-element entry array constructed
 8. `.meta` file written
 
 ### Compared (`consume_skip_on_save`)
@@ -130,8 +132,8 @@ ordinal=1
 
 ### Loaded (`get_save_meta`)
 1. Parse filename → file, ante, round, index
-2. Read `.meta` → remaining 8 fields
-3. Fallback: decode `.jkr` if no valid meta
+2. Read `.meta` → remaining metadata fields (including optional `is_key`, normalized to boolean)
+3. Missing/invalid `.meta` is treated as an error path (no `.jkr` metadata fallback)
 
 ## ordinal_state Structure
 

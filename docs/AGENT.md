@@ -18,28 +18,16 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
 
 ## 1.1 Recent Changes (Notable)
 
-- **Performance Optimizations (50+ saves lag fix)**: Eight optimizations to `create_save` hot path:
-  1. **Gated retention policy on ante change** — `Pruning.apply_retention_policy` now only runs when ante actually changes, not on every save.
-  2. **Hot file map + lazy derived index rebuild** — On normal saves, `save_cache_by_file` stays hot for current-flag updates; only `save_index_by_file` and `save_cache_by_id` are invalidated and rebuilt lazily on demand.
-  3. **Compressed bytes fast path** — `FileIO.write_save_file` returns compressed bytes as 3rd return value; `FileIO.write_bytes_to_main` writes them directly to `save.jkr` without re-reading from disk.
-  4. **Tail-trim future prune** — `Pruning.prune_future_saves` trims a contiguous tail in O(K) (no retained-entry shifts).
-  5. **O(1) LRU via counter** — Replaced `meta_lru` array with `meta_lru_ts` hash + `meta_lru_clock` counter. Touch/remove are O(1); eviction scans only on cache overflow.
-  6. **Removed dead conditional sort** — The `table.sort` guard for out-of-order IDs was dead code (monotonic ID generation guarantees order).
-  7. **O(1) save-cache append** — Internal `save_cache` storage is now oldest-first, so new saves append with `save_cache[#save_cache + 1]` instead of costly front insert/shifts.
-  8. **Newest-first view cache for UI/API** — `get_save_files()` returns a cached newest-first view, preserving UI/index semantics without making save creation pay O(N) reorder cost.
-- **Restore counter fix (duplicate ordinals)** — `_init_ordinal_state_from_entry` now scans cache entries at the same ante/round and restores ALL display type counters (not just the loaded entry's type). Previously, loading an A save reset the O counter to 0, so the next O save got ordinal 1 again (producing duplicates like O1, A1, O1, A2).
-- **Forward declarations for index helpers** — `_rebuild_file_index` and `_invalidate_file_index` are forward-declared before `_update_cache_current_flags` to fix Lua scoping crash.
-- **ScaleNumberHook Simplification**: For numbers > 1e290 (including infinity), `scale_number()` now returns the base scale directly instead of complex input/output capping. Much simpler implementation.
-- **Infinity Display by Context**: Continue panel always shows 0 for inf/nan scores (via `round_scores`). Stats screen respects `clamp_infinity_scores` setting (via `high_scores`).
-- **NaN Protection Module (v1.4.8+)**: Centralized `Utils/NaNProtection.lua` module handles all NaN/inf/nil sanitization. Converts infinity to DBL_MAX (not 0) so scores remain playable. Custom display formatting for numbers >1e290 to avoid game's display overflow.
-- **Dual Keybinding System (v1.4.7)**: Separate `keyboard` and `controller` tables for each action. Allows `S` for keyboard step-back while keeping `L3` for controller.
-- **Controller Navigation**: Hardcoded hooks for `LB`/`RB` (page flip) and `Y` (jump to current) in the saves overlay. Custom focus navigation logic prevents vanilla crashes.
-- **Controller Shortcuts**: `X` button (Pause Menu only) opens saves list.
-- **Keybinds.lua Refactor**: Centralized controller hooks, context-aware `format_binding`, and safe `update_binding` logic.
-- **GamePatches cleanup**: `Game:start_run` now uses shared helpers for rewinder-id file derivation, new-run state reset, and deferred clear-all save cleanup.
-- **RewinderUI cleanup**: Added `loc(...)` and `build_page_cycle_config(...)` helpers, and simplified `build_save_node(entry, opts)` callsites.
-- **Logger cleanup**: Unified message formatting in `Utils/Logger.lua` and removed the undefined `tag` fallback path.
-- **NaNProtection cleanup**: Repeated clamp-config checks are centralized in `should_clamp_infinity()`.
+- **Save-path performance hardening (50+ saves)**:
+  - `create_save` now avoids avoidable O(N) work (oldest-first append + cached newest-first view).
+  - Retention runs only on ante changes, and timeline future-prune uses tail-trim deletion.
+  - File/index maps stay hot with lazy rebuild of derived indices only when needed.
+  - Save write path reuses compressed bytes directly for `save.jkr` sync (no extra file read).
+- **Restore correctness fix**: loading a save now restores per-type ordinal counters for the whole ante/round window, eliminating duplicate ordinals after restore.
+- **Key-save system completed**: key flag persisted in `.meta`, pending mark/commit/discard flow added, retention preserve rule moved behind SaveManager boundary helpers.
+- **Save-list UX update**: key state is color-driven, pending edits show `[?]`, bottom bar uses filter + icon actions (`mark`, `jump`), filter persists across reopen while mark-mode pending edits do not.
+- **Input/control cleanup**: dual keyboard/controller bindings plus stable overlay controller navigation (`LB/RB` page, `Y` jump, `X` open).
+- **Stability/maintainability cleanup**: shared `Game:start_run` helpers, logger format unification, NaN protection centralization, and scale-number overflow handling simplified.
 
 ## 1.2 Unfinished / Open Requirements
 
@@ -55,6 +43,7 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
 |------|---------|-------------|--------------|
 | `Init.lua` | Entry point. Sets up `REWINDER` namespace, hooks `Game:set_render_settings` for cache init at boot | `REWINDER` global | SaveManager |
 | `SaveManager.lua` | Save management: create, load, list, prune. Contains `ordinal_state` for O(1) metadata. Single source of truth for entry constants | `ENTRY_*` constants, `get_save_files`, `create_save`, `load_and_start_from_file`, `blind_key_to_index`, `index_to_blind_key` | StateSignature, FileIO, MetaFile, Pruning |
+| `KeySaves.lua` | Key-save (bookmark) facade with batched mark/commit/discard and key-only filtering | `toggle_pending`, `commit_pending`, `discard_pending`, `get_key_saves` | SaveManager, MetaFile |
 | `GamePatches.lua` | Game function overrides. Hooks `Game:start_run` for loaded state marking, shop CardArea pre-loading | `defer_save_creation` | SaveManager |
 
 **Module Dependency Graph:**
@@ -66,11 +55,14 @@ Init.lua → SaveManager.preload_all_metadata() (at boot; warms bounded meta win
          → NaNProtection (exposed as global for patches)
                               ↓
 SaveManager → StateSignature (state info extraction)
-            → FileIO (file read/write)
-            → MetaFile (fast .meta read/write)
-            → Pruning (retention policy, future prune)
+           → FileIO (file read/write)
+           → MetaFile (fast .meta read/write)
+           → Pruning (retention executor + future prune; preserve policy passed by SaveManager)
+KeySaves → SaveManager (entry/meta access, cache update)
+         → MetaFile (batched key-save commits)
                               ↓
 UI (RewinderUI, ButtonCallbacks) → SaveManager (entry data, load functions)
+                                → KeySaves (mark mode, key filter)
 Keybinds → SaveManager (step back, UI toggle)
 ```
 
@@ -105,9 +97,9 @@ Keybinds → SaveManager (step back, UI toggle)
 | File | Purpose | Key Functions | Used By |
 |------|---------|---------------|---------|
 | `StateSignature.lua` | Game state extraction and signature encoding | `get_state_info`, `encode_signature`, `signatures_equal`, `describe_save` | SaveManager, Init |
-| `MetaFile.lua` | Fast `.meta` file read/write (7 fields). Uses `NUMERIC_FIELDS` set for O(1) field type lookup | `read_meta_file`, `write_meta_file` | SaveManager |
+| `MetaFile.lua` | Fast `.meta` file read/write (core fields + optional `is_key`). Uses `NUMERIC_FIELDS` set for O(1) field type lookup | `read_meta_file`, `write_meta_file` | SaveManager, KeySaves |
 | `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file` (returns compressed bytes as 3rd value), `write_bytes_to_main`, `get_save_dir` | SaveManager |
-| `Pruning.lua` | Retention policy (max antes), future save cleanup on restore | `apply_retention_policy`, `prune_future_saves` | SaveManager |
+| `Pruning.lua` | Retention policy executor (max antes) + future save cleanup on restore | `apply_retention_policy(..., opts.should_preserve_entry)`, `prune_future_saves` | SaveManager |
 | `Logger.lua` | Centralized logging with standard log levels | `Logger.create(module_name)` → returns logger function: `debug_log(level, msg)` where level is `"error"`, `"warning"`, `"info"`, or `"debug"`. **error/warning always show; info/debug only when debug_saves enabled** | All modules |
 | `NaNProtection.lua` | Defense-in-depth sanitization for NaN/inf/nil values | `sanitize`, `sanitize_round_scores`, `sanitize_round_scores_presave`, `sanitize_number_format`, `sanitize_serialize` | lovely.toml patches, SaveManager |
 | `ScaleNumberHook.lua` | Wraps `scale_number()` to return base scale for very large values (>1e290) | `install()`, `M.installed`, `M.LARGE_NUMBER_THRESHOLD` | ButtonCallbacks |
@@ -117,8 +109,8 @@ Keybinds → SaveManager (step back, UI toggle)
 
 | File | Purpose | Key Functions | Dependencies |
 |------|---------|---------------|--------------|
-| `RewinderUI.lua` | Save list overlay with pagination, blind sprites, entry highlighting | `G.UIDEF.rewinder_saves`, `build_save_node`, `create_blind_sprite`, `get_saves_page` | SaveManager (`ENTRY_*` constants) |
-| `ButtonCallbacks.lua` | UI button handlers for restore, navigation, deletion | `rewinder_save_restore`, `rewinder_save_jump_to_current`, `rewinder_next_page`, `rewinder_prev_page` | SaveManager |
+| `RewinderUI.lua` | Save list overlay with pagination, blind sprites, key-save visuals, custom icon buttons | `G.UIDEF.rewinder_saves`, `build_save_node`, `create_blind_sprite`, `create_star_icon`, `create_triangle_icon`, `get_saves_page` | SaveManager (`ENTRY_*` constants), KeySaves |
+| `ButtonCallbacks.lua` | UI callbacks for restore, mark/filter modes, jump/page navigation, and dynamic button-state updates | `rewinder_save_restore`, `rewinder_save_toggle_key`, `rewinder_btn_mark_keys`, `rewinder_btn_filter_keys`, `rewinder_save_jump_to_current`, `_refresh_saves_view` | SaveManager, KeySaves |
 
 ### Root Files
 
@@ -195,11 +187,12 @@ M.debug_log("debug", "Cache evicted 5 entries")
 
 | Doc | Content |
 |-----|---------|
-| `CACHE_ENTRY_EXAMPLE.md` | **12-field entry structure**, unified signature format, display type codes, meta file format, entry lifecycle |
+| `CACHE_ENTRY_EXAMPLE.md` | **13-field entry structure**, unified signature format, display type codes, meta file format, entry lifecycle |
 | `INIT_FLOW.md` | Mod initialization: namespace setup, cache preload during loading screen, save.jkr matching |
 | `CLICK_LOAD_FLOW.md` | Complete save loading flow from UI click to game restart |
 | `PRESS_S_FLOW.md` | Step-back hotkey (`S`) flow: find previous save, load, and start |
 | `SAVE_LIST_FLOW.md` | Save list UI rendering: pagination, lazy loading, entry node building |
+| `KEY_SAVES_FLOW.md` | Key-save mark/filter lifecycle, commit/discard behavior, and retention semantics |
 
 ---
 
@@ -216,10 +209,10 @@ Reference game source and mod code is configured via `mod.config.json` `source_p
 ## 5. Key Concepts
 
 ### Entry Structure (Unified)
-12-field arrays for memory efficiency. Access via `REWINDER.ENTRY_*` constants.
+13-field arrays for memory efficiency. Access via `REWINDER.ENTRY_*` constants.
 
 **See `CACHE_ENTRY_EXAMPLE.md`** for:
-- All 12 field indices and types
+- All 13 field indices and types
 - Unified signature format (`"ante:round:display_type:discards_used:hands_played:money"`)
 - Display type codes and their meanings
 - Meta file format
@@ -239,7 +232,7 @@ Examples:
 
 ### State Info vs Entry
 - **state_info**: Temporary object from `StateSignature.get_state_info(run_data)` — raw state for display_type computation
-- **entry**: 12-field array stored in cache — the canonical persistent structure
+- **entry**: 13-field array stored in cache — the canonical persistent structure
 
 ### Cache Ordering Model
 - **Internal storage (`save_cache`)**: oldest-first (optimized for O(1) append in `create_save`)
@@ -278,6 +271,12 @@ ordinal_state = {
 
 ### Timeline Pruning (Deferred)
 When loading older save at index 5, saves 1-4 are marked via `pending_future_prune_boundary` but **not deleted immediately**. Deletion happens on next `create_save()` call. This allows "undo the undo" if user restarts before making new move.
+
+### Retention Policy Boundary
+- Retention orchestration lives in `SaveManager` (`_apply_retention_policy`), not in UI/callback code.
+- `SaveManager` prepares entries for retention (`_prepare_entries_for_retention`), including lazy key-flag hydration.
+- `Pruning.apply_retention_policy` receives a preservation callback (`should_preserve_entry`) and performs in-place compaction + file deletion.
+- Current preserve rule is key saves (`ENTRY_IS_KEY == true`), but future preserve categories should be added through the SaveManager boundary.
 
 ### Duplicate Skip
 After restore, first auto-save often matches restored state. `load_and_start_from_file()` stores individual loaded fields (`_loaded_ante`, `_loaded_round`, etc.); `consume_skip_on_save()` computes current state and compares fields directly (O(1), no signature string formatting).
@@ -417,7 +416,7 @@ The game's `scale_number()` function determines text size based on the numeric v
    - Write compressed bytes directly to `save.jkr` (avoids re-read from disk)
    - Append new entry in O(1) to internal oldest-first cache
    - Update `save_cache_by_file` immediately; lazily invalidate derived index maps (`save_index_by_file`, `save_cache_by_id`)
-   - Apply retention policy only on ante change (full index rebuild only when pruning changes indices)
+   - Apply retention policy only on ante change through SaveManager retention boundary (loads key flags, applies preserve policy callback, then rebuilds indices if needed)
 
 ### Save Loading
 **See `CLICK_LOAD_FLOW.md`** for detailed diagram. Summary:
@@ -435,11 +434,10 @@ The game's `scale_number()` function determines text size based on the numeric v
 
 ### Save List Rendering
 **See `SAVE_LIST_FLOW.md`** for detailed diagram. Summary:
-1. `G.UIDEF.rewinder_saves()` calls `get_save_files()` (updates current flags)
-2. Calculate pagination, find page containing current save
-3. `get_saves_page()` renders only visible entries (O(per_page))
-4. `build_save_node(entry, opts)` uses pre-computed `ENTRY_DISPLAY_TYPE` and `ENTRY_ORDINAL`
-5. Lazy-load metadata on-demand when entry is first rendered
+1. Resolve active entry set (full or key-filtered) and target page containing current save.
+2. Render visible rows only via `get_saves_page()` + `build_save_node()` (lazy meta loading, O(per_page)).
+3. Apply mode behavior through callbacks: filter persists across reopen; mark mode commits on toggle-off and discards pending edits on close.
+4. Keep layout/controller specifics in `SAVE_LIST_FLOW.md` to avoid duplication in this overview.
 
 ### Meta Cache (Bounded + Elastic UI, O(1) LRU)
 - Base meta cache size: 32 entries
@@ -579,10 +577,11 @@ REWINDER.defer_save_creation()
 -- Load save
 REWINDER.load_and_start_from_file("2-3-1609430.jkr")
 
--- Access cache entry (12-element array)
+-- Access cache entry (13-element array)
 local file = entry[REWINDER.ENTRY_FILE]           -- index 1
 local display_type = entry[REWINDER.ENTRY_DISPLAY_TYPE]  -- index 11
 local blind_idx = entry[REWINDER.ENTRY_BLIND_IDX] -- index 10
+local is_key = entry[REWINDER.ENTRY_IS_KEY]       -- index 13
 local signature = entry[REWINDER.ENTRY_SIGNATURE] -- index 6 (unified format)
 
 -- Convert blind_idx to key for sprite

@@ -29,7 +29,7 @@ return {
 
             -- Saves UI labels
             rewinder_state_shop = '重掷商店',
-            rewinder_state_after_pack = '在商店中',  -- 补充包关闭后的商店状态（非重掷）
+            rewinder_state_after_pack = '返回商店',  -- 补充包关闭后的商店状态（非重掷）
             rewinder_state_entering_shop = '进入商店',  -- 每轮第一个商店存档
             rewinder_state_opening_pack = '在商店中打开补充包',
             rewinder_state_start_round = '回合开始',
@@ -41,10 +41,15 @@ return {
             rewinder_state_in_run = '对局进行中',
 
             rewinder_no_saves = '暂无存档',
+            rewinder_no_key_saves = '暂无收藏存档',
             rewinder_saves_button = '存档列表',
             rewinder_reload_list = '刷新列表',
             rewinder_jump_to_current = '当前存档',
             rewinder_delete_all = '全部删除',
+            rewinder_mark_keys = '编辑收藏存档',
+            rewinder_mark_keys_active = '保存标记更改',
+            rewinder_filter_keys = '打开收藏列表',
+            rewinder_filter_keys_active = '返回全部存档',
             rewinder_all_saves_deleted = '所有存档已删除',
 
             rewinder_ante_label = '底注',

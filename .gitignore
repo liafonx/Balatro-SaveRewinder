@@ -61,6 +61,8 @@ docs/issue.md
 .agent/
 .agents/
 .claude/
+.codex/
 INIT.md
 mod.config.json
 docs/knowledge-base.md
+docs/G.COLORS.lua

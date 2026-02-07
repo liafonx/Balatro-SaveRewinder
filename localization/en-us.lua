@@ -42,10 +42,15 @@ return {
 
 
             rewinder_no_saves = 'No saves yet',
+            rewinder_no_key_saves = 'No key saves marked',
             rewinder_saves_button = 'Saves',
             rewinder_reload_list = 'Reload list',
             rewinder_jump_to_current = 'Current save',
             rewinder_delete_all = 'Delete all',
+            rewinder_mark_keys = 'Edit key saves',
+            rewinder_mark_keys_active = 'Save marking changes',
+            rewinder_filter_keys = 'Check key saves',
+            rewinder_filter_keys_active = 'Return to all saves',
             rewinder_all_saves_deleted = 'All saves deleted',
 
             rewinder_ante_label = 'Ante',

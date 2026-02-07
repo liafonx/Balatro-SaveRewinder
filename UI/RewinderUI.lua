@@ -3,8 +3,20 @@
 -- In-game UI for listing and restoring saves, plus an Options button.
 
 if not REWINDER then REWINDER = {} end
+local KeySaves = require("KeySaves")
 
 local SAVE_ENTRY_W = 8.9  -- Reduced from 8.8 to give arrow more space
+local KEY_SAVE_COLOR = {0.2, 0.7, 0.7, 1}
+local FILTER_BUTTON_W = 3.6
+local ICON_BUTTON_SIDE = 0.90
+local ICON_BUTTON_ICON_SIZE = 0.60
+local ICON_BUTTON_PADDING = 0.08
+local ICON_BUTTON_RADIUS = 0.1
+local ICON_BUTTON_BORDER = 0.04
+local MODE_ROW_HALF_W = SAVE_ENTRY_W * 0.5
+REWINDER.KEY_SAVE_COLOR = KEY_SAVE_COLOR
+REWINDER._filter_active = REWINDER._filter_active or false
+REWINDER._mark_active = REWINDER._mark_active or false
 
 local function loc(key, fallback)
    if localize then
@@ -17,8 +29,9 @@ end
 -- Extends Moveable to create a custom drawable object
 local TriangleArrow = Moveable:extend()
 
-function TriangleArrow:init(w, h)
+function TriangleArrow:init(w, h, colour)
    Moveable.init(self, 0, 0, w or 0.25, h or 0.4)
+   self.colour = colour or G.C.WHITE
    self.states = {
       drag = { can = false },
       hover = { can = false },
@@ -60,8 +73,8 @@ function TriangleArrow:draw()
       )
    end
    
-   -- Draw white triangle pointing right (contrasts with orange background)
-   love.graphics.setColor(G.C.WHITE)
+   -- Draw triangle pointing right
+   love.graphics.setColor(self.colour)
    love.graphics.polygon("fill",
       cx - tri_size, cy - tri_size * 0.6,
       cx, cy,
@@ -72,8 +85,132 @@ function TriangleArrow:draw()
 end
 
 -- Factory function to create a triangle arrow
-function REWINDER.create_triangle_arrow()
-   return TriangleArrow(0.25, 0.4)
+function REWINDER.create_triangle_arrow(colour)
+   return TriangleArrow(0.25, 0.4, colour)
+end
+
+-- Compact triangle icon for button glyphs
+local TriangleIcon = Moveable:extend()
+
+function TriangleIcon:init(w, h, colour)
+   Moveable.init(self, 0, 0, w or 0.40, h or 0.40)
+   self.colour = colour or G.C.WHITE
+   self.states = {
+      drag = { can = false },
+      hover = { can = false },
+      collide = { can = false },
+   }
+end
+
+function TriangleIcon:draw()
+   if not self.VT then return end
+
+   prep_draw(self, 1)
+   love.graphics.scale(1 / G.TILESIZE)
+
+   local w = self.VT.w * G.TILESIZE
+   local h = self.VT.h * G.TILESIZE
+   local cx = w * 0.5
+   local cy = h * 0.5
+   local tri = math.max(2, math.min(w, h) * 0.50)
+
+   if G.SETTINGS.GRAPHICS.shadows == 'On' then
+      love.graphics.setColor(0, 0, 0, 0.3)
+      love.graphics.polygon("fill",
+         cx - tri * 0.45 + 1, cy - tri * 0.55 + 1,
+         cx + tri * 0.55 + 1, cy + 1,
+         cx - tri * 0.45 + 1, cy + tri * 0.55 + 1
+      )
+   end
+
+   love.graphics.setColor(self.colour)
+   love.graphics.polygon("fill",
+      cx - tri * 0.45, cy - tri * 0.55,
+      cx + tri * 0.55, cy,
+      cx - tri * 0.45, cy + tri * 0.55
+   )
+
+   love.graphics.pop()
+end
+
+function REWINDER.create_triangle_icon(colour, w, h)
+   return TriangleIcon(w or 0.40, h or 0.40, colour)
+end
+
+-- Compact star icon for mode buttons
+local StarIcon = Moveable:extend()
+
+function StarIcon:init(w, h, colour)
+   Moveable.init(self, 0, 0, w or 0.40, h or 0.40)
+   self.colour = colour or G.C.WHITE
+   self.states = {
+      drag = { can = false },
+      hover = { can = false },
+      collide = { can = false },
+   }
+end
+
+function StarIcon:draw()
+   if not self.VT then return end
+
+   prep_draw(self, 1)
+   love.graphics.scale(1 / G.TILESIZE)
+
+   local w = self.VT.w * G.TILESIZE
+   local h = self.VT.h * G.TILESIZE
+   local cx = w * 0.5
+   local cy = h * 0.5
+   local outer = math.max(2, (math.min(w, h) * 0.42))
+   local inner = outer * 0.40
+
+   local points = {}
+   for i = 0, 9 do
+      local angle = -math.pi / 2 + i * math.pi / 5
+      local radius = (i % 2 == 0) and outer or inner
+      local x = cx + math.cos(angle) * radius
+      local y = cy + math.sin(angle) * radius
+      points[#points + 1] = x
+      points[#points + 1] = y
+   end
+
+   local triangles = nil
+   if love and love.math and love.math.triangulate then
+      local ok, tris = pcall(love.math.triangulate, points)
+      if ok and tris and #tris > 0 then
+         triangles = tris
+      end
+   end
+
+   local function draw_star(dx, dy, r, g, b, a)
+      love.graphics.setColor(r, g, b, a)
+      if triangles then
+         for _, tri in ipairs(triangles) do
+            love.graphics.polygon("fill",
+               tri[1] + dx, tri[2] + dy,
+               tri[3] + dx, tri[4] + dy,
+               tri[5] + dx, tri[6] + dy
+            )
+         end
+      else
+         local shifted = {}
+         for i = 1, #points, 2 do
+            shifted[#shifted + 1] = points[i] + dx
+            shifted[#shifted + 1] = points[i + 1] + dy
+         end
+         love.graphics.polygon("fill", shifted)
+      end
+   end
+
+   if G.SETTINGS.GRAPHICS.shadows == 'On' then
+      draw_star(1, 1, 0, 0, 0, 0.3)
+   end
+
+   draw_star(0, 0, self.colour[1], self.colour[2], self.colour[3], self.colour[4] or 1)
+   love.graphics.pop()
+end
+
+function REWINDER.create_star_icon(colour, w, h)
+   return StarIcon(w or 0.40, h or 0.40, colour)
 end
 
 -- Cache for blind sprite configurations (not the sprites themselves, since UI objects
@@ -213,7 +350,7 @@ local DISPLAY_TYPE_LABELS = {
 local function get_label_from_display_type(display_type)
    local info = DISPLAY_TYPE_LABELS[display_type or "?"] or DISPLAY_TYPE_LABELS["?"]
    local loc_key, has_prefix, show_ordinal = info[1], info[2], info[3]
-   local text = (localize and localize(loc_key)) or loc_key
+   local text = loc(loc_key, loc_key)
    if has_prefix then
       text = "+> " .. text
    end
@@ -228,6 +365,7 @@ function REWINDER.build_save_node(entry, opts)
 
    -- Check if we should show blind image instead of round number
    local show_blind_image = REWINDER.config and REWINDER.config.show_blind_image
+   local is_mark_mode = REWINDER._mark_active == true
    
    -- Build ante text
    local ante_text = ""
@@ -259,22 +397,41 @@ function REWINDER.build_save_node(entry, opts)
 
    -- Use cached is_current flag (always set by _update_cache_current_flags before UI build)
    local is_current = (entry[REWINDER.ENTRY_IS_CURRENT] == true)
+   local is_key = (entry[REWINDER.ENTRY_IS_KEY] == true)
+   local is_pending = false
+   if is_mark_mode then
+      is_key, is_pending = KeySaves.effective_is_key(entry)
+   end
    
    -- Background color
    local button_colour = G.C.BLUE
    local default_text_colour = G.C.UI.TEXT_LIGHT
-   
+
+   if is_key then
+      button_colour = KEY_SAVE_COLOR
+      default_text_colour = G.C.WHITE
+   elseif is_current then
+      button_colour = G.C.ORANGE or {1, 0.6, 0.2, 1}
+      default_text_colour = G.C.WHITE
+   end
+
+   if is_pending then
+      button_colour = {
+         math.min(1, button_colour[1] + 0.05),
+         math.min(1, button_colour[2] + 0.05),
+         math.min(1, button_colour[3] + 0.05),
+         button_colour[4] or 1,
+      }
+   end
+
    -- Get dot color for round number (odd/even)
-   local dot_colour = default_text_colour
-   if not is_current and entry[REWINDER.ENTRY_ROUND] ~= nil then
+   local dot_colour = G.C.UI.TEXT_LIGHT
+   if entry[REWINDER.ENTRY_ROUND] ~= nil then
       dot_colour = REWINDER.get_round_color(entry[REWINDER.ENTRY_ROUND])
    end
-   
+
    if is_current then
-      -- Use orange color for highlight
-      button_colour = G.C.ORANGE or {1, 0.6, 0.2, 1}  -- Fallback orange
-      dot_colour = G.C.WHITE  -- White dot for better contrast on orange
-      default_text_colour = G.C.WHITE
+      dot_colour = G.C.WHITE
    end
    
    -- Build text nodes - separate nodes for text and colored separator/blind image
@@ -396,16 +553,16 @@ function REWINDER.build_save_node(entry, opts)
 
          local spacing
          if is_selecting_hand then
-            spacing = localize and localize("rewinder_card_number_spacing")
+            spacing = loc("rewinder_card_number_spacing", " ")
             if spacing == nil then spacing = " " end
          else
-            spacing = localize and localize("rewinder_tailing_number_spacing")
+            spacing = loc("rewinder_tailing_number_spacing", " ")
             if spacing == nil then spacing = " " end
          end
          state_tailing_text = state_tailing_text .. spacing .. tailing_number_text
       end
    elseif tailing_number_text ~= "" then
-      local spacing = localize and localize("rewinder_tailing_number_spacing")
+      local spacing = loc("rewinder_tailing_number_spacing", " ")
       if spacing == nil then spacing = " " end
       state_tailing_text = spacing .. tailing_number_text
    end
@@ -415,6 +572,16 @@ function REWINDER.build_save_node(entry, opts)
          n = G.UIT.T,
          config = {
             text = state_tailing_text,
+            colour = default_text_colour,
+            scale = 0.45,
+         },
+      })
+   end
+   if is_pending then
+      table.insert(text_nodes, {
+         n = G.UIT.T,
+         config = {
+            text = (state_tailing_text ~= "" and " [?]" or "[?]"),
             colour = default_text_colour,
             scale = 0.45,
          },
@@ -433,7 +600,7 @@ function REWINDER.build_save_node(entry, opts)
          n = G.UIT.C,
          config = { minw = left_padding },
       })
-      local arrow = REWINDER.create_triangle_arrow()
+      local arrow = REWINDER.create_triangle_arrow(G.C.WHITE)
       table.insert(padded_text_nodes, {
          n = G.UIT.O,
          config = {
@@ -466,7 +633,7 @@ function REWINDER.build_save_node(entry, opts)
             n = G.UIT.R,
             config = {
                id = opts.id,
-               button = "rewinder_save_restore",
+               button = is_mark_mode and "rewinder_save_toggle_key" or "rewinder_save_restore",
                align = "cl",
                colour = button_colour,
                minw = SAVE_ENTRY_W,
@@ -492,10 +659,12 @@ function REWINDER.get_saves_page(args)
    
    local content
    if #entries == 0 then
+      local empty_key = REWINDER._filter_active and "rewinder_no_key_saves" or "rewinder_no_saves"
+      local empty_text = REWINDER._filter_active and "No key saves marked" or "No saves yet"
       content = {
          n = G.UIT.T,
          config = {
-            text = loc("rewinder_no_saves", "No saves yet"),
+            text = loc(empty_key, empty_text),
             colour = G.C.UI.TEXT_LIGHT,
             scale = 0.5,
          },
@@ -548,8 +717,8 @@ function REWINDER.get_saves_page(args)
 end
 
 function G.UIDEF.rewinder_saves()
-   -- get_save_files() updates cache flags automatically
-   local entries = REWINDER.get_save_files()
+   local get_entries = REWINDER._get_displayed_entries or REWINDER.get_save_files
+   local entries = get_entries()
    local per_page = 8
 
    local total_pages = math.max(1, math.ceil(#entries / per_page))
@@ -563,10 +732,14 @@ function G.UIDEF.rewinder_saves()
    local initial_page = 1
    local SM = REWINDER._SaveManager
    local current_idx = SM and (SM.current_index or SM.find_current_index and SM.find_current_index())
-   if current_idx and current_idx >= 1 then
-      initial_page = math.ceil(current_idx / per_page)
+   local display_idx = current_idx
+   if REWINDER._filter_active and current_idx then
+      display_idx = REWINDER._key_save_reverse_map and REWINDER._key_save_reverse_map[current_idx] or nil
    end
-   if REWINDER.ensure_meta_window_for_page then
+   if display_idx and display_idx >= 1 then
+      initial_page = math.ceil(display_idx / per_page)
+   end
+   if REWINDER.ensure_meta_window_for_page and not REWINDER._filter_active then
       REWINDER.ensure_meta_window_for_page(initial_page, per_page, 4)
    end
 
@@ -580,6 +753,19 @@ function G.UIDEF.rewinder_saves()
    REWINDER._saves_ui_refs.per_page = per_page
    REWINDER._saves_ui_refs.entries = entries
    REWINDER._saves_ui_refs.page_numbers = page_numbers
+
+   local mark_label = REWINDER._mark_active and loc("rewinder_mark_keys_active", "Save marking changes")
+      or loc("rewinder_mark_keys", "Edit key saves")
+   local filter_label = REWINDER._filter_active and loc("rewinder_filter_keys_active", "Return to all saves")
+      or loc("rewinder_filter_keys", "Check key saves")
+   local mark_button_colour = REWINDER._mark_active and (G.C.RED or {0.9, 0.2, 0.2, 1}) or (REWINDER.KEY_SAVE_COLOR or KEY_SAVE_COLOR)
+   local filter_button_colour = G.C.BLUE
+   -- User setting point: change this to customize the icon-button border color.
+   local icon_button_border_colour = G.C.UI.TEXT_LIGHT or {0.85, 0.85, 0.85, 1}
+   local mark_button_ref = { label = { text = mark_label } }
+   local filter_button_ref = { label = { text = filter_label } }
+   REWINDER._saves_ui_refs.mark_button_ref = mark_button_ref
+   REWINDER._saves_ui_refs.filter_button_ref = filter_button_ref
    
    -- Create cycle config and store it for jump_to_current
    local cycle_config = build_page_cycle_config(page_numbers, initial_page, saves_box, per_page, entries)
@@ -598,6 +784,19 @@ function G.UIDEF.rewinder_saves()
       focus_args = { nav = "wide" },
    }
 
+   local page_cycle = create_option_cycle({
+      id = cycle_ui_config.id,
+      options = cycle_ui_config.options,
+      current_option = cycle_ui_config.current_option,
+      opt_callback = cycle_ui_config.opt_callback,
+      opt_args = cycle_ui_config.opt_args,
+      w = cycle_ui_config.w,
+      colour = cycle_ui_config.colour,
+      cycle_shoulders = cycle_ui_config.cycle_shoulders,
+      no_pips = cycle_ui_config.no_pips,
+      focus_args = cycle_ui_config.focus_args,
+   })
+
    return create_UIBox_generic_options({
       back_func = "rewinder_save_close",
       minw = SAVE_ENTRY_W,
@@ -613,20 +812,7 @@ function G.UIDEF.rewinder_saves()
          {
             n = G.UIT.R,
             config = { align = "cm", colour = G.C.CLEAR },
-            nodes = {
-               create_option_cycle({
-                  id = cycle_ui_config.id,
-                  options = cycle_ui_config.options,
-                  current_option = cycle_ui_config.current_option,
-                  opt_callback = cycle_ui_config.opt_callback,
-                  opt_args = cycle_ui_config.opt_args,
-                  w = cycle_ui_config.w,
-                  colour = cycle_ui_config.colour,
-                  cycle_shoulders = cycle_ui_config.cycle_shoulders,
-                  no_pips = cycle_ui_config.no_pips,
-                  focus_args = cycle_ui_config.focus_args,
-               }),
-            },
+            nodes = { page_cycle },
          },
          {
             n = G.UIT.R,
@@ -634,31 +820,126 @@ function G.UIDEF.rewinder_saves()
             nodes = {
                {
                   n = G.UIT.C,
-                  config = { align = "cm", padding = 0.1 },
+                  config = { align = "cm", minw = MODE_ROW_HALF_W, padding = 0.05 },
                   nodes = {
                      UIBox_button({
-                        id = "rewinder_btn_current",
-                        button = "rewinder_save_jump_to_current",
-                        label = { (localize and localize("rewinder_jump_to_current")) or "Current save" },
-                        minw = 3.6,
+                        id = "rewinder_btn_filter_keys",
+                        button = "rewinder_btn_filter_keys",
+                        label = {},
+                        dynamic_label = filter_button_ref.label,
+                        minw = FILTER_BUTTON_W,
                         scale = 0.42,
-                        colour = G.C.BLUE,
-                        focus_args = { nav = "wide", button = "y", set_button_pip = true },
+                        colour = filter_button_colour,
+                        focus_args = { nav = "wide" },
                       }),
                   },
                },
                {
                   n = G.UIT.C,
-                  config = { align = "cm", padding = 0.1 },
+                  config = { align = "cm", minw = MODE_ROW_HALF_W, padding = 0.05 },
                   nodes = {
-                     UIBox_button({
-                        id = "rewinder_btn_delete",
-                        button = "rewinder_save_delete_all",
-                        label = { (localize and localize("rewinder_delete_all")) or "Delete all" },
-                        minw = 3.6,
-                        scale = 0.42,
-                        focus_args = { nav = "wide" },
-                      }),
+                     {
+                        n = G.UIT.R,
+                        config = { align = "cm", colour = G.C.CLEAR },
+                        nodes = {
+                           {
+                              n = G.UIT.C,
+                              config = { align = "cm", padding = 0.08 },
+                              nodes = {
+                                 {
+                                    n = G.UIT.R,
+                                    config = {
+                                       id = "rewinder_btn_mark_keys",
+                                       button = "rewinder_btn_mark_keys",
+                                       align = "cm",
+                                       colour = icon_button_border_colour,
+                                       minw = ICON_BUTTON_SIDE,
+                                       minh = ICON_BUTTON_SIDE,
+                                       padding = 0,
+                                       r = ICON_BUTTON_RADIUS,
+                                       hover = true,
+                                       can_collide = true,
+                                       shadow = true,
+                                       focus_args = { nav = "wide" },
+                                    },
+                                    nodes = {
+                                       {
+                                          n = G.UIT.R,
+                                          config = {
+                                             id = "rewinder_btn_mark_keys_fill",
+                                             align = "cm",
+                                             colour = mark_button_colour,
+                                             minw = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2,
+                                             minh = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2,
+                                             padding = ICON_BUTTON_PADDING,
+                                             r = math.max(0.01, ICON_BUTTON_RADIUS - ICON_BUTTON_BORDER * 0.5),
+                                             can_collide = false,
+                                             shadow = false,
+                                          },
+                                          nodes = {
+                                             {
+                                                n = G.UIT.O,
+                                                config = {
+                                                   object = REWINDER.create_star_icon(G.C.WHITE, ICON_BUTTON_ICON_SIZE, ICON_BUTTON_ICON_SIZE),
+                                                   can_collide = false,
+                                                },
+                                             },
+                                          },
+                                       },
+                                    },
+                                 },
+                              },
+                           },
+                           {
+                              n = G.UIT.C,
+                              config = { align = "cm", padding = 0.08 },
+                              nodes = {
+                                 {
+                                    n = G.UIT.R,
+                                    config = {
+                                       id = "rewinder_btn_jump_to_current",
+                                       button = "rewinder_save_jump_to_current",
+                                       align = "cm",
+                                       colour = icon_button_border_colour,
+                                       minw = ICON_BUTTON_SIDE,
+                                       minh = ICON_BUTTON_SIDE,
+                                       padding = 0,
+                                       r = ICON_BUTTON_RADIUS,
+                                       hover = true,
+                                       can_collide = true,
+                                       shadow = true,
+                                       focus_args = { nav = "wide", button = "y", set_button_pip = true },
+                                    },
+                                    nodes = {
+                                       {
+                                          n = G.UIT.R,
+                                          config = {
+                                             id = "rewinder_btn_jump_to_current_fill",
+                                             align = "cm",
+                                             colour = G.C.ORANGE or {1, 0.6, 0.2, 1},
+                                             minw = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2,
+                                             minh = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2,
+                                             padding = ICON_BUTTON_PADDING,
+                                             r = math.max(0.01, ICON_BUTTON_RADIUS - ICON_BUTTON_BORDER * 0.5),
+                                             can_collide = false,
+                                             shadow = false,
+                                          },
+                                          nodes = {
+                                             {
+                                                n = G.UIT.O,
+                                                config = {
+                                                   object = REWINDER.create_triangle_icon(G.C.WHITE, ICON_BUTTON_ICON_SIZE, ICON_BUTTON_ICON_SIZE),
+                                                   can_collide = false,
+                                                },
+                                             },
+                                          },
+                                       },
+                                    },
+                                 },
+                              },
+                           },
+                        },
+                     },
                   },
                },
             },

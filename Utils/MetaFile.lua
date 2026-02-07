@@ -7,6 +7,7 @@ M.debug_log = Logger.create("MetaFile")
 
 -- Fields that should be parsed as numbers
 local NUMERIC_FIELDS = { money=true, discards_used=true, hands_played=true, ordinal=true, blind_idx=true }
+local BOOLEAN_FIELDS = { is_key=true }
 
 -- Reads metadata from .meta file (fast path)
 function M.read_meta_file(meta_path)
@@ -22,6 +23,8 @@ function M.read_meta_file(meta_path)
         if key and value then
             if NUMERIC_FIELDS[key] then
                 meta[key] = tonumber(value)
+            elseif BOOLEAN_FIELDS[key] then
+                meta[key] = (value == "1")
             elseif key == "display_type" then
                 meta[key] = value ~= "" and value or nil
             elseif key == "signature" then
@@ -46,6 +49,9 @@ function M.write_meta_file(meta_path, entry_meta)
         string.format("display_type=%s", entry_meta.display_type or "?"),
         string.format("ordinal=%d", entry_meta.ordinal or 1),
     }
+    if entry_meta.is_key == true then
+        lines[#lines + 1] = "is_key=1"
+    end
     
     local content = table.concat(lines, "\n")
     local success, err = pcall(love.filesystem.write, meta_path, content)

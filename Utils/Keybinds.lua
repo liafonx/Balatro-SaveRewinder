@@ -519,15 +519,33 @@ end
 
 local function snap_to_current_save_entry(self)
    if not (REWINDER and REWINDER.find_current_index and G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return false end
-   local idx = REWINDER.find_current_index()
-   if not idx then return false end
-   local node = G.OVERLAY_MENU:get_UIE_by_ID("rewinder_save_entry_" .. tostring(idx))
-   if node then
-      self:snap_to({ node = node })
-      if self.update_cursor then self:update_cursor() end
-      return true
+   local full_idx = REWINDER.find_current_index()
+   if not full_idx then return false end
+   local display_idx = full_idx
+   if REWINDER._filter_active then
+      display_idx = REWINDER._key_save_reverse_map and REWINDER._key_save_reverse_map[full_idx] or nil
    end
-   return false
+   local node = nil
+   if display_idx then
+      node = G.OVERLAY_MENU:get_UIE_by_ID("rewinder_save_entry_" .. tostring(display_idx))
+   end
+   if not node and REWINDER and REWINDER._saves_ui_refs then
+      local refs = REWINDER._saves_ui_refs
+      local page = refs.cycle_config and refs.cycle_config.current_option or 1
+      local per_page = refs.per_page or 8
+      local entries = refs.entries or {}
+      local first_on_page = (page - 1) * per_page + 1
+      if first_on_page <= #entries then
+         node = G.OVERLAY_MENU:get_UIE_by_ID("rewinder_save_entry_" .. tostring(first_on_page))
+      end
+   end
+   if not node then
+      node = G.OVERLAY_MENU:get_UIE_by_ID("rewinder_page_cycle")
+   end
+   if not node then return false end
+   self:snap_to({ node = node })
+   if self.update_cursor then self:update_cursor() end
+   return true
 end
 
 _ensure_config_keybinds()
@@ -624,9 +642,13 @@ local function toggle_saves_window()
       return
    end
    if G.FUNCS.overlay_menu then
-      G.FUNCS.overlay_menu({ definition = G.UIDEF.rewinder_saves() })
-      if SM and SM.set_overlay_open then
-         SM.set_overlay_open(true)
+      if G.FUNCS.rewinder_save_open then
+         G.FUNCS.rewinder_save_open()
+      else
+         G.FUNCS.overlay_menu({ definition = G.UIDEF.rewinder_saves() })
+         if SM and SM.set_overlay_open then
+            SM.set_overlay_open(true)
+         end
       end
    end
 end
@@ -660,7 +682,7 @@ Keybinds.register({
    func = function()
       if not _in_run_stage() then return end
       if can_trigger_quick_saveload() then
-         log("step", "Keybind -> saveload")
+         log("debug", "Keybind -> saveload")
          quick_saveload_from_menu()
       end
    end,
@@ -709,7 +731,7 @@ local function hook_controller_navigate_focus()
           -- CRITICAL: If we are definitely in our overlay but have lost track of ID,
           -- DO NOT fall back to vanilla navigation if it causes crashes.
           -- Instead, try to snap to a safe known element.
-          if snap_to_id(self, "rewinder_btn_current") then return end
+          if snap_to_id(self, "rewinder_btn_filter_keys") then return end
           return -- Consumed input to prevent crash
       end
 
@@ -762,10 +784,10 @@ local function hook_controller_navigate_focus()
          return
       end
 
-      -- 2) Paging: left/right page as normal, down goes to Current save, Up goes to last entry
+      -- 2) Paging: left/right page as normal, down goes to filter button, Up goes to last entry
       if id == "rewinder_page_cycle" then
          if dir == "D" then
-            snap_to_id(self, "rewinder_btn_current")
+            snap_to_id(self, "rewinder_btn_filter_keys")
             return
          end
          if dir == "U" then
@@ -791,8 +813,8 @@ local function hook_controller_navigate_focus()
          return Controller._rewinder_navigate_focus(self, dir, ...)
       end
 
-      -- 3) Current/Delete: left/right loop, up to paging, down to return.
-      if id == "rewinder_btn_current" or id == "rewinder_btn_delete" then
+      -- 3) Filter/Mark/Jump: left/right loop, up to paging, down to return.
+      if id == "rewinder_btn_filter_keys" or id == "rewinder_btn_mark_keys" or id == "rewinder_btn_jump_to_current" then
          if dir == "U" then
             snap_to_id(self, "rewinder_page_cycle")
             return
@@ -802,20 +824,30 @@ local function hook_controller_navigate_focus()
             return
          end
          if dir == "L" or dir == "R" then
-            if id == "rewinder_btn_current" then
-               snap_to_id(self, "rewinder_btn_delete")
-            else
-               snap_to_id(self, "rewinder_btn_current")
+            local order = { "rewinder_btn_filter_keys", "rewinder_btn_mark_keys", "rewinder_btn_jump_to_current" }
+            local idx = nil
+            for i, v in ipairs(order) do
+               if v == id then
+                  idx = i
+                  break
+               end
+            end
+            if idx then
+               local delta = (dir == "R") and 1 or -1
+               local target_idx = idx + delta
+               if target_idx < 1 then target_idx = #order end
+               if target_idx > #order then target_idx = 1 end
+               snap_to_id(self, order[target_idx])
             end
             return
          end
          return Controller._rewinder_navigate_focus(self, dir, ...)
       end
 
-      -- 4) Return: left/right/down have no effect, up to Current save.
+      -- 4) Return: left/right/down have no effect, up to filter button.
       if id == "rewinder_back" then
          if dir == "U" then
-            snap_to_id(self, "rewinder_btn_current")
+            snap_to_id(self, "rewinder_btn_filter_keys")
          end
          return
       end
