@@ -4,6 +4,20 @@ English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/ma
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.5.0] - 2026-02-07
+### Added
+- **Key save list (bookmarks)**: You can now mark important saves and filter the list to key saves only.
+- **Batch mark workflow**: Mark mode lets you preview changes and apply them together, and pending mark changes are shown as `[?]`.
+- **Key-save icon**: Added a star icon button for the **Edit key saves** action in the save list.
+
+### Changed
+- **Saves panel controls**: Save-list bottom bar now uses **Check key saves**, **★ Edit key saves icon**, and **▶ Current save icon** actions (the in-list **Delete all** action was removed).
+- **Button visuals**: The **Jump to current save** action is now a triangle icon button.
+- **Save retention policy**: Key saves are preserved when cleanup runs because the save count exceeds the limit.
+
+### Improved
+- **Large save history performance**: Save creation and save list handling are smoother when many saves exist.
+
 ## [1.4.8] - 2026-01-29
 ### Fixed
 - **Score overflow crash**: Fixed crashes when sl/rewind after score becomes overflowed (naneinf). The game now handles overflow scenarios instead of crashing.

@@ -9,6 +9,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - 📸 **Automatic snapshots** — Creates save points for every action (blind selection, hands, shop).
 - ⚡ **Instant Undo** — Press `S` (keyboard) or `L3` (controller) to rewind immediately.
 - 🔁 **Quick Saveload** — Press `L` (keyboard) or `R3` (controller) to instantly reload.
+- ⭐ **Key Saves** — Mark important saves and filter the list to key saves only.
 - 🧪 **Experiment Freely** — Test strategies without fear; stepped-back saves are preserved until you make a new action (when trigger a new save).
 - 🛡️ **Score Overflow Protection** — Rewind/save-load safely even with extreme scores (naneinf becomes 0 after reload).
 
@@ -42,6 +43,12 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 | Open saves list (configurable) | `Ctrl+S` | `X` (in Pause Menu Only) |
 
 > **Tip:** Open the **Options** menu and click the **orange "Saves" button** (or press `Ctrl+S` / `X`) to browse and restore any save.
+
+### Save List Buttons
+
+- **Check key saves** — Toggle key-saves-only filtering.
+- **★ Edit key saves** — Enter mark mode, click entries to toggle key status, then press **Save marking changes**.
+- **▶ Current save** — Jump to your currently loaded save.
 
 ## Configuration
 
