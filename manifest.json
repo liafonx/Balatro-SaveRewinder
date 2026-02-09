@@ -2,7 +2,7 @@
     "name": "SaveRewinder",
     "version_number": "1.5.0",
     "website_url": "https://github.com/liafonx/Balatro-SaveRewinder",
-    "description": "Undo mistakes and bookmark key moments. Auto-saves at key points, press S to rewind, and manage key saves from the orange Saves menu.",
+    "description": "Undo mistakes and bookmark key moments. Auto-saves at key points, press S to rewind, and manage saves from the Saves menu.",
     "dependencies": [
         "Steamodded-Steamodded-0.9.8"
     ]

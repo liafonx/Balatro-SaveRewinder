@@ -557,10 +557,34 @@ function G.FUNCS.rewinder_save_update_page(args)
 end
 
 --- Game Over rewind button callback
--- Reloads the current save (same as "l" key / quick_continue_from_menu)
+-- Loads the latest save from the rewinder list (same as clicking it in the save list)
 function G.FUNCS.rewinder_game_over_rewind(e)
-   if REWINDER and REWINDER.quick_continue_from_menu then
-      log("info", "Game over: reloading current save")
-      REWINDER.quick_continue_from_menu()
+   if not REWINDER then return end
+   local entries = REWINDER.get_save_files and REWINDER.get_save_files()
+   if not entries or #entries == 0 then
+      log("warning", "Game over rewind: no saves available")
+      return
    end
+
+   local file = entries[1][REWINDER.ENTRY_FILE or 1]
+   if not file then return end
+
+   log("info", "Game over: loading latest save -> " .. tostring(file))
+
+   if REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
+      REWINDER._SaveManager._set_cache_current_file(file)
+   end
+
+   if REWINDER._SaveManager then
+      local idx = REWINDER._SaveManager.get_index_by_file and REWINDER._SaveManager.get_index_by_file(file)
+      if idx then
+         if REWINDER.set_pending_index then
+            REWINDER.set_pending_index(idx)
+         elseif REWINDER._SaveManager then
+            REWINDER._SaveManager.pending_index = idx
+         end
+      end
+   end
+
+   REWINDER.load_and_start_from_file(file)
 end

@@ -5,7 +5,7 @@
   "author": [
     "Liafonx"
   ],
-  "description": "Undo mistakes and bookmark key moments. Auto-saves at key points, press S to rewind, and manage key saves from the orange Saves menu.",
+  "description": "Undo mistakes and bookmark key moments. Auto-saves at key points, press S to rewind, and manage saves from the Saves menu.",
   "prefix": "rewinder",
   "main_file": "main.lua",
   "priority": 26,

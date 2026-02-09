@@ -909,9 +909,9 @@ function G.UIDEF.rewinder_saves()
 end
 
 --- Build "Rewind to Last Save" button for the Game Over panel.
--- Reloads the current save (same as "l" key). Returns nil when unavailable.
+-- Loads the latest save from the rewinder list (like clicking it). Returns nil when unavailable.
 function REWINDER.create_game_over_rewind_button()
-   if not REWINDER.quick_continue_from_menu then return nil end
+   if not REWINDER.load_and_start_from_file then return nil end
    local label_text = loc('rewinder_game_over_button', 'Rewind')
    local label_obj = DynaText({
       string = label_text,
