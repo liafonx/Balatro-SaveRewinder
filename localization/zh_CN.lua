@@ -60,6 +60,8 @@ return {
             rewinder_page_label = '第 %d/%d 页',
             rewinder_all_label = '全部',
             rewinder_separator = ' • ',
+            
+	        rewinder_game_over_button = '起死回生！',
         },
     },
 }

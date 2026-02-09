@@ -908,6 +908,47 @@ function G.UIDEF.rewinder_saves()
    })
 end
 
+--- Build "Rewind to Last Save" button for the Game Over panel.
+-- Reloads the current save (same as "l" key). Returns nil when unavailable.
+function REWINDER.create_game_over_rewind_button()
+   if not REWINDER.quick_continue_from_menu then return nil end
+   local label_text = loc('rewinder_game_over_button', 'Rewind')
+   local label_obj = DynaText({
+      string = label_text,
+      colours = { G.C.UI.TEXT_DARK },
+      scale = 0.3,
+      shadow = false,
+   })
+   return {
+      n = G.UIT.R,
+      config = { align = 'cm' },
+      nodes = {{
+         n = G.UIT.C,
+         config = {
+            align = 'cm',
+            padding = 0,
+            r = 0.1,
+            hover = true,
+            colour = G.C.EDITION,
+            button = 'rewinder_game_over_rewind',
+            minh = 0.4,
+            shadow = true,
+            outline = 0.7,
+            outline_colour = G.C.UI.TEXT_DARK,
+            focus_args = { nav = 'wide' },
+         },
+         nodes = {{
+            n = G.UIT.R,
+            config = { align = 'cm', padding = 0, minw = 2.3, maxw = 2.1 },
+            nodes = {{
+               n = G.UIT.O,
+               config = { object = label_obj },
+            }},
+         }},
+      }},
+   }
+end
+
 -- Inject a "Saves" button into the in-run Options menu.
 REWINDER._create_UIBox_options = create_UIBox_options
 

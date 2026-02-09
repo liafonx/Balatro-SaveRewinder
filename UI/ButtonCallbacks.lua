@@ -555,3 +555,12 @@ function G.FUNCS.rewinder_save_update_page(args)
       cycle_node.UIBox:recalculate()
    end
 end
+
+--- Game Over rewind button callback
+-- Reloads the current save (same as "l" key / quick_continue_from_menu)
+function G.FUNCS.rewinder_game_over_rewind(e)
+   if REWINDER and REWINDER.quick_continue_from_menu then
+      log("info", "Game over: reloading current save")
+      REWINDER.quick_continue_from_menu()
+   end
+end

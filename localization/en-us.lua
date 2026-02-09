@@ -61,6 +61,8 @@ return {
             rewinder_page_label = 'Page %d/%d',
             rewinder_all_label = 'All',
             rewinder_separator = ' | ',
+            
+	        rewinder_game_over_button = 'Resurrection !',
         },
     },
 }

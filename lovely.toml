@@ -118,6 +118,24 @@ source = "Utils/NaNProtection.lua"
 load_now = true
 before = "globals.lua"
 
+# ============================================================
+# Game Over Panel: Inject "Rewind to Last Save" button
+# ============================================================
+[[patches]]
+[patches.pattern]
+target = "functions/UI_definitions.lua"
+pattern = '''              create_UIBox_round_scores_row('furthest_ante', G.C.FILTER),
+              create_UIBox_round_scores_row('furthest_round', G.C.FILTER),
+              create_UIBox_round_scores_row('defeated_by'),'''
+position = "after"
+match_indent = true
+payload = '''
+REWINDER and REWINDER.create_game_over_rewind_button and REWINDER.create_game_over_rewind_button(),'''
+
+
+
+
+
 [[patches]]
 [patches.pattern]
 target = "card.lua"
