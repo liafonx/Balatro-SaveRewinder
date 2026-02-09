@@ -91,6 +91,13 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
+name = "SaveThread"
+source = "Utils/SaveThread.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
 name = "SaveManager"
 source = "Core/SaveManager.lua"
 load_now = true
@@ -135,27 +142,45 @@ target = "game.lua"
 pattern = "self.GAME = saveTable and saveTable.GAME or self:init_game_object()"
 position = "after"
 match_indent = true
-payload = "if NaNProtection then NaNProtection.sanitize_round_scores(self.GAME) end"
+payload = "if NaNProtection then NaNProtection.sanitize_round_scores(self.GAME); NaNProtection.sanitize_game_blind(self.GAME); NaNProtection.ensure_game_chips(self.GAME) end"
 
-# Fix NaN/inf serialization crash: when score overflows to NaN or inf, saving produces
-# "[chips]=nan" or "[chips]=inf" which loads as nil (undefined global), causing crash.
-# Solution: sanitize NaN/inf values during serialization via NaNProtection module.
+# Recover blind chips from chip_text when legacy/corrupt saves lose numeric chips on load.
+# Keeps target NaN/inf semantics without broad arithmetic fallbacks in score checks.
+[[patches]]
+[patches.pattern]
+target = "blind.lua"
+pattern = "self.chips = blindTable.chips"
+position = "at"
+match_indent = true
+payload = """
+self.chips = (NaNProtection and NaNProtection.recover_blind_chips and NaNProtection.recover_blind_chips(blindTable.chips, blindTable.chip_text, self.chips)) or blindTable.chips or self.chips"""
+
+# Keep blind chip text initialized if missing; otherwise preserve saved text as-is.
+[[patches]]
+[patches.pattern]
+target = "blind.lua"
+pattern = "self.chip_text = blindTable.chip_text"
+position = "at"
+match_indent = true
+payload = """
+self.chip_text = (NaNProtection and NaNProtection.recover_blind_chip_text and NaNProtection.recover_blind_chip_text(blindTable.chip_text, self.chips)) or blindTable.chip_text"""
+
+# Encode NaN/inf as explicit arithmetic expressions during serialization.
+# This avoids bare `nan/inf` tokens that unpack as nil and crash later.
 [[patches]]
 [patches.regex]
 target = "engine/string_packer.lua"
 pattern = "if type_v == .boolean. then"
 position = "before"
-payload = "if type_v == 'number' and NaNProtection then v = NaNProtection.sanitize_serialize(v, k) end"
+payload = "if type_v == 'number' then local _big = (REWINDER and REWINDER.config and REWINDER.config.big_backend_mode) or (NaNProtection and NaNProtection.has_big_backend and NaNProtection.has_big_backend()); if not _big then local _target = (i == '[\"chips\"]' and type(data) == 'table' and data.chip_text ~= nil); if v ~= v then local _ntxt = _target and type(data.chip_text) == 'string' and string.lower(data.chip_text) or nil; v = _target and ((_ntxt == '-nan') and '(-0/0)' or '(0/0)') or '(0/0)' elseif v == math.huge then v = '(1/0)' elseif v == -math.huge then v = '(-1/0)' end end end"
 
-# Early prevention: sanitize chips ease_to calculation at the source.
-# This catches NaN at the moment of calculation, before it enters the Event system.
+# Early prevention: recover missing G.GAME.chips and compute safe ease_to.
 [[patches]]
-[patches.pattern]
+[patches.regex]
 target = "functions/state_events.lua"
-pattern = "ease_to = G.GAME.chips + math.floor(hand_chips*mult),"
+pattern = '''ease_to = G\.GAME\.chips \+ math\.floor\([^\n]+\),'''
 position = "at"
-match_indent = true
-payload = "ease_to = (NaNProtection and NaNProtection.sanitize_inline or function(v) return (v and v==v) and v or 0 end)(G.GAME.chips + math.floor(hand_chips*mult)),"
+payload = "ease_to = (NaNProtection and NaNProtection.safe_ease_chips and NaNProtection.safe_ease_chips(hand_chips, mult)) or (G.GAME.chips + math.floor(hand_chips*mult)),"
 
 # Defensive: sanitize ease event values in engine/event.lua
 # Line 62: handle() re-reads start_val from ref_table (could be nil/NaN from corrupted save)
@@ -165,7 +190,7 @@ target = "engine/event.lua"
 pattern = "self.ease.start_val = self.ease.ref_table[self.ease.ref_value]"
 position = "at"
 match_indent = true
-payload = "self.ease.start_val = (NaNProtection and NaNProtection.sanitize_inline or function(v) return (v and v==v) and v or 0 end)(self.ease.ref_table[self.ease.ref_value])"
+payload = "self.ease.start_val = (NaNProtection and NaNProtection.sanitize_inline or function(v) return v ~= nil and v or 0 end)(self.ease.ref_table[self.ease.ref_value])"
 
 # Line 31: sanitize end_val (ease_to) in case it's NaN from other code paths
 [[patches]]
@@ -174,16 +199,15 @@ target = "engine/event.lua"
 pattern = "end_val = config.ease_to,"
 position = "at"
 match_indent = true
-payload = "end_val = (NaNProtection and NaNProtection.sanitize_inline or function(v) return (v and v==v) and v or 0 end)(config.ease_to),"
+payload = "end_val = (NaNProtection and NaNProtection.sanitize_inline or function(v) return v ~= nil and v or 0 end)(config.ease_to),"
 
 # Defensive: handle nil round_scores.amt in check_and_set_high_score (NaN loaded as nil).
 [[patches]]
-[patches.pattern]
+[patches.regex]
 target = "functions/misc_functions.lua"
-pattern = "if G.GAME.round_scores[score] and math.floor(amt) > G.GAME.round_scores[score].amt then"
+pattern = '''if G\.GAME\.round_scores\[score\] and math\.floor\(amt\) > (?:\(G\.GAME\.round_scores\[score\]\.amt or 0\)|G\.GAME\.round_scores\[score\]\.amt) then'''
 position = "at"
-match_indent = true
-payload = "if G.GAME.round_scores[score] and math.floor(amt) > (G.GAME.round_scores[score].amt or 0) then"
+payload = "if G.GAME.round_scores[score] and NaNProtection and NaNProtection.score_gt and NaNProtection.score_gt(amt, G.GAME.round_scores[score].amt) then"
 
 # Defensive: handle nil high_scores.amt (same issue for profile high scores).
 [[patches]]
@@ -192,7 +216,7 @@ target = "functions/misc_functions.lua"
 pattern = "if G.PROFILES[G.SETTINGS.profile].high_scores[score] and math.floor(amt) > G.PROFILES[G.SETTINGS.profile].high_scores[score].amt then"
 position = "at"
 match_indent = true
-payload = "if G.PROFILES[G.SETTINGS.profile].high_scores[score] and math.floor(amt) > (G.PROFILES[G.SETTINGS.profile].high_scores[score].amt or 0) then"
+payload = "if G.PROFILES[G.SETTINGS.profile].high_scores[score] and NaNProtection and NaNProtection.score_gt and NaNProtection.score_gt(amt, G.PROFILES[G.SETTINGS.profile].high_scores[score].amt) then"
 
 # Install scale_number hook module
 # Loads early as a module; install() is called from UI/ButtonCallbacks.lua
@@ -204,15 +228,29 @@ source = "Utils/ScaleNumberHook.lua"
 load_now = true
 before = "globals.lua"
 
-
-# Defensive: handle nil/NaN chips in multiple locations for existing corrupted saves.
+# Defensive blind-chip normalization at arithmetic callsites.
+# Uses NaNProtection.chips_met_target() to recover nil chips while preserving NaN/inf semantics.
 [[patches]]
 [patches.pattern]
 target = "functions/state_events.lua"
-pattern = "if G.GAME.chips - G.GAME.blind.chips >= 0 then"
+pattern = """if G.GAME.chips - G.GAME.blind.chips >= 0 then
+                game_over = false
+            end"""
 position = "at"
 match_indent = true
-payload = "if (G.GAME.chips or 0) - (G.GAME.blind.chips or 0) >= 0 then"
+payload = """if NaNProtection and NaNProtection.chips_met_target and NaNProtection.chips_met_target() then
+                game_over = false
+            end"""
+
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = """if G.GAME.chips - G.GAME.blind.chips >= 0 then
+        add_round_eval_row({dollars = G.GAME.blind.dollars, name='blind1', pitch = pitch})"""
+position = "at"
+match_indent = true
+payload = """if NaNProtection and NaNProtection.chips_met_target and NaNProtection.chips_met_target() then
+        add_round_eval_row({dollars = G.GAME.blind.dollars, name='blind1', pitch = pitch})"""
 
 [[patches]]
 [patches.pattern]
@@ -220,7 +258,7 @@ target = "game.lua"
 pattern = "if G.GAME.chips - G.GAME.blind.chips >= 0 or G.GAME.current_round.hands_left < 1 then"
 position = "at"
 match_indent = true
-payload = "if (G.GAME.chips or 0) - (G.GAME.blind.chips or 0) >= 0 or G.GAME.current_round.hands_left < 1 then"
+payload = "if (NaNProtection and NaNProtection.chips_met_target and NaNProtection.chips_met_target()) or G.GAME.current_round.hands_left < 1 then"
 
 [[patches]]
 [patches.pattern]
@@ -228,53 +266,35 @@ target = "blind.lua"
 pattern = "if self.boss and G.GAME.chips - G.GAME.blind.chips >= 0 then"
 position = "at"
 match_indent = true
-payload = "if self.boss and (G.GAME.chips or 0) - (G.GAME.blind.chips or 0) >= 0 then"
+payload = "if self.boss and (NaNProtection and NaNProtection.chips_met_target and NaNProtection.chips_met_target()) then"
 
-# Defensive: handle NaN/nil in number_format display (prevents empty string crash in text.lua)
+# Defensive: run number_format sanitization before sign/abs handling.
 [[patches]]
 [patches.pattern]
 target = "functions/misc_functions.lua"
-pattern = "if not num or type(num) ~= 'number' then return num or '' end"
+pattern = "function number_format(num, e_switch_point)"
+position = "after"
+match_indent = true
+payload = "if NaNProtection then local v, early = NaNProtection.sanitize_number_format(num) if early then return v end num = v end"
+
+# Continue menu: keep best-hand overflow text scale stable across restart/mod stack order.
+[[patches]]
+[patches.regex]
+target = "functions/UI_definitions.lua"
+pattern = """scale = scale_number\\(saved_game\\.GAME\\.round_scores\\.hand\\.amt, 0\\.8\\*scale(?:, 100000000000)?\\)"""
 position = "at"
-match_indent = true
-payload = "if NaNProtection then local v, early = NaNProtection.sanitize_number_format(num) if early then return v end num = v elseif not num or type(num) ~= 'number' then return (type(num) == 'string' and num ~= '' and num) or '0' elseif num ~= num then num = 0 end"
+payload = """scale = (NaNProtection and NaNProtection.scale_continue_best_hand and NaNProtection.scale_continue_best_hand(saved_game.GAME.round_scores.hand.amt, 0.8*scale, 100000000000)) or scale_number(saved_game.GAME.round_scores.hand.amt, 0.8*scale, 100000000000)"""
 
-# Defensive: guard against empty strings table in DynaText:align_letters (crash from corrupted scores)
-[[patches]]
-[patches.pattern]
-target = "engine/text.lua"
-pattern = "function DynaText:align_letters()"
-position = "after"
-match_indent = true
-payload = "if NaNProtection and NaNProtection.dynatext_guard(self, 'align_letters') then return elseif not self.strings or not self.strings[self.focused_string] then return end"
-
-# Defensive: guard DynaText:update_text against empty strings (line 288 crash)
-[[patches]]
-[patches.pattern]
-target = "engine/text.lua"
-pattern = "function DynaText:update_text()"
-position = "after"
-match_indent = true
-payload = "if NaNProtection and NaNProtection.dynatext_guard(self, 'update_text') then return elseif not self.strings or not self.strings[self.focused_string] then return end"
-
-# Defensive: guard DynaText:pop_in against empty strings
-[[patches]]
-[patches.pattern]
-target = "engine/text.lua"
-pattern = "function DynaText:pop_in()"
-position = "after"
-match_indent = true
-payload = "if NaNProtection and NaNProtection.dynatext_guard(self, 'pop_in') then return elseif not self.strings or not self.strings[self.focused_string] then return end"
 # Patch check_and_set_high_score to handle inf/overflow
-# round_scores (continue panel): always convert inf to 0
-# high_scores (Stats): respect clamp_infinity_scores setting
+# round_scores/high_scores use NaNProtection assignment hooks
+# (preserve NaN by default, optional inf clamp via config)
 [[patches]]
 [patches.pattern]
 target = "functions/misc_functions.lua"
 pattern = "G.GAME.round_scores[score].amt = math.floor(amt)"
 position = "at"
 match_indent = true
-payload = """G.GAME.round_scores[score].amt = (type(amt) == 'number' and (amt ~= amt or amt == math.huge or amt == -math.huge)) and 0 or math.floor(amt)"""
+payload = """G.GAME.round_scores[score].amt = (NaNProtection and NaNProtection.sanitize_round_score_assignment and NaNProtection.sanitize_round_score_assignment(amt)) or math.floor(amt)"""
 
 [[patches]]
 [patches.pattern]
@@ -282,4 +302,4 @@ target = "functions/misc_functions.lua"
 pattern = "G.PROFILES[G.SETTINGS.profile].high_scores[score].amt = math.floor(amt)"
 position = "at"
 match_indent = true
-payload = """G.PROFILES[G.SETTINGS.profile].high_scores[score].amt = (NaNProtection and NaNProtection.MAX_SAFE_SCORE and amt > NaNProtection.MAX_SAFE_SCORE and REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores) and NaNProtection.MAX_SAFE_SCORE or math.floor(amt)"""
+payload = """G.PROFILES[G.SETTINGS.profile].high_scores[score].amt = (NaNProtection and NaNProtection.sanitize_high_score_assignment and NaNProtection.sanitize_high_score_assignment(amt)) or math.floor(amt)"""

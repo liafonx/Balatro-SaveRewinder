@@ -13,6 +13,19 @@ M.installed = false
 -- Threshold above which we bypass scale_number and return the base scale directly
 M.LARGE_NUMBER_THRESHOLD = 1e290
 
+local function should_use_base_scale(v)
+    if type(v) ~= "number" then
+        return false
+    end
+    if v ~= v then
+        return true -- NaN
+    end
+    if v == math.huge or v == -math.huge then
+        return true -- inf
+    end
+    return math.abs(v) > M.LARGE_NUMBER_THRESHOLD
+end
+
 function M.install()
     -- Already installed?
     if M.installed then
@@ -29,8 +42,9 @@ function M.install()
 
     -- Replace with wrapper that returns base scale for very large numbers
     scale_number = function(number, scale, max)
-        -- For very large numbers, just return the base scale directly
-        if type(number) == "number" and number > M.LARGE_NUMBER_THRESHOLD then
+        -- Keep base scale for non-finite and very large values.
+        -- This keeps overflow text (e.g., naneinf) readable on Continue screen.
+        if should_use_base_scale(number) then
             return scale
         end
 

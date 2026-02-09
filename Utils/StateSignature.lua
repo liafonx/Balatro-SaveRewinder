@@ -26,13 +26,32 @@ function M.signatures_equal(sig_a, sig_b)
    return sig_a == sig_b
 end
 
+-- Safely extract a plain Lua number from a value that might be:
+-- 1. A plain number (most common)
+-- 2. A Talisman/Amulet Big number: FFI cdata struct (type="cdata") with .number field
+--    Created via LuaJIT ffi.typeof("struct TalismanOmega"), NOT a Lua table.
+--    recursive_table_cull copies cdata by reference (type ~= "table" branch).
+-- 3. A deep-copied Big number (plain table with .number, metatable stripped)
+-- 4. A string (from serialized data)
+local function _safe_number(val, fallback)
+   if type(val) == "number" then return val end
+   local t = type(val)
+   if (t == "table" or t == "cdata") and val.number ~= nil then
+      return tonumber(val.number) or fallback or 0
+   end
+   return tonumber(val) or fallback or 0
+end
+
 -- Extract raw state info from run_data (does NOT compute display_type)
 -- Returns a table with fields needed for display_type computation
 function M.get_state_info(run_data)
    if not run_data or type(run_data) ~= "table" then return nil end
    local game = run_data.GAME or {}
-   local ante = (game.round_resets and tonumber(game.round_resets.ante)) or tonumber(game.ante) or 0
-   local round = tonumber(game.round or 0) or 0
+   local raw_ante = game.round_resets and game.round_resets.ante
+   local ante = _safe_number(raw_ante, _safe_number(game.ante, 0))
+   M.debug_log("debug", string.format("raw_ante type=%s val=%s → ante=%s",
+      type(raw_ante), tostring(raw_ante), tostring(ante)))
+   local round = _safe_number(game.round, 0)
    local state = run_data.STATE
    local has_action = M.has_action(run_data)
    
@@ -43,18 +62,18 @@ function M.get_state_info(run_data)
       is_opening_pack = true
    end
    
-   -- Robust money check
+   -- Robust money check (Talisman may convert dollars to Big number)
    local money = 0
-   if game.dollars then money = tonumber(game.dollars) end
-   if game.money then money = tonumber(game.money) end
+   if game.dollars then money = _safe_number(game.dollars, 0) end
+   if game.money then money = _safe_number(game.money, money) end
    if game.current_round and game.current_round.dollars then 
-      money = tonumber(game.current_round.dollars) 
+      money = _safe_number(game.current_round.dollars, money)
    end
    
    -- Extract action tracking values for play/discard detection
    local current_round = game.current_round or {}
-   local discards_used = tonumber(current_round.discards_used) or 0
-   local hands_played = tonumber(current_round.hands_played) or 0
+   local discards_used = _safe_number(current_round.discards_used, 0)
+   local hands_played = _safe_number(current_round.hands_played, 0)
    
    -- Extract blind key for displaying blind icon in UI
    local blind_key = nil

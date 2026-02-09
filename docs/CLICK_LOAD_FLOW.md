@@ -40,7 +40,10 @@ This is now a **single unified function** that handles all load logic (previousl
 
 **Actions**:
 1. **Get entry and cache**: `M.get_save_files()`, lookup entry by file
-2. **Store loaded fields** (O(1) - for direct comparison in skip logic):
+2. **Pending async-write guard**:
+   - If target file is still pending in save thread completion map, loading is deferred
+   - Function returns `false` with warning log: `"Save still writing, try again: <file>"`
+3. **Store loaded fields** (O(1) - for direct comparison in skip logic):
    ```lua
    M._loaded_mark_applied = true  -- Pre-marked here
    M._loaded_ante = entry[E.ENTRY_ANTE]
@@ -49,21 +52,21 @@ This is now a **single unified function** that handles all load logic (previousl
    -- ... other fields for direct comparison
    M._loaded_display_type = entry[E.ENTRY_DISPLAY_TYPE]
    ```
-4. **Set prune boundary** (O(1) instead of O(N) list building):
+5. **Set prune boundary** (O(1) instead of O(N) list building):
    ```lua
    -- Instead of building a list of files, store just the ENTRY_INDEX boundary
    M.pending_future_prune_boundary = entry[E.ENTRY_INDEX]
    -- During prune: delete all entries where INDEX > boundary
    ```
-5. **Initialize ordinal_state** from loaded entry (includes ante, blind_key, round; `P`/`D` loads use pre-action counters so identical state stays `P`/`D`, not `H`)
-6. **Copy save file**: `M.copy_save_to_main(file)` — copies raw bytes to `save.jkr`
-7. **Let game read save.jkr** (uses same code path as normal "Continue"):
+6. **Initialize ordinal_state** from loaded entry (includes ante, blind_key, round; `P`/`D` loads use pre-action counters so identical state stays `P`/`D`, not `H`)
+7. **Copy save file**: `M.copy_save_to_main(file)` — copies raw bytes to `save.jkr`
+8. **Let game read save.jkr** (uses same code path as normal "Continue"):
    ```lua
    G.SAVED_GAME = nil  -- Clear stale cache
    local data = get_compressed(profile .. "/save.jkr")  -- Game's built-in
    local run_data = STR_UNPACK(data)                    -- Game's built-in
    ```
-8. **Start the run**:
+9. **Start the run**:
    - **Fast path** (`no_wipe = true`): `G:delete_run()` → `G:start_run({ savetext = ... })`
    - **Normal path**: `G.FUNCS.start_run(nil, { savetext = ... })`
 
@@ -149,6 +152,7 @@ This is now a **single unified function** that handles all load logic (previousl
 ## Error Handling
 
 - **File not found**: `load_save_file` returns `nil`, error logged, function returns early
+- **File still writing**: Pending async save result not yet `ok`; load is aborted with warning and can be retried
 - **Copy failure**: `copy_save_to_main` returns `false`, error logged
 - **start_run failure**: `pcall` protects, error logged but game may be in inconsistent state
 - **Cache updates**: Always use `pcall` for filesystem operations to prevent crashes
@@ -165,6 +169,8 @@ This is now a **single unified function** that handles all load logic (previousl
 6. **Pre-computed signature**: Eliminates redundant `mark_loaded_state` call in game hook
 7. **Unified load function**: Reduced function call overhead by inlining `start_from_file`
 8. **Game-native load**: Uses `get_compressed` + `STR_UNPACK` directly from `save.jkr` (same as "Continue")
+9. **Load safety gate**: Prevents selecting a not-yet-written async save file, avoiding transient load errors
+10. **Async reconciliation**: Save completion results are reconciled before load paths, so stale/failed async writes do not surface as phantom load targets
 
 ---
 
@@ -176,6 +182,7 @@ User Click
 rewinder_save_restore (ButtonCallbacks)
     ↓ update cache flags, set pending_index
 load_and_start_from_file (SaveManager) — unified function
+    ↓ check pending async write map for target file
     ↓ store loaded fields (O(1))
     ↓ set prune boundary (O(1), no list building)
     ↓ initialize ordinal_state

@@ -31,10 +31,6 @@ local function _log_ui(action, start, finish, size)
    end
 end
 
-local function _log_ui_action(action)
-   log("debug", "Saves UI: " .. action)
-end
-
 local function _update_mode_button_labels()
    local refs = REWINDER and REWINDER._saves_ui_refs
    if not refs then return end
@@ -324,7 +320,7 @@ function G.FUNCS.rewinder_save_jump_to_current(e)
    local refs = REWINDER._saves_ui_refs
    if not refs or not refs.saves_box then return end
 
-   _log_ui_action("jump to current")
+   _log_ui("jump to current")
 
    _get_displayed_entries()
    local per_page = refs.per_page or 8
@@ -389,7 +385,7 @@ function G.FUNCS.rewinder_save_delete_all(e)
    if REWINDER and REWINDER.clear_all_saves then
       REWINDER.clear_all_saves()
    end
-   _log_ui_action("deleted all saves")
+   _log_ui("deleted all saves")
    _refresh_saves_if_open(1)
 end
 
@@ -399,7 +395,7 @@ function G.FUNCS.rewinder_save_restore(e)
    if not file then return end
 
    local desc = (REWINDER.describe_save and REWINDER.describe_save({ file = file })) or "save"
-   _log_ui_action("restore -> " .. desc)
+   _log_ui("restore -> " .. desc)
 
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
       REWINDER._SaveManager._set_cache_current_file(file)
@@ -494,7 +490,7 @@ function G.FUNCS.rewinder_save_update_page(args)
    args.cycle_config.options = options
 
    local total = #options
-   _log_ui_action(string.format("page %d/%d", page, total > 0 and total or 1))
+   _log_ui(string.format("page %d/%d", page, total > 0 and total or 1))
 
    saves_wrap.config.object:remove()
    saves_wrap.config.object = UIBox({

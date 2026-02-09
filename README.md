@@ -10,8 +10,8 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - ⚡ **Instant Undo** — Press `S` (keyboard) or `L3` (controller) to rewind immediately.
 - 🔁 **Quick Saveload** — Press `L` (keyboard) or `R3` (controller) to instantly reload.
 - ⭐ **Key Saves** — Mark important saves and filter the list to key saves only.
-- 🧪 **Experiment Freely** — Test strategies without fear; stepped-back saves are preserved until you make a new action (when trigger a new save).
-- 🛡️ **Score Overflow Protection** — Rewind/save-load safely even with extreme scores (naneinf becomes 0 after reload).
+- 🧪 **Experiment Freely** — Test strategies without fear; stepped-back saves stay available until you make a new action.
+- 🛡️ **Score Overflow Protection** — Rewind/save-load safely with extreme `naneinf/inf` scores (optional clamp to `1.8e308`).
 
 ## Screenshots
 
@@ -42,13 +42,19 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 | Quick saveload (configurable) | `L` | Click Right Stick (R3) |
 | Open saves list (configurable) | `Ctrl+S` | `X` (in Pause Menu Only) |
 
-> **Tip:** Open the **Options** menu and click the **orange "Saves" button** (or press `Ctrl+S` / `X`) to browse and restore any save.
+> **Tip:** Open the **Pause Menu → Options** and click the **orange "Saves" button** (or press `Ctrl+S` / `X`) to browse and restore any save.
 
-### Save List Buttons
+### Save List Icon Buttons
 
-- **Check key saves** — Toggle key-saves-only filtering.
-- **★ Edit key saves** — Enter mark mode, click entries to toggle key status, then press **Save marking changes**.
-- **▶ Current save** — Jump to your currently loaded save.
+- **Check key saves** — Text button. Shows only key saves.
+- **★ Edit key saves** — Star icon button. Enters mark mode so you can add/remove key marks.
+- **▶ Current save** — Triangle icon button. Jumps to your currently loaded save.
+
+How to use:
+1. Press **★ Edit key saves**.
+2. Click save rows to toggle key marks (`[?]` means pending, not committed yet).
+3. Press **★ Save marking changes** to apply. Close the panel to discard pending edits.
+4. Use **Check key saves** to filter, and **▶ Current save** to jump back to your current position.
 
 ## Configuration
 

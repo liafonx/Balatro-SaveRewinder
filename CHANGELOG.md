@@ -6,17 +6,17 @@ All notable changes to Save Rewinder will be documented in this file.
 
 ## [1.5.0] - 2026-02-07
 ### Added
-- **Key save list (bookmarks)**: You can now mark important saves and filter the list to key saves only.
-- **Batch mark workflow**: Mark mode lets you preview changes and apply them together, and pending mark changes are shown as `[?]`.
-- **Key-save icon**: Added a star icon button for the **Edit key saves** action in the save list.
+- **Key saves (bookmarks)**: Mark important saves, filter to key saves only, and use mark mode to preview/apply in batch (pending changes show as `[?]`).
 
 ### Changed
-- **Saves panel controls**: Save-list bottom bar now uses **Check key saves**, **★ Edit key saves icon**, and **▶ Current save icon** actions (the in-list **Delete all** action was removed).
-- **Button visuals**: The **Jump to current save** action is now a triangle icon button.
-- **Save retention policy**: Key saves are preserved when cleanup runs because the save count exceeds the limit.
+- **Saves panel controls**: Bottom bar now uses **Check key saves**, **★ Edit key saves**, and **▶ Current save** (triangle icon); the in-list **Delete all** action was removed.
+- **Retention policy**: Key saves are preserved when cleanup runs after hitting save limits.
+
+### Fixed
+- **Talisman/Amulet compatibility**: The mod is now compatible with Talisman/Amulet (e.g. Big Ante mode).
 
 ### Improved
-- **Large save history performance**: Save creation and save list handling are smoother when many saves exist.
+- **Performance during long runs**: Save creation and save list handling are smoother when many saves exist or after extended play.
 
 ## [1.4.8] - 2026-01-29
 ### Fixed

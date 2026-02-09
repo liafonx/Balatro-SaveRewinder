@@ -15,20 +15,31 @@ function M.get_profile()
     return "1"
 end
 
+-- Cached save directory path (profile + saves_path don't change mid-session)
+local _cached_save_dir = nil
+local _cached_save_dir_key = nil
+
 -- Get save directory path
 function M.get_save_dir(saves_path)
     saves_path = saves_path or "SaveRewinder"
     local profile = M.get_profile()
-    local dir = profile .. "/" .. saves_path
+    local key = profile .. "/" .. saves_path
+
+    -- Return cached result if profile + path haven't changed
+    if _cached_save_dir and _cached_save_dir_key == key then
+        return _cached_save_dir
+    end
 
     if not love.filesystem.getInfo(profile) then
         love.filesystem.createDirectory(profile)
     end
-    if not love.filesystem.getInfo(dir) then
-        love.filesystem.createDirectory(dir)
+    if not love.filesystem.getInfo(key) then
+        love.filesystem.createDirectory(key)
     end
 
-    return dir
+    _cached_save_dir = key
+    _cached_save_dir_key = key
+    return key
 end
 
 -- Copy save file directly to save.jkr without decoding (fast path)

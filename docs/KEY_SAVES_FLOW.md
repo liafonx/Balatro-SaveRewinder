@@ -114,4 +114,3 @@ Controller paging/jump behavior is shared with the saves-list surface and detail
 ## Notes
 
 - This file intentionally describes **current behavior** and supersedes the earlier transitional summary that referenced removed IDs such as `rewinder_btn_current` / `rewinder_btn_delete`.
-- Historical design rationale remains in `docs/PLAN_KEY_SAVES.md` and `docs/PLAN_KEY_SAVES_REVIEW.md`.

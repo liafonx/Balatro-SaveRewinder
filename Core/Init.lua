@@ -8,6 +8,7 @@ local StateSignature = require("StateSignature")
 local SaveManager = require("SaveManager")
 local KeySaves = require("KeySaves")
 local NaNProtection = require("NaNProtection")
+local SaveThread = require("SaveThread")
 
 -- Expose NaNProtection as global for lovely patches
 _G.NaNProtection = NaNProtection
@@ -45,6 +46,7 @@ REWINDER.key_saves_get_key_saves = KeySaves.get_key_saves
 -- Internal State Access (via module reference, since scalars are copied by value)
 -- Expose the SaveManager module itself so callbacks can access/modify internal state
 REWINDER._SaveManager = SaveManager
+REWINDER._stop_save_thread = SaveThread.stop
 
 -- Export entry index constants for UI access (auto-copy from SaveManager)
 for key, value in pairs(SaveManager) do
@@ -78,11 +80,13 @@ function Game:set_render_settings(...)
    -- This blocks briefly but is hidden by loading screen - no UI lag later
    if not REWINDER._cache_initialized then
       REWINDER._cache_initialized = true
+      -- Start the background save I/O thread (hidden by loading screen)
+      SaveThread.start()
       local success, err = pcall(function()
          if SaveManager and SaveManager.preload_all_metadata then
             local entries = SaveManager.preload_all_metadata(true)
             local count = entries and #entries or 0
-            log("warning", "Found " .. count .. " saves on disk (meta window: " .. tostring(SaveManager.META_CACHE_BASE_LIMIT or 32) .. ")")
+            log("info", "Found " .. count .. " saves on disk (meta window: " .. tostring(SaveManager.META_CACHE_BASE_LIMIT or 32) .. ")")
             
             -- Step 2: Match save.jkr to a cache entry (for Continue game)
             -- This pre-computes the current save index during loading
@@ -112,7 +116,7 @@ function Game:set_render_settings(...)
                                  SaveManager.ensure_meta_window(idx, SaveManager.META_CACHE_BASE_LIMIT)
                               end
                               REWINDER._main_save_matched = true
-                              log("warning", "Matched save.jkr by ID: " .. entry[SaveManager.ENTRY_FILE])
+                              log("info", "Matched save.jkr by ID: " .. entry[SaveManager.ENTRY_FILE])
                            else
                               log("debug", "No match for _rewinder_id (" .. tostring(rewinder_id) .. ":" .. type(rewinder_id) .. ")")
                            end

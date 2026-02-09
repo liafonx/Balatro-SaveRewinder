@@ -89,10 +89,13 @@ function REWINDER.create_triangle_arrow(colour)
    return TriangleArrow(0.25, 0.4, colour)
 end
 
--- Compact triangle icon for button glyphs
-local TriangleIcon = Moveable:extend()
+-- Base class for cacheable icon shapes (triangle, star, future shapes).
+-- Subclasses override _compute_points(w_px, h_px) to define geometry.
+-- Mesh is built once on first draw (VT not ready at init time) and cached.
+-- Concave shapes (>3 vertices) are auto-triangulated for correct fill.
+local CachedIcon = Moveable:extend()
 
-function TriangleIcon:init(w, h, colour)
+function CachedIcon:init(w, h, colour)
    Moveable.init(self, 0, 0, w or 0.40, h or 0.40)
    self.colour = colour or G.C.WHITE
    self.states = {
@@ -100,97 +103,48 @@ function TriangleIcon:init(w, h, colour)
       hover = { can = false },
       collide = { can = false },
    }
+   self._mesh_ready = false
+   self._points = nil
+   self._triangles = nil
 end
 
-function TriangleIcon:draw()
+-- Override in subclasses: return flat {x1,y1, x2,y2, ...} points array
+function CachedIcon:_compute_points(w_px, h_px)
+   return nil
+end
+
+function CachedIcon:_build_mesh()
    if not self.VT then return end
-
-   prep_draw(self, 1)
-   love.graphics.scale(1 / G.TILESIZE)
-
-   local w = self.VT.w * G.TILESIZE
-   local h = self.VT.h * G.TILESIZE
-   local cx = w * 0.5
-   local cy = h * 0.5
-   local tri = math.max(2, math.min(w, h) * 0.50)
-
-   if G.SETTINGS.GRAPHICS.shadows == 'On' then
-      love.graphics.setColor(0, 0, 0, 0.3)
-      love.graphics.polygon("fill",
-         cx - tri * 0.45 + 1, cy - tri * 0.55 + 1,
-         cx + tri * 0.55 + 1, cy + 1,
-         cx - tri * 0.45 + 1, cy + tri * 0.55 + 1
-      )
-   end
-
-   love.graphics.setColor(self.colour)
-   love.graphics.polygon("fill",
-      cx - tri * 0.45, cy - tri * 0.55,
-      cx + tri * 0.55, cy,
-      cx - tri * 0.45, cy + tri * 0.55
-   )
-
-   love.graphics.pop()
-end
-
-function REWINDER.create_triangle_icon(colour, w, h)
-   return TriangleIcon(w or 0.40, h or 0.40, colour)
-end
-
--- Compact star icon for mode buttons
-local StarIcon = Moveable:extend()
-
-function StarIcon:init(w, h, colour)
-   Moveable.init(self, 0, 0, w or 0.40, h or 0.40)
-   self.colour = colour or G.C.WHITE
-   self.states = {
-      drag = { can = false },
-      hover = { can = false },
-      collide = { can = false },
-   }
-end
-
-function StarIcon:draw()
-   if not self.VT then return end
-
-   prep_draw(self, 1)
-   love.graphics.scale(1 / G.TILESIZE)
-
-   local w = self.VT.w * G.TILESIZE
-   local h = self.VT.h * G.TILESIZE
-   local cx = w * 0.5
-   local cy = h * 0.5
-   local outer = math.max(2, (math.min(w, h) * 0.42))
-   local inner = outer * 0.40
-
-   local points = {}
-   for i = 0, 9 do
-      local angle = -math.pi / 2 + i * math.pi / 5
-      local radius = (i % 2 == 0) and outer or inner
-      local x = cx + math.cos(angle) * radius
-      local y = cy + math.sin(angle) * radius
-      points[#points + 1] = x
-      points[#points + 1] = y
-   end
-
-   local triangles = nil
-   if love and love.math and love.math.triangulate then
+   local w_px = self.VT.w * G.TILESIZE
+   local h_px = self.VT.h * G.TILESIZE
+   local points = self:_compute_points(w_px, h_px)
+   if not points then self._mesh_ready = true; return end
+   self._points = points
+   -- Triangulate concave shapes (>3 vertices) for correct polygon fill
+   if #points > 6 and love and love.math and love.math.triangulate then
       local ok, tris = pcall(love.math.triangulate, points)
       if ok and tris and #tris > 0 then
-         triangles = tris
+         self._triangles = tris
       end
    end
+   self._mesh_ready = true
+end
 
-   local function draw_star(dx, dy, r, g, b, a)
-      love.graphics.setColor(r, g, b, a)
-      if triangles then
-         for _, tri in ipairs(triangles) do
-            love.graphics.polygon("fill",
-               tri[1] + dx, tri[2] + dy,
-               tri[3] + dx, tri[4] + dy,
-               tri[5] + dx, tri[6] + dy
-            )
-         end
+function CachedIcon:_draw_shape(dx, dy, r, g, b, a)
+   love.graphics.setColor(r, g, b, a)
+   local triangles = self._triangles
+   if triangles then
+      for _, tri in ipairs(triangles) do
+         love.graphics.polygon("fill",
+            tri[1] + dx, tri[2] + dy,
+            tri[3] + dx, tri[4] + dy,
+            tri[5] + dx, tri[6] + dy
+         )
+      end
+   else
+      local points = self._points
+      if dx == 0 and dy == 0 then
+         love.graphics.polygon("fill", points)
       else
          local shifted = {}
          for i = 1, #points, 2 do
@@ -200,13 +154,59 @@ function StarIcon:draw()
          love.graphics.polygon("fill", shifted)
       end
    end
+end
+
+function CachedIcon:draw()
+   if not self.VT then return end
+   if not self._mesh_ready then self:_build_mesh() end
+   if not self._points then return end
+
+   prep_draw(self, 1)
+   love.graphics.scale(1 / G.TILESIZE)
 
    if G.SETTINGS.GRAPHICS.shadows == 'On' then
-      draw_star(1, 1, 0, 0, 0, 0.3)
+      self:_draw_shape(1, 1, 0, 0, 0, 0.3)
    end
+   local c = self.colour
+   self:_draw_shape(0, 0, c[1], c[2], c[3], c[4] or 1)
 
-   draw_star(0, 0, self.colour[1], self.colour[2], self.colour[3], self.colour[4] or 1)
    love.graphics.pop()
+end
+
+-- Compact triangle icon for button glyphs
+local TriangleIcon = CachedIcon:extend()
+
+function TriangleIcon:_compute_points(w_px, h_px)
+   local cx = w_px * 0.5
+   local cy = h_px * 0.5
+   local tri = math.max(2, math.min(w_px, h_px) * 0.50)
+   return {
+      cx - tri * 0.45, cy - tri * 0.55,
+      cx + tri * 0.55, cy,
+      cx - tri * 0.45, cy + tri * 0.55,
+   }
+end
+
+function REWINDER.create_triangle_icon(colour, w, h)
+   return TriangleIcon(w or 0.40, h or 0.40, colour)
+end
+
+-- Compact star icon for mode buttons
+local StarIcon = CachedIcon:extend()
+
+function StarIcon:_compute_points(w_px, h_px)
+   local cx = w_px * 0.5
+   local cy = h_px * 0.5
+   local outer = math.max(2, (math.min(w_px, h_px) * 0.42))
+   local inner = outer * 0.40
+   local points = {}
+   for i = 0, 9 do
+      local angle = -math.pi / 2 + i * math.pi / 5
+      local radius = (i % 2 == 0) and outer or inner
+      points[#points + 1] = cx + math.cos(angle) * radius
+      points[#points + 1] = cy + math.sin(angle) * radius
+   end
+   return points
 end
 
 function REWINDER.create_star_icon(colour, w, h)
@@ -242,9 +242,60 @@ local function get_blind_config_cached(blind_key)
    
    return blind_config_cache[blind_key]
 end
--- Clear blind config cache (call when game reloads or mods change)
-function REWINDER.clear_blind_cache()
-   blind_config_cache = {}
+-- Build an icon button node (border + coloured fill + icon glyph).
+-- opts: { id, button, fill_id, fill_colour, icon, focus_args, border_colour }
+local function build_icon_button(opts)
+   local border_colour = opts.border_colour or G.C.UI.TEXT_LIGHT or {0.85, 0.85, 0.85, 1}
+   local inner_r = math.max(0.01, ICON_BUTTON_RADIUS - ICON_BUTTON_BORDER * 0.5)
+   local inner_side = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2
+   return {
+      n = G.UIT.C,
+      config = { align = "cm", padding = 0.08 },
+      nodes = {
+         {
+            n = G.UIT.R,
+            config = {
+               id = opts.id,
+               button = opts.button,
+               align = "cm",
+               colour = border_colour,
+               minw = ICON_BUTTON_SIDE,
+               minh = ICON_BUTTON_SIDE,
+               padding = 0,
+               r = ICON_BUTTON_RADIUS,
+               hover = true,
+               can_collide = true,
+               shadow = true,
+               focus_args = opts.focus_args or { nav = "wide" },
+            },
+            nodes = {
+               {
+                  n = G.UIT.R,
+                  config = {
+                     id = opts.fill_id,
+                     align = "cm",
+                     colour = opts.fill_colour,
+                     minw = inner_side,
+                     minh = inner_side,
+                     padding = ICON_BUTTON_PADDING,
+                     r = inner_r,
+                     can_collide = false,
+                     shadow = false,
+                  },
+                  nodes = {
+                     {
+                        n = G.UIT.O,
+                        config = {
+                           object = opts.icon,
+                           can_collide = false,
+                        },
+                     },
+                  },
+               },
+            },
+         },
+      },
+   }
 end
 
 local function build_page_cycle_config(page_numbers, initial_page, saves_box, per_page, entries)
@@ -771,7 +822,7 @@ function G.UIDEF.rewinder_saves()
    local cycle_config = build_page_cycle_config(page_numbers, initial_page, saves_box, per_page, entries)
    REWINDER._saves_ui_refs.cycle_config = cycle_config
 
-   local cycle_ui_config = {
+   local page_cycle = create_option_cycle({
       id = "rewinder_page_cycle",
       options = cycle_config.options,
       current_option = cycle_config.current_option,
@@ -782,19 +833,6 @@ function G.UIDEF.rewinder_saves()
       cycle_shoulders = true,
       no_pips = true,
       focus_args = { nav = "wide" },
-   }
-
-   local page_cycle = create_option_cycle({
-      id = cycle_ui_config.id,
-      options = cycle_ui_config.options,
-      current_option = cycle_ui_config.current_option,
-      opt_callback = cycle_ui_config.opt_callback,
-      opt_args = cycle_ui_config.opt_args,
-      w = cycle_ui_config.w,
-      colour = cycle_ui_config.colour,
-      cycle_shoulders = cycle_ui_config.cycle_shoulders,
-      no_pips = cycle_ui_config.no_pips,
-      focus_args = cycle_ui_config.focus_args,
    })
 
    return create_UIBox_generic_options({
@@ -842,102 +880,24 @@ function G.UIDEF.rewinder_saves()
                         n = G.UIT.R,
                         config = { align = "cm", colour = G.C.CLEAR },
                         nodes = {
-                           {
-                              n = G.UIT.C,
-                              config = { align = "cm", padding = 0.08 },
-                              nodes = {
-                                 {
-                                    n = G.UIT.R,
-                                    config = {
-                                       id = "rewinder_btn_mark_keys",
-                                       button = "rewinder_btn_mark_keys",
-                                       align = "cm",
-                                       colour = icon_button_border_colour,
-                                       minw = ICON_BUTTON_SIDE,
-                                       minh = ICON_BUTTON_SIDE,
-                                       padding = 0,
-                                       r = ICON_BUTTON_RADIUS,
-                                       hover = true,
-                                       can_collide = true,
-                                       shadow = true,
-                                       focus_args = { nav = "wide" },
-                                    },
-                                    nodes = {
-                                       {
-                                          n = G.UIT.R,
-                                          config = {
-                                             id = "rewinder_btn_mark_keys_fill",
-                                             align = "cm",
-                                             colour = mark_button_colour,
-                                             minw = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2,
-                                             minh = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2,
-                                             padding = ICON_BUTTON_PADDING,
-                                             r = math.max(0.01, ICON_BUTTON_RADIUS - ICON_BUTTON_BORDER * 0.5),
-                                             can_collide = false,
-                                             shadow = false,
-                                          },
-                                          nodes = {
-                                             {
-                                                n = G.UIT.O,
-                                                config = {
-                                                   object = REWINDER.create_star_icon(G.C.WHITE, ICON_BUTTON_ICON_SIZE, ICON_BUTTON_ICON_SIZE),
-                                                   can_collide = false,
-                                                },
-                                             },
-                                          },
-                                       },
-                                    },
-                                 },
-                              },
-                           },
-                           {
-                              n = G.UIT.C,
-                              config = { align = "cm", padding = 0.08 },
-                              nodes = {
-                                 {
-                                    n = G.UIT.R,
-                                    config = {
-                                       id = "rewinder_btn_jump_to_current",
-                                       button = "rewinder_save_jump_to_current",
-                                       align = "cm",
-                                       colour = icon_button_border_colour,
-                                       minw = ICON_BUTTON_SIDE,
-                                       minh = ICON_BUTTON_SIDE,
-                                       padding = 0,
-                                       r = ICON_BUTTON_RADIUS,
-                                       hover = true,
-                                       can_collide = true,
-                                       shadow = true,
-                                       focus_args = { nav = "wide", button = "y", set_button_pip = true },
-                                    },
-                                    nodes = {
-                                       {
-                                          n = G.UIT.R,
-                                          config = {
-                                             id = "rewinder_btn_jump_to_current_fill",
-                                             align = "cm",
-                                             colour = G.C.ORANGE or {1, 0.6, 0.2, 1},
-                                             minw = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2,
-                                             minh = ICON_BUTTON_SIDE - ICON_BUTTON_BORDER * 2,
-                                             padding = ICON_BUTTON_PADDING,
-                                             r = math.max(0.01, ICON_BUTTON_RADIUS - ICON_BUTTON_BORDER * 0.5),
-                                             can_collide = false,
-                                             shadow = false,
-                                          },
-                                          nodes = {
-                                             {
-                                                n = G.UIT.O,
-                                                config = {
-                                                   object = REWINDER.create_triangle_icon(G.C.WHITE, ICON_BUTTON_ICON_SIZE, ICON_BUTTON_ICON_SIZE),
-                                                   can_collide = false,
-                                                },
-                                             },
-                                          },
-                                       },
-                                    },
-                                 },
-                              },
-                           },
+                           build_icon_button({
+                              id = "rewinder_btn_mark_keys",
+                              button = "rewinder_btn_mark_keys",
+                              fill_id = "rewinder_btn_mark_keys_fill",
+                              fill_colour = mark_button_colour,
+                              icon = REWINDER.create_star_icon(G.C.WHITE, ICON_BUTTON_ICON_SIZE, ICON_BUTTON_ICON_SIZE),
+                              border_colour = icon_button_border_colour,
+                              focus_args = { nav = "wide" },
+                           }),
+                           build_icon_button({
+                              id = "rewinder_btn_jump_to_current",
+                              button = "rewinder_save_jump_to_current",
+                              fill_id = "rewinder_btn_jump_to_current_fill",
+                              fill_colour = G.C.ORANGE or {1, 0.6, 0.2, 1},
+                              icon = REWINDER.create_triangle_icon(G.C.WHITE, ICON_BUTTON_ICON_SIZE, ICON_BUTTON_ICON_SIZE),
+                              border_colour = icon_button_border_colour,
+                              focus_args = { nav = "wide", button = "y", set_button_pip = true },
+                           }),
                         },
                      },
                   },
@@ -978,7 +938,7 @@ function create_UIBox_options()
 
          local button = UIBox_button({
             button = "rewinder_save_open",
-            label = { (localize and localize("rewinder_saves_button")) or "Saves" },
+            label = { loc("rewinder_saves_button", "Saves") },
             minw = 5,
             colour = G.C.ORANGE or {1, 0.6, 0.2, 1},
             focus_args = focus_args,

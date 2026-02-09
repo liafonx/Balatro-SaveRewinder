@@ -22,9 +22,11 @@ end
 
 local function reset_save_manager_for_new_run(bm)
    if not bm then return end
+   if bm.invalidate_async_saves then
+      bm.invalidate_async_saves()
+   end
    bm._pending_skip_reason = nil
    bm._loaded_mark_applied = nil
-   bm._loaded_signature = nil
    bm._loaded_display_type = nil
    bm.current_index = nil
    bm._restore_active = nil
@@ -146,10 +148,6 @@ function Game:start_run(args)
    REWINDER._start_run(self, args)
 
 end
--- The Game:write_save_file patch is no longer needed with the new save_run hook.
--- The original function will be called automatically.
--- You can remove the REWINDER._Game_write_save_file and the function override.
- 
 -- This function is called via a regex patch in lovely.toml,
 -- injecting it directly into the game's save_run function.
 function REWINDER.defer_save_creation()

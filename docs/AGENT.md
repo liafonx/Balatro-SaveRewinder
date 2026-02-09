@@ -22,12 +22,14 @@ This is a Balatro mod that snapshots game state and supports instant rewind/rest
   - `create_save` now avoids avoidable O(N) work (oldest-first append + cached newest-first view).
   - Retention runs only on ante changes, and timeline future-prune uses tail-trim deletion.
   - File/index maps stay hot with lazy rebuild of derived indices only when needed.
-  - Save write path reuses compressed bytes directly for `save.jkr` sync (no extra file read).
+  - Save serialization/compression moved to `Utils/SaveThread.lua` (async thread), reducing main-thread save stalls.
+  - Async safety hardening added: generation-based queue invalidation, completion reconciliation, and pending-save load guard.
 - **Restore correctness fix**: loading a save now restores per-type ordinal counters for the whole ante/round window, eliminating duplicate ordinals after restore.
 - **Key-save system completed**: key flag persisted in `.meta`, pending mark/commit/discard flow added, retention preserve rule moved behind SaveManager boundary helpers.
 - **Save-list UX update**: key state is color-driven, pending edits show `[?]`, bottom bar uses filter + icon actions (`mark`, `jump`), filter persists across reopen while mark-mode pending edits do not.
 - **Input/control cleanup**: dual keyboard/controller bindings plus stable overlay controller navigation (`LB/RB` page, `Y` jump, `X` open).
 - **Stability/maintainability cleanup**: shared `Game:start_run` helpers, logger format unification, NaN protection centralization, and scale-number overflow handling simplified.
+- **Perf documentation consolidation**: async save architecture and perf-fix details are now maintained in `AGENT.md` + flow docs (`INIT_FLOW.md`, `CLICK_LOAD_FLOW.md`) as canonical sources.
 
 ## 1.2 Unfinished / Open Requirements
 
@@ -52,12 +54,14 @@ lovely.toml patches → GamePatches.defer_save_creation()
                     → NaNProtection (pre-save, post-load, serialization, display)
                               ↓
 Init.lua → SaveManager.preload_all_metadata() (at boot; warms bounded meta window)
+         → SaveThread.start() (at boot; save worker ready before gameplay)
          → NaNProtection (exposed as global for patches)
                               ↓
 SaveManager → StateSignature (state info extraction)
            → FileIO (file read/write)
            → MetaFile (fast .meta read/write)
            → Pruning (retention executor + future prune; preserve policy passed by SaveManager)
+           → SaveThread (async save write dispatch + completion/error channels)
 KeySaves → SaveManager (entry/meta access, cache update)
          → MetaFile (batched key-save commits)
                               ↓
@@ -98,10 +102,11 @@ Keybinds → SaveManager (step back, UI toggle)
 |------|---------|---------------|---------|
 | `StateSignature.lua` | Game state extraction and signature encoding | `get_state_info`, `encode_signature`, `signatures_equal`, `describe_save` | SaveManager, Init |
 | `MetaFile.lua` | Fast `.meta` file read/write (core fields + optional `is_key`). Uses `NUMERIC_FIELDS` set for O(1) field type lookup | `read_meta_file`, `write_meta_file` | SaveManager, KeySaves |
-| `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file` (returns compressed bytes as 3rd value), `write_bytes_to_main`, `get_save_dir` | SaveManager |
+| `FileIO.lua` | File operations for `.jkr` files | `copy_save_to_main`, `load_save_file`, `write_save_file`, `write_bytes_to_main`, `get_save_dir` | SaveManager |
+| `SaveThread.lua` | Background save writer thread (STR_PACK/compress/write off main thread) | `start`, `push_save`, `check_errors`, `invalidate_pending`, `pop_result`, `stop` | SaveManager, Init |
 | `Pruning.lua` | Retention policy executor (max antes) + future save cleanup on restore | `apply_retention_policy(..., opts.should_preserve_entry)`, `prune_future_saves` | SaveManager |
 | `Logger.lua` | Centralized logging with standard log levels | `Logger.create(module_name)` → returns logger function: `debug_log(level, msg)` where level is `"error"`, `"warning"`, `"info"`, or `"debug"`. **error/warning always show; info/debug only when debug_saves enabled** | All modules |
-| `NaNProtection.lua` | Defense-in-depth sanitization for NaN/inf/nil values | `sanitize`, `sanitize_round_scores`, `sanitize_round_scores_presave`, `sanitize_number_format`, `sanitize_serialize` | lovely.toml patches, SaveManager |
+| `NaNProtection.lua` | Centralized NaN/inf protections for score compare/assign, blind recovery, and display safety | `sanitize_inline`, `score_gt`, `sanitize_round_score_assignment`, `sanitize_high_score_assignment`, `recover_blind_chips`, `recover_blind_chip_text`, `ensure_blind_chips`, `ensure_game_chips`, `sanitize_game_blind`, `sanitize_round_scores`, `sanitize_round_scores_presave`, `sanitize_number_format`, `scale_continue_best_hand` | lovely.toml patches, SaveManager |
 | `ScaleNumberHook.lua` | Wraps `scale_number()` to return base scale for very large values (>1e290) | `install()`, `M.installed`, `M.LARGE_NUMBER_THRESHOLD` | ButtonCallbacks |
 | `G.STATES.lua` | Reference file for `G.STATES` enum and `G.P_BLINDS` table | **Not loaded at runtime** — IDE autocomplete only | None |
 
@@ -165,21 +170,7 @@ M.debug_log("debug", "Cache evicted 5 entries")
 **Output Format:** `[Rewinder][ModuleName][level] message`  
 **Example:** `[Rewinder][SaveManager][info] Created save: Ante 2 Round 3`
 
-**Best Practices:**
-- Use `error` for failures that users need to know about
-- Use `warning` for recoverable issues or invalid actions  
-- Use `info` for normal operation logging (save/load/prune)
-- Use `debug` for internal details only developers care about
-- Keep messages concise and actionable
-- Include relevant context (file names, indices, counts)
-
-**Per-Module Guidelines:**
-- **SaveManager**: `error` for I/O failures, `warning` for invalid operations, `info` for saves/loads/steps, `debug` for cache
-- **NaNProtection**: `warning` for guard triggers, `info` for fixes applied, `debug` for sanitization details
-- **ScaleNumberHook**: Keep it lightweight; it should not depend on logger state or REWINDER config
-- **Pruning**: `info` for pruning operations, `debug` for "no action needed"
-- **FileIO**: `error` for I/O failures, `debug` for success confirmations
-- **Init**: `error` for init failures, `info` for cache loading, `debug` for fallback matching
+**Guidelines:** Keep messages concise with relevant context (file names, indices, counts). `ScaleNumberHook` should stay lightweight and not depend on logger state.
 
 ---
 
@@ -193,6 +184,7 @@ M.debug_log("debug", "Cache evicted 5 entries")
 | `PRESS_S_FLOW.md` | Step-back hotkey (`S`) flow: find previous save, load, and start |
 | `SAVE_LIST_FLOW.md` | Save list UI rendering: pagination, lazy loading, entry node building |
 | `KEY_SAVES_FLOW.md` | Key-save mark/filter lifecycle, commit/discard behavior, and retention semantics |
+| `NANPROTECTION_FLOW.md` | NaN/inf protection: defense layers, serialization, runtime guards, big-backend compat |
 
 ---
 
@@ -281,111 +273,23 @@ When loading older save at index 5, saves 1-4 are marked via `pending_future_pru
 ### Duplicate Skip
 After restore, first auto-save often matches restored state. `load_and_start_from_file()` stores individual loaded fields (`_loaded_ante`, `_loaded_round`, etc.); `consume_skip_on_save()` computes current state and compares fields directly (O(1), no signature string formatting).
 
+### Talisman Big Number Compatibility
+Talisman Big numbers are **LuaJIT FFI cdata** (`type() == "cdata"`, not `"table"`). Use `val.number` for extraction. See `_safe_number()` in `StateSignature.lua` and `knowledge-base.md` for details.
+
 ### NaN Protection (v1.4.8+)
-When score values overflow to extremely large numbers, they become NaN or infinity. Without protection, this causes crashes during save/load and arithmetic operations.
+**See `NANPROTECTION_FLOW.md`** for full defense-layer diagram, API reference, and patch wiring.
 
-**The Problem:**
-- Lua's `STR_PACK` serializes NaN as literal string `nan` and infinity as `inf`
-- When `loadstring()` unpacks these, they're undefined globals → become `nil`
-- Arithmetic operations on `nil` crash: `attempt to perform arithmetic on a nil value`
+Score values can overflow to NaN/infinity, which Lua serializes as bare `nan`/`inf` tokens. These unpack as `nil`, crashing arithmetic. NaNProtection provides 5 defense layers:
 
-**Solution: NaNProtection Module (`Utils/NaNProtection.lua`)**
+1. **Serialization** (`string_packer`): encode NaN/inf as `(0/0)`, `(1/0)`, `(-1/0)` (inline for perf; bypassed for Big-backend mods)
+2. **Save/Load boundaries**: sanitize round_scores, blind.chips, G.GAME.chips on load; optional inf clamp on save
+3. **Runtime arithmetic**: `chips_met_target()` (4 callsites), `safe_ease_chips()`, `sanitize_inline()`
+4. **Score compare/assign**: `score_gt()` with `to_big` support; `sanitize_*_assignment()` with configurable inf clamp
+5. **Display**: `sanitize_number_format()` for >1e290; `scale_continue_best_hand()` + `ScaleNumberHook` for text sizing
 
-Centralized defense-in-depth sanitization with configurable infinity handling:
+**Key config:** `clamp_infinity_scores` (`false` = preserve inf; `true` = clamp to `1.8e308`)
 
-**NaN Handling (Always Active):**
-- NaN values are **always converted to 0** to prevent crashes
-- Applied at save, load, serialization, and display
-
-**Infinity Handling (Configurable via `clamp_infinity_scores`):**
-
-| Config | Display | Save/Load Behavior | Notes |
-|--------|---------|-------------------|-------|
-| `false` (default) | Shows as `inf` | Converts to `0` after save/load | Safe from crashes, but loses infinity value on reload |
-| `true` | Shows as `1.8e308` | Preserved as `1.8e308` | Maintains playability, caps at max safe value |
-
-**Context-Specific Infinity Handling:**
-- **Continue panel (`round_scores`)**: Always converts inf/nan to 0 (safe display)
-- **Stats screen (`high_scores`)**: Respects `clamp_infinity_scores` setting
-- This allows Stats to show "inf" while Continue screen shows "0" for the same game
-
-**Key Constants:**
-```lua
-M.MAX_SAFE_SCORE = 1.7976931348623157e308  -- IEEE 754 DBL_MAX
-M.LARGE_NUMBER_THRESHOLD = 1e290           -- Above this, custom formatting
-```
-
-**Key Functions:**
-| Function | Purpose |
-|----------|---------|
-| `sanitize(v, context)` | NaN→0 always; inf→MAX_SAFE_SCORE if clamping enabled, else preserved |
-| `sanitize_round_scores(game)` | Post-load: fix nil values from corrupted saves (NaN→0) |
-| `sanitize_round_scores_presave(game)` | Pre-save: NaN→0 always; inf→MAX_SAFE_SCORE if clamping enabled |
-| `sanitize_number_format(num)` | Display: NaN→0; inf handling per config; custom format for very large numbers |
-| `sanitize_serialize(v, k)` | Serialization: NaN→0 always; inf→MAX_SAFE_SCORE if clamping enabled |
-
-**Defense-in-depth patches in `lovely.toml`:**
-
-| Target | Purpose |
-|--------|---------|
-| `functions/misc_functions.lua` (after save_run) | Pre-save: `NaNProtection.sanitize_round_scores_presave(G.GAME)` |
-| `game.lua` (after load) | Post-load: `NaNProtection.sanitize_round_scores(self.GAME)` |
-| `engine/string_packer.lua` | Sanitize during serialization: `NaNProtection.sanitize_serialize(v, k)` |
-| `functions/state_events.lua` | Sanitize `ease_to` calculation at the source |
-| `engine/event.lua` (line 31, 62) | Sanitize ease event values |
-| `functions/misc_functions.lua` (number_format) | Handle NaN/inf in display formatting |
-| `functions/misc_functions.lua` (high scores) | Handle nil `.amt` in comparisons |
-| `functions/UI_definitions.lua` | Handle nil best hand in continue screen UI |
-| `state_events.lua`, `game.lua`, `blind.lua` | Handle nil chips in blind comparison expressions |
-
-**Key Insights:**
-- **NaN is always dangerous** → Always converted to 0
-- **Infinity is configurable** → User chooses between "display as inf but lose on reload" vs "cap at 1.8e308 and keep"
-- With clamping disabled, you won't crash on save/load, but infinity becomes 0 after reload
-- Event.lua line 62 OVERWRITES `start_val` set at line 30, so patching line 62 is essential
-- lovely.toml patches should call module functions, not inline logic (maintainability)
-
-**Lua Number Handling Notes:**
-```lua
--- NaN check (only NaN fails self-equality)
-if v ~= v then -- v is NaN
-
--- Infinity check
-if v == math.huge or v == -math.huge then -- v is ±infinity
-
--- Lua has NO DBL_MAX constant (math.huge is infinity, not max finite)
--- IEEE 754 DBL_MAX = (2 - 2^-52) * 2^1023
--- Computing at runtime is tricky (2^1024 overflows), so hardcode it:
-local DBL_MAX = 1.7976931348623157e308
-
--- Very large numbers (>1e290) may overflow game's display code
--- Solution: format ourselves and return early
-if num >= 1e290 then
-    local exp = math.floor(math.log10(num))
-    local mantissa = num / (10 ^ exp)
-    return string.format("%.3fe%d", mantissa, exp)
-end
-```
-
-### Scale Number Hook (`Utils/ScaleNumberHook.lua`)
-
-The game's `scale_number()` function determines text size based on the numeric value. For extremely large numbers (e.g., 1.8e308), this causes massive text that breaks the UI (especially on the Continue screen).
-
-**Solution:** For numbers > 1e290 (including `math.huge`), return the base `scale` parameter directly without any computation.
-
-**How it works:**
-1. Module loads early via `load_now = true, before = "globals.lua"` in lovely.toml
-2. `button_callbacks.lua` loads and defines `scale_number` (line 1905)
-3. `UI/ButtonCallbacks.lua` is appended to `button_callbacks.lua`
-4. At the top of `UI/ButtonCallbacks.lua`, we call `ScaleNumberHook.install()`
-5. The wrapper checks `if number > 1e290 then return scale end`, else passes to original
-
-**Key Points:**
-- Simple threshold check: `number > M.LARGE_NUMBER_THRESHOLD` (1e290)
-- For very large numbers, just returns the base scale - no computation needed
-- `math.huge > 1e290` is true, so infinity is handled automatically
-- Installation is done from `UI/ButtonCallbacks.lua`, NOT via lovely.toml pattern patch
-- Lovely modules are accessed via `require("ModuleName")`, NOT as globals
+**Lua quick ref:** `v ~= v` = NaN; `math.huge` = infinity (not DBL_MAX); `1.7976931348623157e308` = DBL_MAX (hardcoded)
 
 ---
 
@@ -402,29 +306,22 @@ The game's `scale_number()` function determines text size based on the numeric v
 ### Save Writing
 1. Game calls `save_run()` → `G.culled_table` ready
 2. `lovely.toml` patch → `REWINDER.defer_save_creation()`
-3. Tag `G.culled_table` with `_rewinder_id` and call `SaveManager.create_save()` immediately (same frame, same table)
-4. `SaveManager.create_save()`:
-   - `StateSignature.get_state_info(run_data)` → extract raw state
-   - Check ordinal_state reset (ante/round/blind change)
-   - `_compute_display_type(state_info)` → single-char code using ordinal_state context
-   - `_create_signature(state_info, display_type)` → unified signature string
-   - Duplicate check via signature STRING comparison
-   - Compute ordinal using O(1) counter approach
-   - Boss tracking: set defeated_boss_idx on E saves for boss rounds
-   - Compute blind_idx: B→0, shop after boss→defeated_boss_idx, else→actual
-   - Write `.jkr` + `.meta` files (captures compressed bytes from write)
-   - Write compressed bytes directly to `save.jkr` (avoids re-read from disk)
-   - Append new entry in O(1) to internal oldest-first cache
-   - Update `save_cache_by_file` immediately; lazily invalidate derived index maps (`save_index_by_file`, `save_cache_by_id`)
-   - Apply retention policy only on ante change through SaveManager retention boundary (loads key flags, applies preserve policy callback, then rebuilds indices if needed)
+3. Tag `G.culled_table` with `_rewinder_id`, call `SaveManager.create_save()` (same frame)
+4. `create_save()` pipeline:
+   - Extract state → compute display_type via ordinal_state → create signature → duplicate check (string equality)
+   - Compute ordinal (O(1) counter), boss tracking, blind_idx
+   - Write `.meta` synchronously; dispatch `.jkr` via `SaveThread` (async) or synchronous for Big-backend mods (isolated thread can't inherit big-number serialization)
+   - Reconcile thread completions/errors, append entry to oldest-first cache, lazily invalidate index maps
+   - Retention policy on ante change only; invalidate async queue before destructive ops (future prune/new run/clear)
 
 ### Save Loading
 **See `CLICK_LOAD_FLOW.md`** for detailed diagram. Summary:
 1. Click/hotkey → `load_and_start_from_file(file)`
-2. Copy save to `save.jkr`, store loaded fields (`_loaded_ante`, `_loaded_round`, etc.)
-3. Initialize `ordinal_state` from entry (includes ante, blind_key, round for per-round ordinals)
-4. `G:delete_run()` → `G:start_run({savetext=...})` (fast path, no loading screen)
-5. `consume_skip_on_save` uses direct field comparison (no signature string formatting)
+2. Guard against pending async write for target file (`Save still writing, try again` if not yet complete)
+3. Copy save to `save.jkr`, store loaded fields (`_loaded_ante`, `_loaded_round`, etc.)
+4. Initialize `ordinal_state` from entry (includes ante, blind_key, round for per-round ordinals)
+5. `G:delete_run()` → `G:start_run({savetext=...})` (fast path, no loading screen)
+6. `consume_skip_on_save` uses direct field comparison (no signature string formatting)
 
 ### Step Back (S Key)
 **See `PRESS_S_FLOW.md`** for detailed diagram. Summary:
@@ -453,13 +350,13 @@ When user clicks "Continue" without using our UI:
 3. **Fallback**: Use newest save if no match (legacy saves without `_rewinder_id` are not supported)
 5. `Game:start_run` clears stale `_loaded_*` markers (and resets `ordinal_state`) when no restore/step is pending, then calls `mark_loaded_state`
 6. `mark_loaded_state` always updates `_last_loaded_file` (and `current_index` when known) from the file derived off `savetext._rewinder_id` — important for QuickLoad-style "load save.jkr" flows
-7. `create_save()` writes compressed bytes directly to `save.jkr` (fallback: file copy) to keep base saves aligned for other mods
+7. `create_save()` routes save writes through `SaveThread` (fallback: synchronous `FileIO.write_save_file`) to keep base saves aligned for other mods
 
 ### Custom Save Field (`_rewinder_id`)
 - Injected into `G.culled_table` in `defer_save_creation()` BEFORE game writes `save.jkr`
 - Value is an epoch-based unique ID (milliseconds since Unix epoch + per-second sequence; same as `ENTRY_INDEX`)
 - Enables O(1) exact matching via `save_cache_by_id` hash table
-- Zero extra I/O — piggybacks on existing save.jkr write
+- Keeps save identity stable across async writes and continue/restore paths
 
 ---
 
@@ -472,56 +369,37 @@ When user clicks "Continue" without using our UI:
 > **Ordinal is per-round, not per-blind** — All counters reset when `ante` or `round` changes. blind_key changes do NOT reset counters (this allows B1→B2→B3 when skipping blinds within same round).
 
 > [!WARNING]
-> **Restore resets ordinal_state** — Must re-initialize from entry's stored values (ante, blind_idx, discards_used, hands_played, display_type, ordinal for counter).
-> For `P`/`D` loads, set last counters to **pre-action values** (`hands_played - 1` or `discards_used - 1`) so the identical post-load state still computes as `P`/`D` (not `H`).
+> **Restore resets ALL ordinal counters** — `_init_ordinal_state_from_entry` zeros every counter, then scans cache to restore ALL display-type counters at same ante/round (not just loaded type). For `P`/`D` loads, set last counters to **pre-action values** (`hands_played - 1` / `discards_used - 1`).
 
 > [!NOTE]
-> **TOML regex escaping** — Double-escape backslashes in `lovely.toml` patterns (e.g., `\\(` not `\(`).
-
-> [!NOTE]
-> **match_indent not supported for regex patches** — `match_indent = true` only works for `[patches.pattern]`, not `[patches.regex]`. Remove it from regex patches to avoid Lovely Loader warnings.
+> **TOML regex escaping** — Double-escape backslashes in `lovely.toml` regex patterns (e.g., `\\(` not `\(`). `match_indent = true` only works for `[patches.pattern]`, not `[patches.regex]`.
 
 > [!NOTE]
 > **Signature comparison is string equality** — Display type is computed BEFORE signature creation, so `signatures_equal()` is just string comparison.
 
 > [!NOTE]
-> **No technical jargon in CHANGELOG** — CHANGELOG.md is for end users, not developers. Avoid terms like "O(1)", "hash table", "signature", "ordinal". Focus on user-visible behavior (e.g., "faster save list loading" not "O(1) lookup").
+> **No technical jargon in CHANGELOG** — Focus on user-visible behavior (e.g., "faster save list loading" not "O(1) lookup").
 
 > [!CAUTION]
-> **Never sanitize infinity to 0** — If scores overflow to infinity and you convert to 0, the player cannot beat any blind. Use `MAX_SAFE_SCORE` (DBL_MAX) instead.
+> **Pattern patches fail silently** — Prefer `[patches.copy]` with `position = "append"` when possible. Use `pcall(print, ...)` diagnostics to verify pattern patches run. Don't rely on Logger for early patch diagnostics (it depends on REWINDER.config).
 
 > [!WARNING]
-> **Lua has no DBL_MAX constant** — `math.huge` is infinity, not max finite double. Must hardcode `1.7976931348623157e308`. Computing at runtime is tricky because `2^1024` overflows to infinity.
-
-> [!WARNING]
-> **Very large numbers cause display overflow** — Numbers above ~1e290 may display incorrectly (e.g., "nane9223372036854775807"). Use custom formatting via `NaNProtection.sanitize_number_format()` to bypass the game's display code.
+> **Prefer appending to pattern injection** — Append hook installation to a file already being appended (e.g., `UI/ButtonCallbacks.lua` → `button_callbacks.lua`). More reliable than pattern-matching a specific line.
 
 > [!NOTE]
-> **Keep sanitization logic in NaNProtection module** — lovely.toml patches should call module functions (`NaNProtection.sanitize_round_scores_presave(G.GAME)`), not inline the logic. This keeps constants like `MAX_SAFE_SCORE` in one place.
+> **Lovely modules are NOT globals** — Access via `require("ModuleName")`, not as globals.
 
 > [!CAUTION]
-> **Pattern patches fail silently** — `[patches.pattern]` in lovely.toml can fail to match without any error. Prefer `[patches.copy]` with `position = "append"` when possible. If a pattern patch must be used, add `pcall(print, ...)` diagnostics to verify it runs.
-
-> [!CAUTION]
-> **Verify fixes with basic diagnostics first** — Before assuming a fix works, add `pcall(print, "[Module] checkpoint X")` at key points. Don't rely on Logger (it depends on REWINDER.config). Pattern patches that "look correct" may not match due to subtle whitespace or encoding differences.
+> **Lua forward declarations** — `local function foo()` is only visible after its definition. Forward-declare with `local foo` before use, then assign later.
 
 > [!WARNING]
-> **Prefer appending to pattern injection** — For function wrapping, append the hook installation to a file that's already being appended (e.g., add hook install to `UI/ButtonCallbacks.lua` which is appended to `button_callbacks.lua`). This is more reliable than pattern-matching a specific line.
+> **Invalidate async save queue before destructive timeline ops** — Call `SaveManager.invalidate_async_saves()` before clearing saves, starting new runs, or pruning future timeline.
 
 > [!NOTE]
-> **Lovely modules are NOT globals** — Modules loaded via `[patches.module]` must be accessed via `require("ModuleName")`, not as globals. If you try to access them as globals, you'll get `nil`.
-
-> [!NOTE]
-> **Simplify large number handling** — For very large numbers (>1e290), consider just returning a default value instead of complex capping logic. Example: `if num > 1e290 then return base_scale end` is simpler than input/output capping.
+> **NaN/inf pitfalls** — See `NANPROTECTION_FLOW.md`. Key: never sanitize infinity to 0 (use DBL_MAX); `math.huge` is infinity not DBL_MAX; different UI contexts need different infinity behavior.
 
 > [!CAUTION]
-> **Context-specific infinity handling** — Different UI contexts may need different infinity behavior. Continue panel should show 0 (safe), while Stats can show inf (user preference). Use separate patches for `round_scores` vs `high_scores`.
-
-> [!CAUTION]
-> **Lua forward declarations required for local functions** — In Lua, `local function foo()` is only visible AFTER its definition. If function A calls function B, but A is defined before B, you must forward-declare B with `local B` before A, then assign `B = function() ... end` at the actual definition site. This caused a crash when `_update_cache_current_flags` (line ~404) called `_rebuild_file_index` (line ~539).
-
-> [!WARNING]
-> **Restore resets ALL ordinal counters** — `_init_ordinal_state_from_entry` calls `_reset_ordinal_state` which zeros every counter, then must restore counters for ALL display types at the same ante/round by scanning the cache. Without this, loading an A save would reset the O counter, causing the next O save to get ordinal 1 again (duplicate).
+> **FFI cdata is not a Lua table** — Talisman Big numbers: `type()` returns `"cdata"`. Check both `"table"` and `"cdata"` when extracting game state numerics. See `knowledge-base.md`.
 
 ---
 
@@ -611,25 +489,20 @@ end
 
 | File | Lines | Status | Notes |
 |------|-------|--------|-------|
-| `Core/SaveManager.lua` | 1292 | ⚠️ Over | Core orchestration remains cohesive but large; keep splits cautious. |
-| `Utils/Keybinds.lua` | 841 | ⚠️ Slightly over | `navigate_focus` controller logic is the largest block. |
-| `UI/RewinderUI.lua` | 710 | ⚠️ Near limit | Recent cleanup reduced duplication, still a candidate for future split. |
-| `UI/ButtonCallbacks.lua` | 336 | ✅ OK | Second-pass refactor applied shared helpers for page/frame updates. |
-| `Utils/NaNProtection.lua` | 233 | ✅ OK | Clamp logic now centralized via `should_clamp_infinity()`. |
-| `Core/GamePatches.lua` | 175 | ✅ OK | Final-pass helper extraction reduced duplicate branches. |
+| `Core/SaveManager.lua` | 1500 | ⚠️ Over | Core orchestration remains cohesive but large; keep splits cautious. |
+| `Utils/Keybinds.lua` | 873 | ⚠️ Over | `navigate_focus` controller logic is the largest block. |
+| `UI/RewinderUI.lua` | 986 | ⚠️ Over | Strong candidate for split by rendering/helpers/pagination concerns. |
+| `UI/ButtonCallbacks.lua` | 561 | ⚠️ Over | Callback growth suggests split by action family (restore/nav/flags). |
+| `Utils/NaNProtection.lua` | 369 | ✅ OK | Centralized helpers including `chips_met_target()` and `safe_ease_chips()` for reduced patch inline size. |
+| `Utils/SaveThread.lua` | 254 | ✅ OK | Async writer with generation invalidation and completion channel handling. |
+| `Core/GamePatches.lua` | 173 | ✅ OK | New-run path now invalidates pending async writes before clearing timeline. |
 | `Utils/Logger.lua` | 92 | ✅ OK | Shared `format_message(...)` and no undefined fallback vars. |
-
-### Refactor Baseline (latest passes)
-
-- Save creation hot path no longer pays O(N) front-insert costs; cache internals are oldest-first with cached newest-first public view.
-- Pruning and retention are now single-pass/tail-trim oriented where possible.
-- UI page-cycle configuration and localized fallback handling were deduplicated in `RewinderUI`.
-- `Game:start_run` rewinder-specific logic is centralized in local helpers for maintainability.
 
 ### Quality Guidelines
 
 1. Keep `create_save()` and per-frame UI paths allocation-light.
 2. Prefer small shared helpers when repeated logic appears in 2+ places.
 3. Keep localization fallbacks centralized (`loc(...)`) instead of repeating `(localize and localize(...))`.
-4. Test edge cases: nil/NaN/inf scores, restore-then-save duplicate skip, and 50+ save pagination behavior.
-5. Use `pcall(print, ...)` for early patch diagnostics, then move stable logs back to `Logger`.
+4. Test edge cases: nil/NaN/inf scores, restore-then-save duplicate skip, and 50+ save pagination.
+5. Use `pcall(print, ...)` for early patch diagnostics; move stable logs back to `Logger`.
+6. Validate async safety: pending-save guard must block loads; stale queued files must not reappear after prune/new-run.

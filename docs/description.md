@@ -11,7 +11,7 @@ Automatically creates save points as you play. Rewind to any moment instantly.
 - **Rewind Freely** — Stepped-back saves are preserved until you make a new save.
 - **Save Browser** — Visual timeline with blind icons to easily find your spot.
 - **Smart Continue** — Resumes at your exact timeline position, even after restarting.
-- **Overflow Protection** — Rewind/save-load safely even with extreme (naneinf) scores.
+- **Overflow Protection** — Rewind/save-load safely with extreme `naneinf/inf` scores.
 
 ## Controls
 | Action | Keyboard | Controller |
@@ -20,9 +20,13 @@ Automatically creates save points as you play. Rewind to any moment instantly.
 | Quick Saveload | `L` | `R3` |
 | Open List | `Ctrl+S` | `X` (Pause Menu) |
 
-## Configuration
-Customize save trigger points, save limits , keybinds and more in the Steamodded mod menu.
+## Save List Icon Buttons
+- **Check key saves** — Show only key saves.
+- **★ Edit key saves** — Enter mark mode and toggle key marks.
+- **▶ Current save** — Jump to the currently loaded save.
+- **Flow** — `★ Edit key saves` → click entries (`[?]` = pending) → `★ Save marking changes`.
 
-In the save list, use **Check key saves**, **★ Edit key saves**, and **▶ Current save** buttons for quick key-save management.
+## Configuration
+Customize save triggers, save limits, overflow handling, keybinds, and more in the Steamodded mod menu.
 
 > ℹ️ Saves are stored in `[Profile]/SaveRewinder/`. They persist if you quit mid-run, but are cleared when starting a **new run**.

@@ -15,11 +15,47 @@ if SMODS and SMODS.current_mod then
    REWINDER.mod = SMODS.current_mod
    REWINDER.config = REWINDER.mod.config or {}
 
+   local function _loc(key, fallback)
+      return (localize and localize(key)) or fallback
+   end
+
+   -- Builders for repeated config UI structures
+   local function _section_header(label_key, fallback)
+      return {
+         n = G.UIT.R,
+         config = { align = "cm", padding = 0.05 },
+         nodes = {
+            {
+               n = G.UIT.T,
+               config = {
+                  text = _loc(label_key, fallback),
+                  colour = G.C.UI.TEXT_LIGHT,
+                  scale = 0.45,
+               },
+            },
+         },
+      }
+   end
+
+   local function _toggle_row(label_key, fallback, ref_value)
+      return {
+         n = G.UIT.R,
+         config = { align = "cl", padding = 0.02 },
+         nodes = {
+            create_toggle({
+               label = _loc(label_key, fallback),
+               ref_table = REWINDER.config,
+               ref_value = ref_value,
+            }),
+         },
+      }
+   end
+
    local function _rewinder_keybind_label(name)
       if REWINDER and REWINDER.keybinds and REWINDER.keybinds.get_binding and REWINDER.keybinds.format_binding then
          return REWINDER.keybinds.format_binding(REWINDER.keybinds.get_binding(name))
       end
-      return (localize and localize("rewinder_keybind_none")) or "[none]"
+      return _loc("rewinder_keybind_none", "[none]")
    end
 
    local function _rewinder_keybind_row(name, label_key)
@@ -40,7 +76,7 @@ if SMODS and SMODS.current_mod then
                   {
                      n = G.UIT.T,
                      config = {
-                        text = localize and localize(label_key) or label_key,
+                        text = _loc(label_key, label_key),
                         scale = 0.35,
                         colour = G.C.UI.TEXT_LIGHT,
                      },
@@ -83,66 +119,11 @@ if SMODS and SMODS.current_mod then
                      n = G.UIT.C,
                      config = { align = "tm", padding = 0.1 },
                      nodes = {
-                        -- Section header
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cm", padding = 0.05 },
-                           nodes = {
-                              {
-                                 n = G.UIT.T,
-                                 config = {
-                                    text = localize and localize("rewinder_section_auto_save") or "Auto-Save Triggers",
-                                    colour = G.C.UI.TEXT_LIGHT,
-                                    scale = 0.45,
-                                 },
-                              },
-                           },
-                        },
-                        -- Toggles
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cl", padding = 0.02 },
-                           nodes = {
-                              create_toggle({
-                                 label = localize and localize("rewinder_save_on_blind") or "Save when choosing blind",
-                                 ref_table = REWINDER.config,
-                                 ref_value = "save_on_blind",
-                              }),
-                           },
-                        },
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cl", padding = 0.02 },
-                           nodes = {
-                              create_toggle({
-                                 label = localize and localize("rewinder_save_on_selecting_hand") or "Save when selecting hand",
-                                 ref_table = REWINDER.config,
-                                 ref_value = "save_on_selecting_hand",
-                              }),
-                           },
-                        },
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cl", padding = 0.02 },
-                           nodes = {
-                              create_toggle({
-                                 label = localize and localize("rewinder_save_on_round_end") or "Save at end of round",
-                                 ref_table = REWINDER.config,
-                                 ref_value = "save_on_round_end",
-                              }),
-                           },
-                        },
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cl", padding = 0.02 },
-                           nodes = {
-                              create_toggle({
-                                 label = localize and localize("rewinder_save_on_shop") or "Save in shop",
-                                 ref_table = REWINDER.config,
-                                 ref_value = "save_on_shop",
-                              }),
-                           },
-                        },
+                        _section_header("rewinder_section_auto_save", "Auto-Save Triggers"),
+                        _toggle_row("rewinder_save_on_blind", "Save when choosing blind", "save_on_blind"),
+                        _toggle_row("rewinder_save_on_selecting_hand", "Save when selecting hand", "save_on_selecting_hand"),
+                        _toggle_row("rewinder_save_on_round_end", "Save at end of round", "save_on_round_end"),
+                        _toggle_row("rewinder_save_on_shop", "Save in shop", "save_on_shop"),
                      },
                   },
                   -- Right column: Display Options
@@ -150,80 +131,22 @@ if SMODS and SMODS.current_mod then
                      n = G.UIT.C,
                      config = { align = "tm", padding = 0.1 },
                      nodes = {
-                        -- Section header
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cm", padding = 0.05 },
-                           nodes = {
-                              {
-                                 n = G.UIT.T,
-                                 config = {
-                                    text = localize and localize("rewinder_section_display") or "Display Options",
-                                    colour = G.C.UI.TEXT_LIGHT,
-                                    scale = 0.45,
-                                 },
-                              },
-                           },
-                        },
-                        -- Toggles
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cl", padding = 0.02 },
-                           nodes = {
-                              create_toggle({
-                                 label = localize and localize("rewinder_show_blind_image") or "Show blind image",
-                                 ref_table = REWINDER.config,
-                                 ref_value = "show_blind_image",
-                              }),
-                           },
-                        },
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cl", padding = 0.02 },
-                           nodes = {
-                              create_toggle({
-                                 label = localize and localize("rewinder_animate_blind_image") or "Blind image effects",
-                                 ref_table = REWINDER.config,
-                                 ref_value = "animate_blind_image",
-                              }),
-                           },
-                        },
-                        {
-                           n = G.UIT.R,
-                           config = { align = "cl", padding = 0.02 },
-                           nodes = {
-                              create_toggle({
-                                 label = localize and localize("rewinder_clamp_infinity_scores") or "Clamp infinity scores",
-                                 ref_table = REWINDER.config,
-                                 ref_value = "clamp_infinity_scores",
-                              }),
-                           },
-                        },
+                        _section_header("rewinder_section_display", "Display Options"),
+                        _toggle_row("rewinder_show_blind_image", "Show blind image", "show_blind_image"),
+                        _toggle_row("rewinder_animate_blind_image", "Blind image effects", "animate_blind_image"),
+                        _toggle_row("rewinder_clamp_infinity_scores", "Clamp infinity scores", "clamp_infinity_scores"),
                      },
                   },
                },
             },
             -- Advanced section (full width)
-            {
-               n = G.UIT.R,
-               config = { align = "cm", padding = 0.02 },
-               nodes = {
-                  {
-                     n = G.UIT.T,
-                     config = {
-                        text = localize and localize("rewinder_section_advanced") or "Advanced",
-                        colour = G.C.UI.TEXT_LIGHT,
-                        scale = 0.45,
-                     },
-                  },
-               },
-            },
+            _section_header("rewinder_section_advanced", "Advanced"),
             {
                n = G.UIT.R,
                config = { align = "cm", padding = 0.03 },
                nodes = {
                   create_option_cycle({
-                     label = localize and localize("rewinder_max_antes_per_run") or "Max saved antes per run",
+                     label = _loc("rewinder_max_antes_per_run", "Max saved antes per run"),
                      options = {
                         "1",
                         "2",
@@ -231,7 +154,7 @@ if SMODS and SMODS.current_mod then
                         "6",
                         "8",
                         "16",
-                        (localize and localize("rewinder_all_label")) or "All",
+                        _loc("rewinder_all_label", "All"),
                      },
                      current_option = REWINDER.config.keep_antes or 7,
                      colour = G.C.BOOSTER,
@@ -254,7 +177,7 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.1 },
                      nodes = {
                         create_toggle({
-                           label = localize and localize("rewinder_debug_saves") or "Debug: verbose logging",
+                           label = _loc("rewinder_debug_saves", "Debug: verbose logging"),
                            ref_table = REWINDER.config,
                            ref_value = "debug_saves",
                         }),
@@ -265,7 +188,7 @@ if SMODS and SMODS.current_mod then
                      config = { align = "cm", padding = 0.1 },
                      nodes = {
                         UIBox_button({
-                           label = { (localize and localize("rewinder_delete_all_saves_button")) or "Delete all saves" },
+                           label = { _loc("rewinder_delete_all_saves_button", "Delete all saves") },
                            button = "rewinder_save_delete_all",
                            minw = 3,
                            minh = 0.6,
@@ -293,7 +216,7 @@ if SMODS and SMODS.current_mod then
                   {
                      n = G.UIT.T,
                      config = {
-                        text = localize and localize("rewinder_keybinds_title") or "Keybinds",
+                        text = _loc("rewinder_keybinds_title", "Keybinds"),
                         colour = G.C.UI.TEXT_LIGHT,
                         scale = 0.45,
                      },
@@ -308,7 +231,7 @@ if SMODS and SMODS.current_mod then
                config = { align = "cm", padding = 0.06 },
                nodes = {
                   UIBox_button({
-                     label = { localize and localize("rewinder_keybind_reset") or "Reset to defaults" },
+                     label = { _loc("rewinder_keybind_reset", "Reset to defaults") },
                      button = "rewinder_reset_keybinds",
                      minw = 3.6,
                      minh = 0.6,
@@ -324,7 +247,7 @@ if SMODS and SMODS.current_mod then
                   {
                      n = G.UIT.T,
                      config = {
-                        text = localize and localize("rewinder_keybind_hint") or "Click a keybind and press keys. Esc clears it.",
+                        text = _loc("rewinder_keybind_hint", "Click a keybind and press keys. Esc clears it."),
                         colour = G.C.UI.TEXT_LIGHT,
                         scale = 0.3,
                      },
@@ -340,7 +263,7 @@ if SMODS and SMODS.current_mod then
       local name = e.config.ref_table.name
       local dynamic_label = e.config.ref_table.label
       if dynamic_label then
-         dynamic_label.text = localize and localize("rewinder_keybind_waiting") or "Waiting for input..."
+         dynamic_label.text = _loc("rewinder_keybind_waiting", "Waiting for input...")
       end
 
       if REWINDER and REWINDER.keybinds and REWINDER.keybinds.record then
@@ -389,7 +312,7 @@ if SMODS and SMODS.current_mod then
    SMODS.current_mod.extra_tabs = function()
       return {
          {
-            label = localize and localize("rewinder_tab_keybinds") or "Keybinds",
+            label = _loc("rewinder_tab_keybinds", "Keybinds"),
             tab_definition_function = REWINDER.keybinds_tab,
          },
       }

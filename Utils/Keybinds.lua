@@ -384,22 +384,14 @@ local function _in_run_stage()
    return G and G.STAGE and G.STAGES and G.STAGE == G.STAGES.RUN
 end
 
-function Keybinds._on_key_press(controller, key)
-   Keybinds.last_input_type = "keyboard"
-   if Keybinds._recording then
-      _record_key_press(key)
-      return
-   end
-   if not _can_use_keybinds() then return end
-   if not _in_run_stage() then return end
+local function _find_and_activate(controller, check_type)
    local matches = {}
    local max_size = 0
    for name, func in pairs(Keybinds._actions) do
       if not Keybinds._activated[name] then
          local binding = Keybinds.get_binding(name)
-         -- Check KEYBOARD bindings
-         if _is_keybind_pressed(controller, binding, "keyboard") then
-            local size = _binding_size(binding, "keyboard")
+         if _is_keybind_pressed(controller, binding, check_type) then
+            local size = _binding_size(binding, check_type)
             if size > max_size then
                max_size = size
                matches = { { name = name, func = func } }
@@ -413,6 +405,17 @@ function Keybinds._on_key_press(controller, key)
       match.func(controller)
       Keybinds._activated[match.name] = true
    end
+end
+
+function Keybinds._on_key_press(controller, key)
+   Keybinds.last_input_type = "keyboard"
+   if Keybinds._recording then
+      _record_key_press(key)
+      return
+   end
+   if not _can_use_keybinds() then return end
+   if not _in_run_stage() then return end
+   _find_and_activate(controller, "keyboard")
 end
 
 function Keybinds._on_key_release(controller, key)
@@ -456,28 +459,7 @@ function Keybinds._on_button_press(controller, button)
    end
 
    -- 2. Configurable Controller Actions
-   local matches = {}
-   local max_size = 0
-   for name, func in pairs(Keybinds._actions) do
-      if not Keybinds._activated[name] then
-         local binding = Keybinds.get_binding(name)
-         -- Check CONTROLLER bindings
-         if _is_keybind_pressed(controller, binding, "controller") then
-            -- Controller bindings usually simple 1-button, but keep size check structure
-            local size = _binding_size(binding, "controller")
-            if size > max_size then
-               max_size = size
-               matches = { { name = name, func = func } }
-            elseif size == max_size then
-               matches[#matches + 1] = { name = name, func = func }
-            end
-         end
-      end
-   end
-   for _, match in ipairs(matches) do
-      match.func(controller)
-      Keybinds._activated[match.name] = true
-   end
+   _find_and_activate(controller, "controller")
 end
 
 function Keybinds._on_button_release(controller, button)

@@ -20,17 +20,18 @@ flowchart TD
     D --> E[Export API to REWINDER]
     E --> F[Hook Game:set_render_settings]
     F --> G{Loading screen visible?}
-    G -->|Yes| H[preload_all_metadata (index + warm meta window)]
-    H --> I{save.jkr exists?}
-    I -->|Yes| J[Read and unpack save.jkr]
-    J --> K{Has _rewinder_id?}
-    K -->|Yes| L[O(1) ID lookup]
-    K -->|No| M[Use newest save]
-    L --> N[Set _last_loaded_file]
-    M --> N
-    I -->|No| O[Skip matching]
-    N --> P[Game ready]
-    O --> P
+    G -->|Yes| H[Start SaveThread worker]
+    H --> I[preload_all_metadata (index + warm meta window)]
+    I --> J{save.jkr exists?}
+    J -->|Yes| K[Read and unpack save.jkr]
+    K --> L{Has _rewinder_id?}
+    L -->|Yes| M[O(1) ID lookup]
+    L -->|No| N[Use newest save]
+    M --> O[Set _last_loaded_file]
+    N --> O
+    J -->|No| P[Skip matching]
+    O --> Q[Game ready]
+    P --> Q
 ```
 
 ---
@@ -43,6 +44,7 @@ flowchart TD
 if not REWINDER then REWINDER = {} end
 local StateSignature = require("StateSignature")
 local SaveManager = require("SaveManager")
+local SaveThread = require("SaveThread")
 ```
 
 Creates global namespace and loads core modules.
@@ -72,13 +74,15 @@ This timing is ideal because:
 
 ---
 
-### Step 4: Cache Initialization
+### Step 4: Save Thread + Cache Initialization
 
 ```lua
+SaveThread.start()
 local entries = SaveManager.preload_all_metadata(true)
 ```
 
 **Actions:**
+- Starts `rewinder_save_thread` while loading screen is visible
 - Scans save directory for `.jkr` files
 - Builds `save_cache`, `save_cache_by_file`, `save_cache_by_id`
 - Warms a bounded meta window (default 32 entries)
@@ -126,5 +130,6 @@ local entry, idx = SaveManager.get_entry_by_id(rewinder_id)
 ## Related Files
 
 - `Core/SaveManager.lua` — `preload_all_metadata()`, `get_entry_by_id()`
+- `Utils/SaveThread.lua` — `start()`, thread lifecycle
 - `Utils/MetaFile.lua` — `.meta` file parsing
 - `lovely.toml` — Module loading order

@@ -8,6 +8,7 @@ local MetaFile = require("MetaFile")
 local FileIO = require("FileIO")
 local Pruning = require("Pruning")
 local Logger = require("Logger")
+local SaveThread = require("SaveThread")
 
 
 -- ============================================================================
@@ -136,6 +137,8 @@ M.current_index = nil
 M.pending_index = nil
 M._last_save_sig = nil   -- Signature STRING of last created save (for duplicate detection)
 M._last_save_time = nil
+local pending_async_files = {}
+local pending_async_count = 0
 
 
 -- Ordinal state: in-memory counters per blind for O(1) ordinal computation
@@ -525,23 +528,22 @@ end
 -- Takes signature STRING and display_type for comparison
 local function _should_skip_duplicate(signature, display_type, ante, round)
    if not signature then return false end
+   if not M._last_save_sig or not M._last_save_time then return false end
+
+   local now = love.timer.getTime()
+   local elapsed = now - M._last_save_time
 
    -- Prevent duplicate saves if same signature AND created very recently (<0.5s)
-   if M._last_save_sig and M._last_save_time and
-       M._last_save_sig == signature and
-       (love.timer.getTime() - M._last_save_time) < 0.5 then
+   if M._last_save_sig == signature and elapsed < 0.5 then
       return true
    end
 
    -- Prevent rapid-fire saves at same ante/round (even if money differs)
    -- Exception: Allow opening pack (O) saves even if recent shop save exists
-   if M._last_save_sig and M._last_save_time and
-       (love.timer.getTime() - M._last_save_time) < 0.3 then
-      -- Extract ante:round from last signature for comparison
+   if elapsed < 0.3 then
       local last_ante, last_round = M._last_save_sig:match("^(%d+):(%d+):")
       if last_ante and last_round and 
           tonumber(last_ante) == ante and tonumber(last_round) == round then
-         -- Don't skip if this is an opening pack save
          if display_type ~= "O" then
             M.debug_log("debug", "Skip rapid save at same ante/round")
             return true
@@ -550,15 +552,12 @@ local function _should_skip_duplicate(signature, display_type, ante, round)
    end
 
    -- Special handling for end of round states (E)
-   if display_type == "E" then
-      if M._last_save_sig and M._last_save_time and
-          (love.timer.getTime() - M._last_save_time) < 1.0 then
-         local last_ante, last_round, last_dtype = M._last_save_sig:match("^(%d+):(%d+):(%a+):")
-         if last_dtype == "E" and 
-             tonumber(last_ante) == ante and tonumber(last_round) == round then
-            M.debug_log("debug", "Skip duplicate end of round")
-            return true
-         end
+   if display_type == "E" and elapsed < 1.0 then
+      local last_ante, last_round, last_dtype = M._last_save_sig:match("^(%d+):(%d+):(%a+):")
+      if last_dtype == "E" and 
+          tonumber(last_ante) == ante and tonumber(last_round) == round then
+         M.debug_log("debug", "Skip duplicate end of round")
+         return true
       end
    end
 
@@ -594,6 +593,101 @@ end
 local function _invalidate_derived_indexes()
    -- Keep save_cache_by_file hot for current-flag updates.
    save_index_by_file, save_cache_by_id = nil, nil
+end
+
+local function _mark_async_pending(file)
+   if not file or pending_async_files[file] then return end
+   pending_async_files[file] = true
+   pending_async_count = pending_async_count + 1
+end
+
+local function _clear_async_pending(file)
+   if not file or not pending_async_files[file] then return end
+   pending_async_files[file] = nil
+   pending_async_count = math.max(0, pending_async_count - 1)
+end
+
+local function _remove_entry_from_cache(file)
+   if not file or not save_cache then return false end
+   local removed = false
+   for i = #save_cache, 1, -1 do
+      local entry = save_cache[i]
+      if entry and entry[E.ENTRY_FILE] == file then
+         table.remove(save_cache, i)
+         removed = true
+         break
+      end
+   end
+   if removed then
+      if save_cache_by_file then
+         save_cache_by_file[file] = nil
+      end
+      _invalidate_save_cache_view()
+      _invalidate_derived_indexes()
+      if M._last_loaded_file == file then
+         M._last_loaded_file = nil
+      end
+   end
+   _drop_meta(file)
+   return removed
+end
+
+local function _remove_save_file_pair(file)
+   if not file then return end
+   local dir = M.get_save_dir()
+   love.filesystem.remove(dir .. "/" .. file)
+   if file:match("%.jkr$") then
+      love.filesystem.remove(dir .. "/" .. file:gsub("%.jkr$", ".meta"))
+   end
+end
+
+local function _process_async_save_results()
+   SaveThread.check_errors()
+   if pending_async_count <= 0 and not (SaveThread.has_pending_results and SaveThread.has_pending_results()) then
+      return
+   end
+
+   local changed = false
+   while true do
+      local result = SaveThread.pop_result and SaveThread.pop_result() or nil
+      if not result then break end
+
+      local file = result.file
+      if file then
+         _clear_async_pending(file)
+      end
+
+      if result.status == "ok" then
+         -- Save write finished successfully.
+      elseif result.status == "stale" then
+         if file then
+            _remove_save_file_pair(file)
+            if _remove_entry_from_cache(file) then
+               changed = true
+            end
+         end
+      elseif result.status == "error" then
+         if file then
+            M.debug_log("error", "Async save failed for " .. tostring(file) .. ": " .. tostring(result.error))
+            _remove_save_file_pair(file)
+            if _remove_entry_from_cache(file) then
+               changed = true
+            end
+         end
+      end
+   end
+
+   if changed then
+      _rebuild_file_index()
+      _update_cache_current_flags(true)
+   end
+end
+
+function M.invalidate_async_saves()
+   if SaveThread.invalidate_pending then
+      SaveThread.invalidate_pending()
+   end
+   _process_async_save_results()
 end
 
 function M.get_entry_by_file(file)
@@ -675,6 +769,7 @@ function M.get_profile() return FileIO.get_profile() end
 function M.get_save_dir() return FileIO.get_save_dir(M.PATHS.SAVES) end
 
 function M.clear_all_saves()
+   M.invalidate_async_saves()
    local dir = M.get_save_dir()
    if love.filesystem.getInfo(dir) then
       for _, file in ipairs(love.filesystem.getDirectoryItems(dir)) do
@@ -689,6 +784,8 @@ function M.clear_all_saves()
    meta_lru_ts = {}
    meta_lru_clock = 0
    meta_cache_limit = M.META_CACHE_BASE_LIMIT
+   pending_async_files = {}
+   pending_async_count = 0
    _last_current_file = false  -- Reset sentinel for O(1) change detection
    _rebuild_file_index()
 end
@@ -765,6 +862,7 @@ end
 
 -- Returns sorted list of saves. Metadata is loaded on-demand (bounded cache).
 function M.get_save_files(force_reload)
+   _process_async_save_results()
    if save_cache and not force_reload then
       _update_cache_current_flags()
       if not save_cache_by_file then _rebuild_file_index() end
@@ -881,6 +979,7 @@ function M.load_and_start_from_file(file, opts)
    opts = opts or {}
    local mark_restore = not opts.skip_restore_identical
    local reason = mark_restore and "restore" or "step"
+   _process_async_save_results()
 
    -- Get entry and ensure cache is loaded
    M.get_save_files()
@@ -889,6 +988,13 @@ function M.load_and_start_from_file(file, opts)
    local idx_from_list = M.get_index_by_file(file)
    if idx_from_list and M.ensure_meta_window then
       M.ensure_meta_window(idx_from_list, M.META_CACHE_BASE_LIMIT)
+   end
+   if pending_async_files[file] then
+      _process_async_save_results()
+      if pending_async_files[file] then
+         M.debug_log("warning", "Save still writing, try again: " .. tostring(file))
+         return false
+      end
    end
    
    -- Reset state flags
@@ -964,6 +1070,14 @@ function M.load_and_start_from_file(file, opts)
    G.SAVED_GAME._file = file
    
    if opts.no_wipe and G.delete_run and G.start_run then
+      -- Keep fast no_wipe restore, but mirror vanilla safety guards:
+      -- leave SELECTING_HAND before teardown and clear queued events.
+      if G.STATES and G.STATES.MENU then
+         G.STATE = G.STATES.MENU
+      end
+      if G.E_MANAGER and G.E_MANAGER.clear_queue then
+         G.E_MANAGER:clear_queue()
+      end
       G:delete_run()
       G:start_run({ savetext = G.SAVED_GAME })
    elseif G.FUNCS and G.FUNCS.start_run then
@@ -1100,7 +1214,11 @@ local function _align_save_id_to_current(save_table, reason)
    end
 end
 
+-- Cached state_info from consume_skip_on_save for reuse in create_save (avoids double computation)
+local _skip_check_state_info = nil
+
 function M.consume_skip_on_save(save_table)
+   _skip_check_state_info = nil
    if not M.skip_next_save then return false end
    
    -- Derive _file from _rewinder_id if not set
@@ -1118,6 +1236,7 @@ function M.consume_skip_on_save(save_table)
    
    -- Get current state info and compute display_type
    local state_info = StateSignature.get_state_info(save_table)
+   _skip_check_state_info = state_info  -- Cache for create_save reuse
    local display_type = _compute_display_type(state_info)
    
    -- Direct field comparison (faster than signature string format + compare)
@@ -1167,26 +1286,32 @@ end
 
 -- --- Save Creation ---
 
--- Config filter lookup
+-- Config filter lookup (table hoisted to avoid per-call allocation)
+local _state_filters = nil
 local function _should_save_state(state, config)
-   local st = G and G.STATES
-   if not st or not config then return true end
-   local filters = {
-      [st.ROUND_EVAL] = "save_on_round_end",
-      [st.HAND_PLAYED] = "save_on_round_end",
-      [st.BLIND_SELECT] = "save_on_blind",
-      [st.SELECTING_HAND] = "save_on_selecting_hand",
-      [st.SHOP] = "save_on_shop",
-   }
-   local key = filters[state]
+   if not config then return true end
+   if not _state_filters then
+      local st = G and G.STATES
+      if not st then return true end
+      _state_filters = {
+         [st.ROUND_EVAL] = "save_on_round_end",
+         [st.HAND_PLAYED] = "save_on_round_end",
+         [st.BLIND_SELECT] = "save_on_blind",
+         [st.SELECTING_HAND] = "save_on_selecting_hand",
+         [st.SHOP] = "save_on_shop",
+      }
+   end
+   local key = _state_filters[state]
    return not key or config[key] ~= false
 end
 
 function M.create_save(run_data)
+   _process_async_save_results()
    if M.consume_skip_on_save(run_data) then return end
 
-   -- Get state info and check if we should save this state
-   local state_info = StateSignature.get_state_info(run_data)
+   -- Get state info (reuse from consume_skip_on_save if available)
+   local state_info = _skip_check_state_info or StateSignature.get_state_info(run_data)
+   _skip_check_state_info = nil
    if not state_info then return end
    if not _should_save_state(state_info.state, REWINDER and REWINDER.config) then
       _align_save_id_to_current(run_data, "filtered")
@@ -1230,6 +1355,8 @@ function M.create_save(run_data)
 
    -- Prune future saves using ENTRY_INDEX boundary (O(1) setup vs O(N) list building)
    if M.pending_future_prune_boundary then
+      -- Invalidate queued async writes so old timeline states can't reappear after prune.
+      M.invalidate_async_saves()
       Pruning.prune_future_saves(dir, M.pending_future_prune_boundary, save_cache, E)
       M.pending_future_prune_boundary = nil  -- Clear after use
       _invalidate_save_cache_view()
@@ -1297,37 +1424,46 @@ function M.create_save(run_data)
    }
 
    local full_path = dir .. "/" .. filename
-   local write_ok, write_err, compressed_bytes = FileIO.write_save_file(run_data, full_path)
-   if not write_ok then
-      M.debug_log("error", "Failed to write save: " .. tostring(write_err))
-      return
+
+   -- Write .meta first (tiny, stays on main thread for immediate cache population)
+   local meta_table = {
+      money = state_info.money,
+      signature = signature,
+      discards_used = state_info.discards_used,
+      hands_played = state_info.hands_played,
+      blind_idx = blind_idx,
+      display_type = display_type,
+      ordinal = ordinal,
+   }
+   MetaFile.write_meta_file(dir .. "/" .. filename:gsub("%.jkr$", ".meta"), meta_table)
+   _cache_meta(filename, meta_table)
+
+   -- Async save: push to background thread (STR_PACK + compress + write happen off main thread)
+   -- Main thread cost: ~5-10ms (channel:push C-level serialization)
+   -- Thread cost: ~51ms (invisible to user)
+   local profile = FileIO.get_profile()
+   local main_save_path = profile .. "/save.jkr"
+   local clamp_infinity_scores = (REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores) == true
+   local big_backend_mode = (NaNProtection and NaNProtection.has_big_backend and NaNProtection.has_big_backend()) == true
+   -- Big-number backends (amulet/Talisman-style) patch STR_PACK in the main Lua state.
+   -- SaveThread runs in an isolated state and cannot inherit those patches safely, so
+   -- force synchronous write here to preserve big-score serialization fidelity.
+   local wrote_async = false
+   if not big_backend_mode then
+      wrote_async = SaveThread.push_save(run_data, full_path, main_save_path, filename, clamp_infinity_scores, big_backend_mode)
    end
-   M.debug_log("debug", "Wrote save file: " .. filename)
-
-   MetaFile.write_meta_file(dir .. "/" .. filename:gsub("%.jkr$", ".meta"), {
-      money = state_info.money,
-      signature = signature,
-      discards_used = state_info.discards_used,
-      hands_played = state_info.hands_played,
-      blind_idx = blind_idx,
-      display_type = display_type,
-      ordinal = ordinal,
-   })
-   _cache_meta(filename, {
-      money = state_info.money,
-      signature = signature,
-      discards_used = state_info.discards_used,
-      hands_played = state_info.hands_played,
-      blind_idx = blind_idx,
-      display_type = display_type,
-      ordinal = ordinal,
-   })
-
-   -- Keep save.jkr aligned using the bytes we just compressed (skip re-read from disk).
-   if compressed_bytes then
-      FileIO.write_bytes_to_main(compressed_bytes)
-   else
-      FileIO.copy_save_to_main(filename, dir)
+   if not wrote_async then
+      -- Sync fallback if thread unavailable
+      local write_ok, write_err, compressed_bytes = FileIO.write_save_file(run_data, full_path)
+      if not write_ok then
+         M.debug_log("error", "Failed to write save: " .. tostring(write_err))
+         return
+      end
+      if compressed_bytes then
+         FileIO.write_bytes_to_main(compressed_bytes)
+      else
+         FileIO.copy_save_to_main(filename, dir)
+      end
    end
 
    -- Internal order is oldest-first. Append newest entry in O(1).
@@ -1336,6 +1472,9 @@ function M.create_save(run_data)
    new_entry[ENTRY_IS_CURRENT] = true  -- Set directly on new entry (before rebuild)
    if save_cache_by_file then
       save_cache_by_file[filename] = new_entry
+   end
+   if wrote_async then
+      _mark_async_pending(filename)
    end
    run_data._file = filename
    M.current_index = 1
