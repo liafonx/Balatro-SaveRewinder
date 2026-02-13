@@ -1,59 +1,81 @@
+# ========================================
 # macOS
+# ========================================
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
 
-# Build directories
+# ========================================
+# IDE/Editor
+# ========================================
+.vscode/
+.idea/
+.cursor/
+*.code-workspace
+.netrc
+
+# ========================================
+# Editor Backups
+# ========================================
+*~
+*.swp
+*.swo
+*.bak
+
+# ========================================
+# Build/Release Outputs
+# ========================================
 /.build
 /Packages
 xcuserdata/
 DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+/release/
 
-# IDE/Editor
-.netrc
-.vscode/
-.idea/
-.cursor/
-Balatro.antihypertensive.code-workspace
-*.code-workspace
-
-# Reference/Development folders (not part of released mod)
-# These are kept locally for development but excluded from git and game Mods folder
+# ========================================
+# Reference/Development folders
+# ========================================
+References/
 Contents/
 jkrs/
+raw_icon/
+icon.png
+*.ai
 save.*
 save_decoder.py
-raw_icon/
-References/
-icon.png
 
+# ========================================
 # Development scripts (local only)
+# ========================================
 scripts/
 
-# Generated/Cache files
+# ========================================
+# Logs and Debug Files
+# ========================================
+logs/
+*.log
 *.meta
 trace.txt
 
-# Release packages
-/release/
-
-# Save files and test data
-save.*
-jkrs/
-Contents/
-
-# Logs
-logs/
-
-# Documentation (if auto-generated)
-MCP_SUGGESTIONS.md/
-docs/NEXUSMODS_DESCRIPTION.txt
+# ========================================
+# Temporary Files
+# ========================================
+temp/
+tmp/
 *.tmp
-assets/icon_single_border.ai
-icon_single_border.ai
-Utils/G.STATES.lua
-docs/G.STATES.lua
-docs/issue.md
+
+# ========================================
+# Test Files
+# ========================================
+test_saves/
+
+# ========================================
+# Generated/Research files in docs
+# ========================================
+docs/*.lua
+docs/NEXUSMODS_DESCRIPTION.txt
 
 # ========================================
 # AI Agent Files (local only)
@@ -65,5 +87,3 @@ docs/issue.md
 INIT.md
 mod.config.json
 docs/knowledge-base.md
-docs/G.COLORS.lua
-docs/PLAN_PERF_OPTIMIZATION.md
