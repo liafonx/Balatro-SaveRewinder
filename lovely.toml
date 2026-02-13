@@ -144,8 +144,16 @@ pattern = "G.ARGS.save_run = G.culled_table"
 position = "after"
 payload = """
    G.ARGS.rewinder_copy_path = nil
-   if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end
-   if REWINDER and REWINDER.defer_save_creation then REWINDER.defer_save_creation() end"""
+   if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end"""
+
+# Create rewinder save at actual queue point (1:1 with save_run thread request).
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "if G.FILE_HANDLER.run then"
+position = "after"
+match_indent = true
+payload = "if REWINDER and REWINDER.defer_save_creation and G.ARGS and G.ARGS.save_run then REWINDER.defer_save_creation() end"
 
 # Thread piggyback: carry rewinder copy destination with vanilla save_run request
 [[patches]]

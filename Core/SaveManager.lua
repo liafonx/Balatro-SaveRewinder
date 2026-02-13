@@ -1047,11 +1047,26 @@ function M.revert_to_previous_save()
    -- Target is index + 1 (older save), or index 1 if unknown
    local target_idx = (current_idx == 0) and 1 or (current_idx + 1)
    if target_idx > #entries then return end  -- Already at oldest
-   
-   -- Direct entry access (no lookup needed)
-   local target_entry = entries[target_idx]
-   if not target_entry or not target_entry[E.ENTRY_FILE] then return end
-   
+
+   -- Skip missing/corrupt targets (e.g., stale meta without matching .jkr).
+   local target_entry = nil
+   while target_idx <= #entries do
+      local candidate = entries[target_idx]
+      local candidate_file = candidate and candidate[E.ENTRY_FILE]
+      if candidate_file then
+         if pending_async_files[candidate_file] then
+            _process_async_save_results()
+         end
+         if _is_async_save_ready(candidate_file) then
+            target_entry = candidate
+            break
+         end
+         M.debug_log("warning", "Skipping missing save file: " .. tostring(candidate_file))
+      end
+      target_idx = target_idx + 1
+   end
+   if not target_entry then return end
+
    M.debug_log("info", "Step back -> " .. M.describe_save({ entry = target_entry }))
    M.load_and_start_from_file(target_entry[E.ENTRY_FILE], { skip_restore_identical = true, no_wipe = true })
 end
