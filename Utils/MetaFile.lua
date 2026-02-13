@@ -36,24 +36,30 @@ function M.read_meta_file(meta_path)
     return (meta.signature and meta.display_type) and meta or nil
 end
 
+-- Reused line buffer to avoid per-save table allocation in write_meta_file.
+local _meta_lines_buf = {}
+
 -- Writes metadata to .meta file (fast path for future reads)
 function M.write_meta_file(meta_path, entry_meta)
     if not entry_meta or not entry_meta.signature then return false end
 
-    local lines = {
-        string.format("money=%d", entry_meta.money or 0),
-        string.format("signature=%s", entry_meta.signature),
-        string.format("discards_used=%d", entry_meta.discards_used or 0),
-        string.format("hands_played=%d", entry_meta.hands_played or 0),
-        string.format("blind_idx=%d", entry_meta.blind_idx or 0),
-        string.format("display_type=%s", entry_meta.display_type or "?"),
-        string.format("ordinal=%d", entry_meta.ordinal or 1),
-    }
+    _meta_lines_buf[1] = "money=" .. tostring(entry_meta.money or 0)
+    _meta_lines_buf[2] = "signature=" .. entry_meta.signature
+    _meta_lines_buf[3] = "discards_used=" .. tostring(entry_meta.discards_used or 0)
+    _meta_lines_buf[4] = "hands_played=" .. tostring(entry_meta.hands_played or 0)
+    _meta_lines_buf[5] = "blind_idx=" .. tostring(entry_meta.blind_idx or 0)
+    _meta_lines_buf[6] = "display_type=" .. (entry_meta.display_type or "?")
+    _meta_lines_buf[7] = "ordinal=" .. tostring(entry_meta.ordinal or 1)
+    local n = 7
     if entry_meta.is_key == true then
-        lines[#lines + 1] = "is_key=1"
+        n = 8
+        _meta_lines_buf[8] = "is_key=1"
     end
-    
-    local content = table.concat(lines, "\n")
+
+    -- Clear trailing stale slot if previous call had more fields.
+    _meta_lines_buf[n + 1] = nil
+
+    local content = table.concat(_meta_lines_buf, "\n", 1, n)
     local success, err = pcall(love.filesystem.write, meta_path, content)
     if not success then
         M.debug_log("error", "Failed to write meta file: " .. tostring(err))

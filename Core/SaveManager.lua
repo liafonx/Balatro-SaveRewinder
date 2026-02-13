@@ -8,7 +8,6 @@ local MetaFile = require("MetaFile")
 local FileIO = require("FileIO")
 local Pruning = require("Pruning")
 local Logger = require("Logger")
-local SaveThread = require("SaveThread")
 
 
 -- ============================================================================
@@ -245,7 +244,7 @@ local function _evict_meta_if_needed()
       _drop_meta(candidate)
       evicted = evicted + 1
    end
-   if evicted > 0 then
+   if evicted > 0 and Logger.is_verbose() then
       local now = love and love.timer and love.timer.getTime() or 0
       if (now - _last_eviction_log_time) > 0.5 or evicted >= 4 then
          M.debug_log("debug", "Meta cache evicted=" .. tostring(evicted))
@@ -545,7 +544,7 @@ local function _should_skip_duplicate(signature, display_type, ante, round)
       if last_ante and last_round and 
           tonumber(last_ante) == ante and tonumber(last_round) == round then
          if display_type ~= "O" then
-            M.debug_log("debug", "Skip rapid save at same ante/round")
+            if Logger.is_verbose() then M.debug_log("debug", "Skip rapid save at same ante/round") end
             return true
          end
       end
@@ -556,7 +555,7 @@ local function _should_skip_duplicate(signature, display_type, ante, round)
       local last_ante, last_round, last_dtype = M._last_save_sig:match("^(%d+):(%d+):(%a+):")
       if last_dtype == "E" and 
           tonumber(last_ante) == ante and tonumber(last_round) == round then
-         M.debug_log("debug", "Skip duplicate end of round")
+         if Logger.is_verbose() then M.debug_log("debug", "Skip duplicate end of round") end
          return true
       end
    end
@@ -607,87 +606,25 @@ local function _clear_async_pending(file)
    pending_async_count = math.max(0, pending_async_count - 1)
 end
 
-local function _remove_entry_from_cache(file)
-   if not file or not save_cache then return false end
-   local removed = false
-   for i = #save_cache, 1, -1 do
-      local entry = save_cache[i]
-      if entry and entry[E.ENTRY_FILE] == file then
-         table.remove(save_cache, i)
-         removed = true
-         break
-      end
-   end
-   if removed then
-      if save_cache_by_file then
-         save_cache_by_file[file] = nil
-      end
-      _invalidate_save_cache_view()
-      _invalidate_derived_indexes()
-      if M._last_loaded_file == file then
-         M._last_loaded_file = nil
-      end
-   end
-   _drop_meta(file)
-   return removed
-end
-
-local function _remove_save_file_pair(file)
-   if not file then return end
+local function _is_async_save_ready(file)
+   if not file then return false end
    local dir = M.get_save_dir()
-   love.filesystem.remove(dir .. "/" .. file)
-   if file:match("%.jkr$") then
-      love.filesystem.remove(dir .. "/" .. file:gsub("%.jkr$", ".meta"))
-   end
+   local info = love.filesystem.getInfo(dir .. "/" .. file)
+   return info and info.type == "file"
 end
 
 local function _process_async_save_results()
-   SaveThread.check_errors()
-   if pending_async_count <= 0 and not (SaveThread.has_pending_results and SaveThread.has_pending_results()) then
-      return
-   end
-
-   local changed = false
-   while true do
-      local result = SaveThread.pop_result and SaveThread.pop_result() or nil
-      if not result then break end
-
-      local file = result.file
-      if file then
+   if pending_async_count <= 0 then return end
+   for file in pairs(pending_async_files) do
+      if _is_async_save_ready(file) then
          _clear_async_pending(file)
       end
-
-      if result.status == "ok" then
-         -- Save write finished successfully.
-      elseif result.status == "stale" then
-         if file then
-            _remove_save_file_pair(file)
-            if _remove_entry_from_cache(file) then
-               changed = true
-            end
-         end
-      elseif result.status == "error" then
-         if file then
-            M.debug_log("error", "Async save failed for " .. tostring(file) .. ": " .. tostring(result.error))
-            _remove_save_file_pair(file)
-            if _remove_entry_from_cache(file) then
-               changed = true
-            end
-         end
-      end
-   end
-
-   if changed then
-      _rebuild_file_index()
-      _update_cache_current_flags(true)
    end
 end
 
 function M.invalidate_async_saves()
-   if SaveThread.invalidate_pending then
-      SaveThread.invalidate_pending()
-   end
-   _process_async_save_results()
+   pending_async_files = {}
+   pending_async_count = 0
 end
 
 function M.get_entry_by_file(file)
@@ -899,7 +836,7 @@ local function _ensure_key_flags_loaded(entries)
          end
       end
    end
-   if loaded > 0 then
+   if loaded > 0 and Logger.is_verbose() then
       M.debug_log("debug", "Loaded missing key flags before retention prune: " .. tostring(loaded))
    end
 end
@@ -995,6 +932,9 @@ function M.load_and_start_from_file(file, opts)
          M.debug_log("warning", "Save still writing, try again: " .. tostring(file))
          return false
       end
+   elseif not _is_async_save_ready(file) then
+      M.debug_log("warning", "Save file missing or not ready: " .. tostring(file))
+      return false
    end
    
    -- Reset state flags
@@ -1034,7 +974,7 @@ function M.load_and_start_from_file(file, opts)
    -- Initialize ordinal_state from loaded entry
    _init_ordinal_state_from_entry(entry)
    
-   if mark_restore then
+   if mark_restore and Logger.is_verbose() then
       M.debug_log("info", "Loading " .. M.describe_save({ file = file }))
    end
    
@@ -1209,8 +1149,7 @@ local function _align_save_id_to_current(save_table, reason)
    if entry and entry[E.ENTRY_INDEX] then
       save_table._rewinder_id = entry[E.ENTRY_INDEX]
       save_table._file = entry[E.ENTRY_FILE]
-      -- Only log in detail mode (too verbose for normal debug)
-      M.debug_log("debug", "Align id: " .. (reason or ""))
+      if Logger.is_verbose() then M.debug_log("debug", "Align id: " .. (reason or "")) end
    end
 end
 
@@ -1267,7 +1206,7 @@ function M.consume_skip_on_save(save_table)
    if should_skip then
       _align_save_id_to_current(save_table, "skip")
    end
-   if not should_skip then
+   if not should_skip and Logger.is_verbose() then
       M.debug_log("info", "Saving: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
    end
    
@@ -1315,7 +1254,7 @@ function M.create_save(run_data)
    if not state_info then return end
    if not _should_save_state(state_info.state, REWINDER and REWINDER.config) then
       _align_save_id_to_current(run_data, "filtered")
-      M.debug_log("debug", "Skipped save: state not configured for auto-save")
+      if Logger.is_verbose() then M.debug_log("debug", "Skipped save: state not configured for auto-save") end
       return
    end
    
@@ -1438,22 +1377,15 @@ function M.create_save(run_data)
    MetaFile.write_meta_file(dir .. "/" .. filename:gsub("%.jkr$", ".meta"), meta_table)
    _cache_meta(filename, meta_table)
 
-   -- Async save: push to background thread (STR_PACK + compress + write happen off main thread)
-   -- Main thread cost: ~5-10ms (channel:push C-level serialization)
-   -- Thread cost: ~51ms (invisible to user)
-   local profile = FileIO.get_profile()
-   local main_save_path = profile .. "/save.jkr"
-   local clamp_infinity_scores = (REWINDER and REWINDER.config and REWINDER.config.clamp_infinity_scores) == true
-   local big_backend_mode = (NaNProtection and NaNProtection.has_big_backend and NaNProtection.has_big_backend()) == true
-   -- Big-number backends (amulet/Talisman-style) patch STR_PACK in the main Lua state.
-   -- SaveThread runs in an isolated state and cannot inherit those patches safely, so
-   -- force synchronous write here to preserve big-score serialization fidelity.
+   -- Piggyback on vanilla save_manager thread: hand off target copy path via G.ARGS.
+   -- Fallback to synchronous write only if we cannot arm the handoff.
    local wrote_async = false
-   if not big_backend_mode then
-      wrote_async = SaveThread.push_save(run_data, full_path, main_save_path, filename, clamp_infinity_scores, big_backend_mode)
+   if G and G.ARGS then
+      G.ARGS.rewinder_copy_path = full_path
+      wrote_async = true
    end
    if not wrote_async then
-      -- Sync fallback if thread unavailable
+      M.debug_log("warning", "Piggyback path unavailable, using sync fallback")
       local write_ok, write_err, compressed_bytes = FileIO.write_save_file(run_data, full_path)
       if not write_ok then
          M.debug_log("error", "Failed to write save: " .. tostring(write_err))
@@ -1480,7 +1412,9 @@ function M.create_save(run_data)
    M.current_index = 1
    M._last_save_sig = signature
    M._last_save_time = love.timer.getTime()
-   M.debug_log("info", "Created: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
+   if Logger.is_verbose() then
+      M.debug_log("info", "Created: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
+   end
    
    if ante_changed then
       _apply_retention_policy(dir, save_cache)
