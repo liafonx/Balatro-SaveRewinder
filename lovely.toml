@@ -144,6 +144,8 @@ pattern = "G.ARGS.save_run = G.culled_table"
 position = "after"
 payload = """
    G.ARGS.rewinder_copy_path = nil
+   G.FILE_HANDLER = G.FILE_HANDLER or {}
+   G.FILE_HANDLER.force = true
    if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end"""
 
 # Create rewinder save at actual queue point (1:1 with save_run thread request).
