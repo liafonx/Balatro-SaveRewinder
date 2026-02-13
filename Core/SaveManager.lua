@@ -1068,7 +1068,10 @@ function M.revert_to_previous_save()
    if not target_entry then return end
 
    M.debug_log("info", "Step back -> " .. M.describe_save({ entry = target_entry }))
-   M.load_and_start_from_file(target_entry[E.ENTRY_FILE], { skip_restore_identical = true, no_wipe = true })
+   -- Use the safer start_run path for compatibility with mods that hook HUD/card-area
+   -- updates (e.g. preview overlays). The no_wipe fast path can leave transient
+   -- detached UI nodes during teardown and trigger nil dereferences in those hooks.
+   M.load_and_start_from_file(target_entry[E.ENTRY_FILE], { skip_restore_identical = true })
 end
 
 function M.load_save_at_index(index)
