@@ -912,6 +912,14 @@ local function _load_main_save()
    return run_data
 end
 
+-- Cross-mod compatibility guard: some preview/HUD mods keep transient UI state
+-- that can dereference detached nodes during restore transitions.
+local function _pre_restore_compat_guard()
+   if DV and DV.PRE then
+      DV.PRE.previewing = false
+   end
+end
+
 function M.load_and_start_from_file(file, opts)
    opts = opts or {}
    local mark_restore = not opts.skip_restore_identical
@@ -1008,6 +1016,7 @@ function M.load_and_start_from_file(file, opts)
    G.SETTINGS.current_setup = "Continue"
    run_data._file = file
    G.SAVED_GAME._file = file
+   _pre_restore_compat_guard()
    
    if opts.no_wipe and G.delete_run and G.start_run then
       -- Keep fast no_wipe restore, but mirror vanilla safety guards:
