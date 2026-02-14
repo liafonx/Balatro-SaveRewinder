@@ -91,13 +91,6 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
-name = "SaveThread"
-source = "Utils/SaveThread.lua"
-load_now = true
-before = "globals.lua"
-
-[[patches]]
-[patches.module]
 name = "SaveManager"
 source = "Core/SaveManager.lua"
 load_now = true
@@ -150,8 +143,45 @@ target = "functions/misc_functions.lua"
 pattern = "G.ARGS.save_run = G.culled_table"
 position = "after"
 payload = """
-   if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end
-   if REWINDER and REWINDER.defer_save_creation then REWINDER.defer_save_creation() end"""
+   G.ARGS.rewinder_copy_path = nil
+   G.FILE_HANDLER = G.FILE_HANDLER or {}
+   G.FILE_HANDLER.force = true
+   if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end"""
+
+# Create rewinder save at actual queue point (1:1 with save_run thread request).
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "if G.FILE_HANDLER.run then"
+position = "after"
+match_indent = true
+payload = "if REWINDER and REWINDER.defer_save_creation and G.ARGS and G.ARGS.save_run then REWINDER.defer_save_creation() end"
+
+# Thread piggyback: carry rewinder copy destination with vanilla save_run request
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "profile_num = G.SETTINGS.profile})"
+position = "at"
+match_indent = true
+payload = """
+profile_num = G.SETTINGS.profile,
+rewinder_copy_path = G.ARGS.rewinder_copy_path})"""
+
+# Thread piggyback: write save.jkr and rewinder copy from one packed/compressed blob
+[[patches]]
+[patches.pattern]
+target = "engine/save_manager.lua"
+pattern = "compress_and_save(prefix_profile..'save.jkr', request.save_table)"
+position = "at"
+match_indent = true
+payload = """
+local packed_save = STR_PACK(request.save_table)
+local compressed_save = love.data.compress('string', 'deflate', packed_save, 1)
+love.filesystem.write(prefix_profile..'save.jkr', compressed_save)
+if request.rewinder_copy_path then
+    love.filesystem.write(request.rewinder_copy_path, compressed_save)
+end"""
 
 # Sanitize ALL round_scores.amt fields after loading a save (NaN serialized as nil)
 [[patches]]

@@ -20,6 +20,12 @@ M._LEVELS = {
     debug = true,
 }
 
+-- Fast check for verbose logging mode.
+-- Callers can guard expensive string formatting when debug logs are disabled.
+function M.is_verbose()
+    return REWINDER and REWINDER.config and REWINDER.config.debug_saves == true
+end
+
 local function format_message(module_name, level, msg)
     if module_name and module_name ~= "" then
         if level and level ~= "" then
