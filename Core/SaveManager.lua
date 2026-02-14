@@ -983,12 +983,37 @@ local function _load_main_save()
    return run_data
 end
 
--- Cross-mod compatibility guard: some preview/HUD mods keep transient UI state
--- that can dereference detached nodes during restore transitions.
-local function _pre_restore_compat_guard()
-   if DV and DV.PRE then
-      DV.PRE.previewing = false
+-- Cross-mod compatibility guard for DVPreview.
+-- Returns true when no_wipe can continue, false when caller should fall back
+-- to the safer non-no_wipe start_run path.
+local function _pre_restore_compat_guard(opts)
+   opts = opts or {}
+   if not opts.no_wipe then return true end
+
+   if not (DV and DV.PRE and G and G.SETTINGS and G.SETTINGS.DV) then
+      return true
    end
+   if G.SETTINGS.DV.manual_preview ~= true then
+      return true
+   end
+   if DV.PRE.previewing ~= true then
+      return true
+   end
+
+   local ok, err = pcall(function()
+      if G.HUD and G.HUD.get_UIE_by_ID then
+         local score_node = G.HUD:get_UIE_by_ID("dv_pre_score")
+         if score_node and score_node.parent and score_node.parent.remove then
+            score_node.parent:remove()
+         end
+      end
+      DV.PRE.previewing = false
+   end)
+   if not ok then
+      M.debug_log("warning", "DVPreview guard failed, using safe restore path: " .. tostring(err))
+      return false
+   end
+   return true
 end
 
 function M.load_and_start_from_file(file, opts)
@@ -1087,9 +1112,9 @@ function M.load_and_start_from_file(file, opts)
    G.SETTINGS.current_setup = "Continue"
    run_data._file = file
    G.SAVED_GAME._file = file
-   _pre_restore_compat_guard()
+   local allow_no_wipe = _pre_restore_compat_guard(opts)
    
-   if opts.no_wipe and G.delete_run and G.start_run then
+   if opts.no_wipe and allow_no_wipe and G.delete_run and G.start_run then
       -- Keep fast no_wipe restore, but mirror vanilla safety guards:
       -- leave SELECTING_HAND before teardown and clear queued events.
       if G.STATES and G.STATES.MENU then
