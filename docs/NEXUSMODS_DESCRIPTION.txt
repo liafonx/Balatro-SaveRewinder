@@ -51,7 +51,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 [b]How to use icon buttons:[/b]
 [list=1]
 [*]Press [b]★ Edit key saves[/b].
-[*]Click save rows to toggle key marks (pending changes show as a white dot badge on row edge).
+[*]Click save rows to toggle key marks (pending changes show as a white dot badge).
 [*]Press [b]★ Save marking changes[/b] to apply, or close the panel to discard pending edits.
 [*]Use [b]Check key saves[/b] to filter and [b]▶ Current save[/b] to jump back to your current position.
 [/list]
@@ -59,7 +59,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 [b]Rename flow:[/b]
 [list=1]
 [*]Press [b]✏️[/b] to enter rename mode.
-[*]Click a save row and edit the title (pending changes show as a white dot badge on row edge).
+[*]Click a save row and edit the title (pending changes show as a white dot badge).
 [*]Click [b]✏️[/b] again to commit pending rename drafts.
 [/list]
 

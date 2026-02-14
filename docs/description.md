@@ -27,8 +27,8 @@ Automatically creates save points as you play. Rewind to any moment instantly.
 - **★ Edit key saves** — Enter mark mode and toggle key marks.
 - **✏️ Rename mode** — Enter rename mode and edit save titles.
 - **▶ Current save** — Jump to the currently loaded save.
-- **Mark flow** — `★ Edit key saves` → click entries (pending shown as row-edge white dot badge) → `★ Save marking changes`.
-- **Rename flow** — `✏️` → edit row title → click `✏️` again to commit drafts.
+- **Mark flow** — `★ Edit key saves` → click entries (pending shown as white dot badge) → `★ Save marking changes`.
+- **Rename flow** — `✏️` → edit row title (pending shown as white dot badge) → click `✏️` again to commit drafts.
 
 ## Enter Key (Overlay)
 - Mark mode + Enter = commit mark edits.
