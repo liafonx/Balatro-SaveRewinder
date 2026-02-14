@@ -20,12 +20,6 @@ function M.encode_signature(ante, round, display_type, discards_used, hands_play
    )
 end
 
--- Compare two signature strings (fast path)
-function M.signatures_equal(sig_a, sig_b)
-   if not sig_a or not sig_b then return false end
-   return sig_a == sig_b
-end
-
 -- Safely extract a plain Lua number from a value that might be:
 -- 1. A plain number (most common)
 -- 2. A Talisman/Amulet Big number: FFI cdata struct (type="cdata") with .number field
@@ -49,8 +43,10 @@ function M.get_state_info(run_data)
    local game = run_data.GAME or {}
    local raw_ante = game.round_resets and game.round_resets.ante
    local ante = _safe_number(raw_ante, _safe_number(game.ante, 0))
-   M.debug_log("debug", string.format("raw_ante type=%s val=%s → ante=%s",
-      type(raw_ante), tostring(raw_ante), tostring(ante)))
+   if Logger.is_verbose and Logger.is_verbose() then
+      M.debug_log("debug", string.format("raw_ante type=%s val=%s -> ante=%s",
+         type(raw_ante), tostring(raw_ante), tostring(ante)))
+   end
    local round = _safe_number(game.round, 0)
    local state = run_data.STATE
    local has_action = M.has_action(run_data)

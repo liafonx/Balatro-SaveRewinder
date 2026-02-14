@@ -112,11 +112,13 @@ function KeySaves.get_key_saves(entries)
    local index_map = {}
    local loaded_meta = 0
 
+   if SaveManager.ensure_key_flags_loaded then
+      loaded_meta = SaveManager.ensure_key_flags_loaded(entries) or 0
+   end
+
    for i, entry in ipairs(entries) do
-      if entry[SaveManager.ENTRY_IS_KEY] == nil and SaveManager.get_save_meta then
-         if SaveManager.get_save_meta(entry) then
-            loaded_meta = loaded_meta + 1
-         end
+      if entry[SaveManager.ENTRY_IS_KEY] == nil and SaveManager.get_save_meta and not SaveManager.ensure_key_flags_loaded then
+         if SaveManager.get_save_meta(entry) then loaded_meta = loaded_meta + 1 end
       end
       if entry[SaveManager.ENTRY_IS_KEY] == true then
          filtered[#filtered + 1] = entry

@@ -57,9 +57,21 @@ for key, value in pairs(SaveManager) do
 end
 -- Convenience getters/setters for internal state
 REWINDER.get_pending_index = function() return SaveManager.pending_index end
-REWINDER.set_pending_index = function(v) SaveManager.pending_index = v end
+REWINDER.set_pending_index = function(v)
+   if SaveManager.set_pending_index then
+      SaveManager.set_pending_index(v)
+   else
+      SaveManager.pending_index = v
+   end
+end
 REWINDER.get_current_index = function() return SaveManager.current_index end
-REWINDER.set_current_index = function(v) SaveManager.current_index = v end
+REWINDER.set_current_index = function(v)
+   if SaveManager.set_current_index then
+      SaveManager.set_current_index(v)
+   else
+      SaveManager.current_index = v
+   end
+end
 -- UI State
 REWINDER.saves_open = false
 -- Debug Logging (centralized via Logger module)
@@ -106,10 +118,14 @@ function Game:set_render_settings(...)
                            local entry, idx = SaveManager.get_entry_by_id(rewinder_id)
                            if entry then
                               -- Exact match found via ID!
-                              SaveManager._last_loaded_file = entry[SaveManager.ENTRY_FILE]
-                              SaveManager.current_index = idx
-                              if SaveManager._set_cache_current_file then
-                                 SaveManager._set_cache_current_file(entry[SaveManager.ENTRY_FILE])
+                              if SaveManager.set_current_file then
+                                 SaveManager.set_current_file(entry[SaveManager.ENTRY_FILE], idx)
+                              else
+                                 SaveManager._last_loaded_file = entry[SaveManager.ENTRY_FILE]
+                                 SaveManager.current_index = idx
+                                 if SaveManager._set_cache_current_file then
+                                    SaveManager._set_cache_current_file(entry[SaveManager.ENTRY_FILE])
+                                 end
                               end
                               if SaveManager.ensure_meta_window then
                                  SaveManager.ensure_meta_window(idx, SaveManager.META_CACHE_BASE_LIMIT)
@@ -123,10 +139,14 @@ function Game:set_render_settings(...)
 
                         -- FINAL FALLBACK: no match found, use newest save
                         if not REWINDER._main_save_matched and entries[1] then
-                           SaveManager._last_loaded_file = entries[1][SaveManager.ENTRY_FILE]
-                           SaveManager.current_index = 1
-                           if SaveManager._set_cache_current_file then
-                              SaveManager._set_cache_current_file(entries[1][SaveManager.ENTRY_FILE])
+                           if SaveManager.set_current_file then
+                              SaveManager.set_current_file(entries[1][SaveManager.ENTRY_FILE], 1)
+                           else
+                              SaveManager._last_loaded_file = entries[1][SaveManager.ENTRY_FILE]
+                              SaveManager.current_index = 1
+                              if SaveManager._set_cache_current_file then
+                                 SaveManager._set_cache_current_file(entries[1][SaveManager.ENTRY_FILE])
+                              end
                            end
                            if SaveManager.ensure_meta_window then
                               SaveManager.ensure_meta_window(1, SaveManager.META_CACHE_BASE_LIMIT)

@@ -76,6 +76,8 @@ test_saves/
 # Generated/Research files in docs
 # ========================================
 docs/
+!docs/description.md
+!docs/NEXUSMODS_DESCRIPTION.txt
 
 # ========================================
 # AI Agent Files (local only)

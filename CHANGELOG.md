@@ -4,6 +4,17 @@ English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/ma
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.5.5] - 2026-02-14
+### Added
+- **Game Over rewind action**: Added a rewind button on the game over panel.
+- **Rename saves mode**: Added inline save-title editing in the saves list, with staged rename drafts and batch commit on rename-mode exit (pending drafts use the row-edge white dot badge).
+
+### Changed
+- **Pending indicator UI**: Replaced inline `[?]` text marker with a row-edge white dot badge for staged mark/rename changes.
+
+### Fixed
+- **DVPreview compatibility**: Added restore-time guard to avoid compatibility issues.
+
 ## [1.5.0] - 2026-02-07
 ### Added
 - **Key saves (bookmarks)**: Mark important saves, filter to key saves only, and use mark mode to preview/apply in batch (pending changes show as `[?]`).

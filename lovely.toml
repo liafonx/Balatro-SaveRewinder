@@ -91,6 +91,69 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
+name = "SaveManagerEntrySchema"
+source = "Core/SaveModules/EntrySchema.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManagerRuntimeState"
+source = "Core/SaveModules/RuntimeState.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManagerIndexStore"
+source = "Core/SaveModules/IndexStore.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManagerMetaCache"
+source = "Core/SaveModules/MetaCache.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManagerOrdinalTracker"
+source = "Core/SaveModules/OrdinalTracker.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManagerRetentionService"
+source = "Core/SaveModules/RetentionService.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManagerSkipService"
+source = "Core/SaveModules/SkipService.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManagerLoadService"
+source = "Core/SaveModules/LoadService.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveManagerCreateService"
+source = "Core/SaveModules/CreateService.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
 name = "SaveManager"
 source = "Core/SaveManager.lua"
 load_now = true
@@ -136,6 +199,14 @@ pattern = "function Card:open()"
 position = "after"
 match_indent = true
 payload = "if REWINDER and REWINDER._SaveManager then REWINDER._SaveManager.skipping_pack_open = true end"
+
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = "if G.F_NO_SAVING == true then return end"
+position = "after"
+match_indent = true
+payload = "if REWINDER and REWINDER.should_skip_save_run and REWINDER.should_skip_save_run() then return end"
 
 [[patches]]
 [patches.regex]

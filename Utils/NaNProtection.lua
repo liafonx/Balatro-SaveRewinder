@@ -91,6 +91,13 @@ end
 function M.score_gt(amt, current)
     if amt == nil then return false end
 
+    -- Fast path: regular finite numbers (common case).
+    if type(amt) == "number" and type(current) == "number" and
+       amt == amt and current == current and
+       amt ~= math.huge and amt ~= -math.huge then
+        return math.floor(amt) > current
+    end
+
     if type(amt) ~= "number" then
         -- Big-number backend compatibility: compare via to_big if available.
         if M.has_big_backend() and type(to_big) == "function" then
@@ -251,17 +258,34 @@ end
 -- Returns true when accumulated chips have met or exceeded the blind target.
 -- Safely recovers nil chips on either side so callers don't need inline guards.
 function M.chips_met_target()
-    local bc = M.ensure_blind_chips(G and G.GAME and G.GAME.blind)
-    local gc = M.ensure_game_chips(G and G.GAME)
+    local game = G and G.GAME
+    local blind = game and game.blind
+    if type(game) == "table" and type(blind) == "table" and
+       type(game.chips) == "number" and type(blind.chips) == "number" then
+        return game.chips - blind.chips >= 0
+    end
+    local bc = M.ensure_blind_chips(blind)
+    local gc = M.ensure_game_chips(game)
     return gc - bc >= 0
 end
 
 -- Computes the safe ease_to value for the score accumulation event.
 -- Recovers nil G.GAME.chips and respects SMODS.calculate_round_score when present.
 function M.safe_ease_chips(hand_chips, mult)
-    local chips = M.ensure_game_chips(G and G.GAME)
+    local game = G and G.GAME
+    local chips = (type(game) == "table" and type(game.chips) == "number") and game.chips or M.ensure_game_chips(game)
+
+    -- Fast path: vanilla numeric score computation.
+    if type(hand_chips) == "number" and type(mult) == "number" and
+       hand_chips == hand_chips and mult == mult and
+       hand_chips ~= math.huge and hand_chips ~= -math.huge and
+       mult ~= math.huge and mult ~= -math.huge then
+        return chips + math.floor(hand_chips * mult)
+    end
+
     local score = (SMODS and SMODS.calculate_round_score and SMODS.calculate_round_score())
-                  or ((hand_chips or 0) * (mult or 0))
+        or ((hand_chips or 0) * (mult or 0))
+    if type(score) ~= "number" then score = tonumber(score) or 0 end
     return chips + math.floor(score)
 end
 
@@ -306,6 +330,17 @@ end
 
 -- number_format hook helper.
 function M.sanitize_number_format(num)
+    -- Fast path: standard finite numbers in normal range.
+    if type(num) == "number" and num == num and num ~= math.huge and num ~= -math.huge then
+        local abs_num = math.abs(num)
+        if abs_num < M.LARGE_NUMBER_THRESHOLD then
+            return num, false
+        end
+        local exp = math.floor(math.log10(abs_num))
+        local mantissa = num / (10 ^ exp)
+        return string.format("%.1fe%d", mantissa, exp), true
+    end
+
     if num == nil then
         return "0", true
     end

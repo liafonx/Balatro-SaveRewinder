@@ -10,6 +10,8 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - ⚡ **Instant Undo** — Press `S` (keyboard) or `L3` (controller) to rewind immediately.
 - 🔁 **Quick Saveload** — Press `L` (keyboard) or `R3` (controller) to instantly reload.
 - ⭐ **Key Saves** — Mark important saves and filter the list to key saves only.
+- ✏️ **Rename Saves** — Rename save entries in the save list.
+- 💀 **Game Over Rewind** — Rewind to your last save directly from the game over panel.
 - 🧪 **Experiment Freely** — Test strategies without fear; stepped-back saves stay available until you make a new action.
 - 🛡️ **Score Overflow Protection** — Rewind/save-load safely with extreme `naneinf/inf` scores (optional clamp to `1.8e308`).
 
@@ -48,13 +50,31 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 
 - **Check key saves** — Text button. Shows only key saves.
 - **★ Edit key saves** — Star icon button. Enters mark mode so you can add/remove key marks.
+- **✏️ Rename mode** — Pencil icon button. Enter rename mode to edit save titles inline.
 - **▶ Current save** — Triangle icon button. Jumps to your currently loaded save.
 
 How to use:
 1. Press **★ Edit key saves**.
-2. Click save rows to toggle key marks (`[?]` means pending, not committed yet).
+2. Click save rows to toggle key marks (pending changes show a white dot badge on the row edge).
 3. Press **★ Save marking changes** to apply. Close the panel to discard pending edits.
 4. Use **Check key saves** to filter, and **▶ Current save** to jump back to your current position.
+
+Rename flow:
+1. Press the **✏️** button to enter rename mode.
+2. Click a save row and edit its title.
+3. Click the row again (or switch rows) to stage the draft (pending rename drafts also show the same white dot badge on the row edge).
+4. Press **✏️** again to commit staged rename drafts.
+
+### Enter Key Behavior (Saves Overlay)
+
+When the saves overlay is open:
+- **Mark mode + Enter** — Same as clicking **★ Save marking changes** (commits mark edits / exits mark mode).
+- **Rename mode + editing a row + Enter** — Same as clicking that row again (stages current row draft and exits row editing).
+- **Rename mode + not editing a row + Enter** — Same as clicking **✏️** (commits staged rename drafts and exits rename mode).
+
+## Game Over Rewind
+
+When you lose a run, the game over panel includes a button so you can jump straight back into the timeline.
 
 ## Configuration
 

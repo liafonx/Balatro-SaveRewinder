@@ -9,6 +9,58 @@ local log = Logger.create("GamePatches")
 if REWINDER._game_patches_loaded then return end
 REWINDER._game_patches_loaded = true
 
+local function _build_save_gate_snapshot()
+   local game = G and G.GAME
+   if type(game) ~= "table" then return nil end
+
+   local current_round = game.current_round or {}
+   local round_resets = game.round_resets or {}
+   local action = G and G.action
+   local action_type, action_card = nil, nil
+   if type(action) == "table" then
+      action_type = action.type
+      action_card = action.card or action.idx or action.key
+   end
+
+   return {
+      state = G and G.STATE,
+      ante = round_resets.ante,
+      round = game.round,
+      blind = game.blind_on_deck,
+      hands_played = current_round.hands_played,
+      discards_used = current_round.discards_used,
+      dollars = game.dollars or game.money or current_round.dollars,
+      action_type = action_type,
+      action_card = action_card,
+   }
+end
+
+local function _save_gate_equal(a, b)
+   if not a or not b then return false end
+   return a.state == b.state
+      and a.ante == b.ante
+      and a.round == b.round
+      and a.blind == b.blind
+      and a.hands_played == b.hands_played
+      and a.discards_used == b.discards_used
+      and a.dollars == b.dollars
+      and a.action_type == b.action_type
+      and a.action_card == b.action_card
+end
+
+function REWINDER.should_skip_save_run()
+   local snapshot = _build_save_gate_snapshot()
+   if not snapshot then return false end
+
+   local last = REWINDER._save_gate_last
+   if _save_gate_equal(last, snapshot) then
+      return true
+   end
+
+   REWINDER._save_gate_last = snapshot
+   return false
+end
+
 local function derive_file_from_rewinder_id(bm, savetext)
    if not bm or not savetext or savetext._file or not savetext._rewinder_id or not bm.get_entry_by_id then
       return nil, nil
@@ -22,6 +74,10 @@ end
 
 local function reset_save_manager_for_new_run(bm)
    if not bm then return end
+   if bm.reset_for_new_run then
+      bm.reset_for_new_run()
+      return
+   end
    if bm.invalidate_async_saves then
       bm.invalidate_async_saves()
    end
@@ -64,6 +120,8 @@ end
 REWINDER._start_run = Game.start_run
 function Game:start_run(args)
    args = args or {}
+   -- Reset semantic save gate state on every run entry.
+   REWINDER._save_gate_last = nil
    -- 1. Mark the loaded state and derive _file from _rewinder_id if needed
    if args.savetext and REWINDER.mark_loaded_state then
       local BM = REWINDER._SaveManager
@@ -124,15 +182,21 @@ function Game:start_run(args)
       local BM = REWINDER._SaveManager
       if BM and args.savetext then
          local file_to_use = args.savetext._file
+         local resolved_idx = nil
          
          -- If no _file, try to derive from _rewinder_id
          if not file_to_use then
-            file_to_use, BM.current_index = derive_file_from_rewinder_id(BM, args.savetext)
+            file_to_use, resolved_idx = derive_file_from_rewinder_id(BM, args.savetext)
+            if resolved_idx and not BM.set_current_file then
+               BM.current_index = resolved_idx
+            end
          end
          
          -- Update tracking if we have a file
          if file_to_use then
-            if BM._last_loaded_file ~= file_to_use then
+            if BM.set_current_file then
+               BM.set_current_file(file_to_use, resolved_idx)
+            elseif BM._last_loaded_file ~= file_to_use then
                BM._last_loaded_file = file_to_use
                if BM._set_cache_current_file then
                   BM._set_cache_current_file(file_to_use)
