@@ -41,6 +41,7 @@ References/
 Contents/
 jkrs/
 raw_icon/
+claude-flow/
 icon.png
 *.ai
 save.*
@@ -74,8 +75,7 @@ test_saves/
 # ========================================
 # Generated/Research files in docs
 # ========================================
-docs/*.lua
-docs/NEXUSMODS_DESCRIPTION.txt
+docs/
 
 # ========================================
 # AI Agent Files (local only)
@@ -84,6 +84,8 @@ docs/NEXUSMODS_DESCRIPTION.txt
 .agents/
 .claude/
 .codex/
+.tmp/
 INIT.md
+AGENT.md
 mod.config.json
 docs/knowledge-base.md

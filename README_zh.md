@@ -76,7 +76,3 @@ Save Rewinder 在你游玩小丑牌时自动创建存档点，让你可以一键
 
 - English
 - 简体中文
-
----
-
-> 🤖 **开发者**：使用 LLM/AI 进行开发？请查看 [`docs/AGENT.md`](docs/AGENT.md) 了解架构和设计细节。

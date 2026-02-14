@@ -76,7 +76,3 @@ Saves are stored in `[Profile]/SaveRewinder/`.
 
 - English
 - 简体中文 (Simplified Chinese)
-
----
-
-> 🤖 **Developers**: Working with LLM/AI? See [`docs/AGENT.md`](docs/AGENT.md) for architecture and design details.
