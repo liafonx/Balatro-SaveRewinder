@@ -29,6 +29,8 @@ function M.read_meta_file(meta_path)
                 meta[key] = value ~= "" and value or nil
             elseif key == "signature" then
                 meta[key] = value
+            elseif key == "custom_state_name" then
+                meta[key] = value
             end
         end
     end
@@ -51,6 +53,11 @@ function M.write_meta_file(meta_path, entry_meta)
     }
     if entry_meta.is_key == true then
         lines[#lines + 1] = "is_key=1"
+    end
+    if entry_meta.custom_state_name and entry_meta.custom_state_name ~= "" then
+        -- Strip newlines to prevent meta file corruption
+        local sanitized = entry_meta.custom_state_name:gsub("[\r\n]", " ")
+        lines[#lines + 1] = string.format("custom_state_name=%s", sanitized)
     end
     
     local content = table.concat(lines, "\n")

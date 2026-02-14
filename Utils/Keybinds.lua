@@ -407,10 +407,44 @@ local function _find_and_activate(controller, check_type)
    end
 end
 
+local function _is_enter_key(key)
+   return key == "return" or key == "kpenter"
+end
+
+local function _dispatch_rewinder_overlay_enter()
+   if not (G and G.FUNCS and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return false end
+   if not G.OVERLAY_MENU:get_UIE_by_ID("rewinder_saves") then return false end
+
+   if REWINDER and REWINDER._rename_active then
+      if REWINDER._rename_editing_file and REWINDER._rename_input_ref and G.FUNCS.rewinder_save_restore then
+         G.FUNCS.rewinder_save_restore({
+            config = { ref_table = { file = REWINDER._rename_editing_file } },
+         })
+         return true
+      end
+      if G.FUNCS.rewinder_btn_toggle_rename then
+         G.FUNCS.rewinder_btn_toggle_rename({
+            config = { ref_table = { mode = "rename" } },
+         })
+         return true
+      end
+   end
+
+   if REWINDER and REWINDER._mark_active and G.FUNCS.rewinder_btn_mark_keys then
+      G.FUNCS.rewinder_btn_mark_keys()
+      return true
+   end
+
+   return false
+end
+
 function Keybinds._on_key_press(controller, key)
    Keybinds.last_input_type = "keyboard"
    if Keybinds._recording then
       _record_key_press(key)
+      return
+   end
+   if _is_enter_key(key) and _dispatch_rewinder_overlay_enter() then
       return
    end
    if not _can_use_keybinds() then return end
@@ -491,6 +525,9 @@ end
 local function snap_to_id(self, id)
    if not (G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return false end
    local node = G.OVERLAY_MENU:get_UIE_by_ID(id)
+   if node and id and id:match("^rewinder_btn_") and node.config and node.config.can_collide == false then
+      return false
+   end
    if node then
       self:snap_to({ node = node })
       if self.update_cursor then self:update_cursor() end
@@ -795,8 +832,8 @@ local function hook_controller_navigate_focus()
          return Controller._rewinder_navigate_focus(self, dir, ...)
       end
 
-      -- 3) Filter/Mark/Jump: left/right loop, up to paging, down to return.
-      if id == "rewinder_btn_filter_keys" or id == "rewinder_btn_mark_keys" or id == "rewinder_btn_jump_to_current" then
+      -- 3) Filter/Mark/Rename/Jump: left/right loop, up to paging, down to return.
+      if id == "rewinder_btn_filter_keys" or id == "rewinder_btn_mark_keys" or id == "rewinder_btn_toggle_rename" or id == "rewinder_btn_jump_to_current" then
          if dir == "U" then
             snap_to_id(self, "rewinder_page_cycle")
             return
@@ -806,7 +843,7 @@ local function hook_controller_navigate_focus()
             return
          end
          if dir == "L" or dir == "R" then
-            local order = { "rewinder_btn_filter_keys", "rewinder_btn_mark_keys", "rewinder_btn_jump_to_current" }
+            local order = { "rewinder_btn_filter_keys", "rewinder_btn_mark_keys", "rewinder_btn_toggle_rename", "rewinder_btn_jump_to_current" }
             local idx = nil
             for i, v in ipairs(order) do
                if v == id then
@@ -816,10 +853,15 @@ local function hook_controller_navigate_focus()
             end
             if idx then
                local delta = (dir == "R") and 1 or -1
-               local target_idx = idx + delta
-               if target_idx < 1 then target_idx = #order end
-               if target_idx > #order then target_idx = 1 end
-               snap_to_id(self, order[target_idx])
+               local target_idx = idx
+               for _ = 1, #order do
+                  target_idx = target_idx + delta
+                  if target_idx < 1 then target_idx = #order end
+                  if target_idx > #order then target_idx = 1 end
+                  if snap_to_id(self, order[target_idx]) then
+                     break
+                  end
+               end
             end
             return
          end

@@ -50,6 +50,7 @@ return {
             rewinder_mark_keys_active = '★ 保存标记更改',
             rewinder_filter_keys = '打开收藏列表',
             rewinder_filter_keys_active = '返回全部存档',
+            rewinder_rename_prompt = '输入自定义名称',
             rewinder_all_saves_deleted = '所有存档已删除',
 
             rewinder_ante_label = '底注',

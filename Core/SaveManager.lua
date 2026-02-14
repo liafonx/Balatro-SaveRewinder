@@ -823,6 +823,77 @@ function M.get_save_meta(entry, opts)
    return false
 end
 
+-- Get custom state name from meta cache
+-- Returns: string or nil
+local function _normalize_custom_state_name(name)
+   if type(name) ~= "string" then return nil end
+   local trimmed = name:match("^%s*(.-)%s*$")
+   if trimmed == "" then return nil end
+   return trimmed
+end
+
+M.normalize_custom_state_name = _normalize_custom_state_name
+
+function M.get_custom_state_name(file)
+   if not file then return nil end
+
+   local entry = M.get_entry_by_file(file)
+   if not entry then return nil end
+   if not M.get_save_meta(entry) then return nil end
+
+   local meta = meta_cache[file]
+   if not meta then return nil end
+
+   return _normalize_custom_state_name(meta.custom_state_name)
+end
+
+-- Set custom state name (write to meta + update cache)
+-- name: string or nil (nil clears custom name)
+-- Returns: boolean success
+function M.set_custom_state_name(file, name)
+   if not file then return false end
+
+   local entry = M.get_entry_by_file(file)
+   if not entry then
+      M.debug_log("warning", "set_custom_state_name: entry not found for " .. tostring(file))
+      return false
+   end
+
+   -- Trim and normalize; nil clears custom name
+   name = _normalize_custom_state_name(name)
+
+   if not M.get_save_meta(entry, { force = true }) then
+      M.debug_log("error", "set_custom_state_name: metadata unavailable for " .. tostring(file))
+      return false
+   end
+
+   local dir = M.get_save_dir()
+   local meta_path = dir .. "/" .. file:gsub("%.jkr$", ".meta")
+   local meta = meta_cache[file]
+   if not meta then
+      M.debug_log("error", "set_custom_state_name: meta cache miss for " .. file)
+      return false
+   end
+
+   -- Update field
+   meta.custom_state_name = name
+
+   -- Write to disk
+   local success = MetaFile.write_meta_file(meta_path, meta)
+   if not success then
+      M.debug_log("error", "set_custom_state_name: write failed for " .. file)
+      return false
+   end
+
+   _cache_meta(file, meta)
+   _apply_meta_to_entry(entry, meta)
+
+   M.debug_log("info", string.format("Set custom name for %s: %s",
+      file, name or "[cleared]"))
+
+   return true
+end
+
 local function _list_and_sort_entries()
    local dir = M.get_save_dir()
    local files = love.filesystem.getDirectoryItems(dir)

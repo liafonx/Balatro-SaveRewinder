@@ -51,6 +51,7 @@ return {
             rewinder_mark_keys_active = '★ Save marking changes',
             rewinder_filter_keys = 'Check key saves',
             rewinder_filter_keys_active = 'Return to all saves',
+            rewinder_rename_prompt = 'Enter custom name',
             rewinder_all_saves_deleted = 'All saves deleted',
 
             rewinder_ante_label = 'Ante',

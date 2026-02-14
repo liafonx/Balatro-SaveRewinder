@@ -36,6 +36,9 @@ REWINDER.quick_continue_from_menu = SaveManager.quick_continue_from_menu
 REWINDER.load_save_at_index = SaveManager.load_save_at_index
 REWINDER.clear_all_saves = SaveManager.clear_all_saves
 REWINDER.find_current_index = SaveManager.find_current_index
+REWINDER.get_custom_state_name = SaveManager.get_custom_state_name
+REWINDER.set_custom_state_name = SaveManager.set_custom_state_name
+REWINDER.normalize_custom_state_name = SaveManager.normalize_custom_state_name
 REWINDER.key_saves_is_key = KeySaves.is_key
 REWINDER.key_saves_effective_is_key = KeySaves.effective_is_key
 REWINDER.key_saves_toggle_pending = KeySaves.toggle_pending
@@ -163,4 +166,3 @@ G.FUNCS.rewinder_config_change = function(args)
       end
    end
 end
-

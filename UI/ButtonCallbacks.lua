@@ -1,296 +1,51 @@
 --- Save Rewinder - UI/ButtonCallbacks.lua
 --
--- Button callbacks for the saves UI.
+-- Public callback handlers. Heavy helper logic lives in UIButtonCallbackHelpers.lua.
+
 if not REWINDER then REWINDER = {} end
-local Logger = require("Logger")
-local KeySaves = require("KeySaves")
-local log = Logger.create("UI")
+
 REWINDER._filter_active = REWINDER._filter_active or false
 REWINDER._mark_active = REWINDER._mark_active or false
+REWINDER._rename_active = REWINDER._rename_active or false
+REWINDER._rename_editing_file = REWINDER._rename_editing_file or nil
+REWINDER._rename_input_ref = REWINDER._rename_input_ref or nil
+REWINDER._rename_pending = REWINDER._rename_pending or {}
+REWINDER._rename_pending_clear = REWINDER._rename_pending_clear or {}
 
--- Install ScaleNumberHook here (after scale_number is defined in button_callbacks.lua)
--- This file is appended to button_callbacks.lua via lovely.toml
--- NOTE: Must use require() - lovely modules are NOT globals!
-local ScaleNumberHook = require("ScaleNumberHook")
-if ScaleNumberHook and not ScaleNumberHook.installed then
-    ScaleNumberHook.install()
-end
+local UIShared = require("UIShared")
+local Helpers = require("UIButtonCallbackHelpers")
+local KeySaves = Helpers.KeySaves
+local log = Helpers.log
 
-local function _loc(key, fallback)
-   if localize then
-      return localize(key) or fallback
-   end
-   return fallback
-end
+Helpers.bootstrap()
 
-local function _log_ui(action, start, finish, size)
-   if start and finish then
-      log("debug", string.format("Saves UI: %s (meta %d-%d/%d)", action, start, finish, size))
-   else
-      log("debug", "Saves UI: " .. action)
-   end
-end
-
-local function _update_mode_button_labels()
-   local refs = REWINDER and REWINDER._saves_ui_refs
-   if not refs then return end
-
-   local mark_active_colour = G.C.RED or {0.9, 0.2, 0.2, 1}
-   local blue_colour = G.C.BLUE
-   local key_colour = REWINDER.KEY_SAVE_COLOR or {0.2, 0.7, 0.7, 1}
-
-   if refs.mark_button_ref and refs.mark_button_ref.label then
-      refs.mark_button_ref.label.text = REWINDER._mark_active and _loc("rewinder_mark_keys_active", "Save marking changes")
-         or _loc("rewinder_mark_keys", "Edit key saves")
+local function _load_save_file(file)
+   if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
+      REWINDER._SaveManager._set_cache_current_file(file)
    end
 
-   if refs.filter_button_ref and refs.filter_button_ref.label then
-      refs.filter_button_ref.label.text = REWINDER._filter_active and _loc("rewinder_filter_keys_active", "Return to all saves")
-         or _loc("rewinder_filter_keys", "Check key saves")
-   end
-
-   local mark_btn = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_mark_keys")
-   local mark_fill = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_mark_keys_fill")
-   if mark_fill and mark_fill.config then
-      mark_fill.config.colour = REWINDER._mark_active and mark_active_colour or key_colour
-   elseif mark_btn and mark_btn.config then
-      mark_btn.config.colour = REWINDER._mark_active and mark_active_colour or key_colour
-   end
-
-   local filter_btn = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_filter_keys")
-   if filter_btn and filter_btn.config then
-      filter_btn.config.colour = blue_colour
-   end
-end
-
-local function _reset_key_save_state(discard_pending, preserve_filter_mode)
-   local had_pending = KeySaves.has_pending and KeySaves.has_pending() or false
-   if discard_pending and REWINDER._mark_active then
-      KeySaves.discard_pending()
-   end
-   if not preserve_filter_mode then
-      REWINDER._filter_active = false
-   end
-   REWINDER._mark_active = false
-   REWINDER._key_save_index_map = nil
-   REWINDER._key_save_reverse_map = nil
-   log("debug", string.format(
-      "Key-save UI state reset discard=%s preserve_filter=%s had_pending=%s filter=%s",
-      tostring(discard_pending), tostring(preserve_filter_mode), tostring(had_pending), tostring(REWINDER._filter_active)
-   ))
-end
-
-local function _get_displayed_entries()
-   local all = REWINDER.get_save_files()
-   if REWINDER._filter_active then
-      local filtered, idx_map = KeySaves.get_key_saves(all)
-      REWINDER._key_save_index_map = idx_map
-      local reverse = {}
-      for fi, oi in ipairs(idx_map) do
-         reverse[oi] = fi
-      end
-      REWINDER._key_save_reverse_map = reverse
-      return filtered
-   end
-
-   REWINDER._key_save_index_map = nil
-   REWINDER._key_save_reverse_map = nil
-   return all
-end
-
-REWINDER._get_displayed_entries = _get_displayed_entries
-
-local function _recenter_meta_on_open()
-   if not (REWINDER and REWINDER._SaveManager and REWINDER._SaveManager.ensure_meta_window_for_page and REWINDER._saves_ui_refs) then
-      return nil, nil, nil
-   end
-   if REWINDER._filter_active then return nil, nil, nil end
-
-   local per_page = REWINDER._saves_ui_refs.per_page or 8
-   local current_page = REWINDER._saves_ui_refs.cycle_config and REWINDER._saves_ui_refs.cycle_config.current_option or 1
-   REWINDER._SaveManager.ensure_meta_window_for_page(current_page, per_page, 4, false, true)
-   if REWINDER._SaveManager.calc_meta_window_bounds_for_page then
-      return REWINDER._SaveManager.calc_meta_window_bounds_for_page(current_page, per_page, 4)
-   end
-   return nil, nil, nil
-end
-
-local function _recenter_meta_on_close()
-   if not (REWINDER and REWINDER._SaveManager and REWINDER._SaveManager.ensure_meta_window) then
-      return nil, nil, nil
-   end
-   local current_idx = REWINDER.get_current_index and REWINDER.get_current_index()
-   if not current_idx then return nil, nil, nil end
-   REWINDER._SaveManager.ensure_meta_window(current_idx, REWINDER._SaveManager.META_CACHE_BASE_LIMIT, false, true)
-   if REWINDER._SaveManager.calc_meta_window_bounds then
-      return REWINDER._SaveManager.calc_meta_window_bounds(current_idx, REWINDER._SaveManager.META_CACHE_BASE_LIMIT)
-   end
-   return nil, nil, nil
-end
-
-local function _ensure_exit_overlay_wrapped()
-   if not (G and G.FUNCS and G.FUNCS.exit_overlay_menu) then return end
-   if G.FUNCS._rewinder_exit_overlay_menu then return end
-
-   G.FUNCS._rewinder_exit_overlay_menu = G.FUNCS.exit_overlay_menu
-   G.FUNCS.exit_overlay_menu = function(...)
-      if REWINDER and REWINDER.saves_open then
-         _reset_key_save_state(true, true)
-         if REWINDER._SaveManager and REWINDER._SaveManager.set_overlay_open then
-            REWINDER._SaveManager.set_overlay_open(false)
+   if REWINDER and REWINDER._SaveManager then
+      local idx = REWINDER._SaveManager.get_index_by_file and REWINDER._SaveManager.get_index_by_file(file)
+      if idx then
+         if REWINDER.set_pending_index then
+            REWINDER.set_pending_index(idx)
+         else
+            REWINDER._SaveManager.pending_index = idx
          end
-         REWINDER._saves_ui_refs = nil
-         local start, finish, size = _recenter_meta_on_close()
-         _log_ui("closed", start, finish, size)
-      end
-      return G.FUNCS._rewinder_exit_overlay_menu(...)
-   end
-end
-
-local function _snap_saves_focus_to_current()
-   if not (G and G.CONTROLLER and REWINDER and REWINDER._saves_ui_refs and REWINDER._saves_ui_refs.saves_box) then return end
-
-   local full_idx = REWINDER.find_current_index and REWINDER.find_current_index()
-   local display_idx = full_idx
-   if REWINDER._filter_active then
-      display_idx = full_idx and REWINDER._key_save_reverse_map and REWINDER._key_save_reverse_map[full_idx] or nil
-   end
-
-   local node
-   if display_idx then
-      node = REWINDER._saves_ui_refs.saves_box:get_UIE_by_ID("rewinder_save_entry_" .. tostring(display_idx))
-   end
-   if not node then
-      node = REWINDER._saves_ui_refs.saves_box:get_UIE_by_ID("rewinder_save_entry_1")
-   end
-   if not node then
-      node = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_page_cycle")
-   end
-
-   if node then
-      G.CONTROLLER:snap_to({ node = node })
-      if G.CONTROLLER.update_cursor then
-         G.CONTROLLER:update_cursor()
       end
    end
-end
 
-local function _run_after_frame(func)
-   if G and G.E_MANAGER and Event then
-      G.E_MANAGER:add_event(Event({
-         trigger = "after",
-         delay = 0,
-         func = function()
-            func()
-            return true
-         end,
-      }))
-   else
-      func()
-   end
-end
-
-local function _resolve_cycle_config(refs, current_option, per_page, entries)
-   if not refs or not refs.saves_box then return nil end
-
-   local cycle_config = refs.cycle_config
-   if not cycle_config then
-      cycle_config = {
-         options = refs.page_numbers or {},
-         current_option = current_option,
-         opt_callback = "rewinder_save_update_page",
-         opt_args = {},
-      }
-   end
-
-   cycle_config.opt_args = cycle_config.opt_args or {}
-   cycle_config.opt_args.ui = refs.saves_box
-   cycle_config.opt_args.per_page = per_page
-   cycle_config.opt_args.entries = entries
-   return cycle_config
-end
-
-local function _clamp_page(page, total_pages)
-   local p = tonumber(page) or 1
-   local total = math.max(1, tonumber(total_pages) or 1)
-   if p < 1 then p = 1 end
-   if p > total then p = total end
-   return p
-end
-
-local function _build_page_numbers(total_pages)
-   local numbers = {}
-   local pattern = _loc("rewinder_page_label", "Page %d/%d")
-   for i = 1, total_pages do
-      numbers[i] = string.format(pattern, i, total_pages)
-   end
-   return numbers
-end
-
-local function _page_with_current_save(per_page)
-   local entries = _get_displayed_entries()
-   local total_pages = math.max(1, math.ceil(#entries / per_page))
-   local idx = REWINDER.find_current_index and REWINDER.find_current_index() or nil
-   if REWINDER._filter_active and idx then
-      idx = REWINDER._key_save_reverse_map and REWINDER._key_save_reverse_map[idx] or nil
-   end
-   if not idx or idx < 1 then
-      return 1
-   end
-   return _clamp_page(math.ceil(idx / per_page), total_pages)
-end
-
-local function _refresh_saves_view(target_page)
-   local refs = REWINDER and REWINDER._saves_ui_refs
-   if not refs or not refs.saves_box then return end
-
-   local per_page = refs.per_page or 8
-   local entries = _get_displayed_entries()
-   local total_pages = math.max(1, math.ceil(#entries / per_page))
-   local page = _clamp_page(target_page or (refs.cycle_config and refs.cycle_config.current_option) or 1, total_pages)
-   log("debug", string.format("Refresh saves view page=%d/%d entries=%d filter=%s mark=%s",
-      page, total_pages, #entries, tostring(REWINDER._filter_active), tostring(REWINDER._mark_active)))
-
-   local page_numbers = _build_page_numbers(total_pages)
-
-   refs.page_numbers = page_numbers
-   refs.entries = entries
-   local cycle_config = _resolve_cycle_config(refs, page, per_page, entries)
-   if not cycle_config then return end
-
-   cycle_config.options = page_numbers
-   cycle_config.current_option = page
-   cycle_config.current_option_val = page_numbers[page]
-   refs.cycle_config = cycle_config
-
-   if G and G.FUNCS and G.FUNCS.rewinder_save_update_page then
-      G.FUNCS.rewinder_save_update_page({
-         cycle_config = cycle_config,
-         to_key = page,
-         _entries = entries,
-         _page_numbers = page_numbers,
-      })
-   end
-end
-
-REWINDER._refresh_saves_view = _refresh_saves_view
-
-local function _refresh_saves_if_open(target_page)
-   if REWINDER and REWINDER._saves_ui_refs and REWINDER._saves_ui_refs.saves_box then
-      _refresh_saves_view(target_page)
-      return true
-   end
-   return false
+   REWINDER.load_and_start_from_file(file)
 end
 
 function G.FUNCS.rewinder_save_close(e)
-   _reset_key_save_state(true, true)
+   Helpers.reset_key_save_state(true, true)
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager.set_overlay_open then
       REWINDER._SaveManager.set_overlay_open(false)
    end
    REWINDER._saves_ui_refs = nil
-   local start, finish, size = _recenter_meta_on_close()
-   _log_ui("closed", start, finish, size)
+   local start, finish, size = Helpers.recenter_meta_on_close()
+   Helpers.log_ui("closed", start, finish, size)
    if G and G.FUNCS and G.FUNCS._rewinder_exit_overlay_menu then
       return G.FUNCS._rewinder_exit_overlay_menu(e)
    end
@@ -301,28 +56,28 @@ end
 
 function G.FUNCS.rewinder_save_open(e)
    if not G.FUNCS or not G.FUNCS.overlay_menu then return end
-   _ensure_exit_overlay_wrapped()
+   Helpers.ensure_exit_overlay_wrapped()
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager.set_overlay_open then
       REWINDER._SaveManager.set_overlay_open(true)
    end
 
-   G.FUNCS.overlay_menu({
-      definition = G.UIDEF.rewinder_saves(),
-   })
+   G.FUNCS.overlay_menu({ definition = G.UIDEF.rewinder_saves() })
 
-   _update_mode_button_labels()
-   local start, finish, size = _recenter_meta_on_open()
-   _log_ui("opened", start, finish, size)
-   _run_after_frame(_snap_saves_focus_to_current)
+   Helpers.update_mode_button_labels()
+   Helpers.refresh_pending_badges()
+   local start, finish, size = Helpers.recenter_meta_on_open()
+   Helpers.log_ui("opened", start, finish, size)
+   Helpers.run_after_frame(Helpers.refresh_pending_badges)
+   Helpers.run_after_frame(Helpers.snap_saves_focus_to_current)
 end
 
 function G.FUNCS.rewinder_save_jump_to_current(e)
    local refs = REWINDER._saves_ui_refs
    if not refs or not refs.saves_box then return end
 
-   _log_ui("jump to current")
+   Helpers.log_ui("jump to current")
 
-   _get_displayed_entries()
+   Helpers.get_displayed_entries()
    local per_page = refs.per_page or 8
    local idx = REWINDER.find_current_index and REWINDER.find_current_index() or nil
    if REWINDER._filter_active and idx then
@@ -334,8 +89,8 @@ function G.FUNCS.rewinder_save_jump_to_current(e)
       target_page = math.ceil(idx / per_page)
    end
 
-   _refresh_saves_view(target_page)
-   _run_after_frame(_snap_saves_focus_to_current)
+   Helpers.refresh_saves_view(target_page)
+   Helpers.run_after_frame(Helpers.snap_saves_focus_to_current)
 end
 
 function REWINDER.rewinder_save_jump_to_current()
@@ -349,7 +104,7 @@ local function _navigate_page(dir)
    if not refs or not refs.saves_box then return end
 
    local per_page = refs.per_page or 8
-   local entries = _get_displayed_entries()
+   local entries = Helpers.get_displayed_entries()
    local total_pages = math.max(1, math.ceil(#entries / per_page))
    local current_page = refs.cycle_config and refs.cycle_config.current_option or 1
 
@@ -360,7 +115,7 @@ local function _navigate_page(dir)
       target_page = 1
    end
 
-   _refresh_saves_view(target_page)
+   Helpers.refresh_saves_view(target_page)
 end
 
 function REWINDER.rewinder_prev_page()
@@ -378,15 +133,15 @@ function G.FUNCS.rewinder_save_reload(e)
       REWINDER.get_save_files(true)
    end
 
-   _refresh_saves_if_open(1)
+   Helpers.refresh_saves_if_open(1)
 end
 
 function G.FUNCS.rewinder_save_delete_all(e)
    if REWINDER and REWINDER.clear_all_saves then
       REWINDER.clear_all_saves()
    end
-   _log_ui("deleted all saves")
-   _refresh_saves_if_open(1)
+   Helpers.log_ui("deleted all saves")
+   Helpers.refresh_saves_if_open(1)
 end
 
 function G.FUNCS.rewinder_save_restore(e)
@@ -394,25 +149,41 @@ function G.FUNCS.rewinder_save_restore(e)
    local file = e.config.ref_table.file
    if not file then return end
 
-   local desc = (REWINDER.describe_save and REWINDER.describe_save({ file = file })) or "save"
-   _log_ui("restore -> " .. desc)
-
-   if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
-      REWINDER._SaveManager._set_cache_current_file(file)
-   end
-
-   if REWINDER and REWINDER._SaveManager then
-      local idx = REWINDER._SaveManager.get_index_by_file and REWINDER._SaveManager.get_index_by_file(file)
-      if idx then
-         if REWINDER.set_pending_index then
-            REWINDER.set_pending_index(idx)
-         elseif REWINDER._SaveManager then
-            REWINDER._SaveManager.pending_index = idx
-         end
+   if REWINDER._rename_active then
+      if REWINDER._rename_editing_file == file and REWINDER._rename_input_ref then
+         Helpers.store_rename_pending(file, REWINDER._rename_input_ref.text)
+         REWINDER._rename_editing_file = nil
+         REWINDER._rename_input_ref = nil
+         Helpers.refresh_saves_view(nil)
+         return
       end
+
+      if REWINDER._rename_editing_file and
+         REWINDER._rename_editing_file ~= file and
+         REWINDER._rename_input_ref then
+         Helpers.store_rename_pending(REWINDER._rename_editing_file, REWINDER._rename_input_ref.text)
+      end
+
+      REWINDER._rename_editing_file = file
+      local pending = REWINDER._rename_pending[file]
+      local pending_clear = REWINDER._rename_pending_clear and REWINDER._rename_pending_clear[file]
+      if pending_clear then
+         REWINDER._rename_input_ref = { text = "" }
+      elseif pending ~= nil then
+         REWINDER._rename_input_ref = { text = pending }
+      else
+         local current_name = REWINDER.get_custom_state_name and REWINDER.get_custom_state_name(file) or nil
+         REWINDER._rename_input_ref = { text = current_name or "" }
+      end
+
+      Helpers.refresh_saves_view(nil)
+      Helpers.run_after_frame(Helpers.focus_rename_text_input)
+      return
    end
 
-   REWINDER.load_and_start_from_file(file)
+   local desc = (REWINDER.describe_save and REWINDER.describe_save({ file = file })) or "save"
+   Helpers.log_ui("restore -> " .. desc)
+   _load_save_file(file)
 end
 
 function G.FUNCS.rewinder_save_toggle_key(e)
@@ -427,11 +198,14 @@ function G.FUNCS.rewinder_save_toggle_key(e)
       log("warning", "Failed to toggle key status for file=" .. tostring(file))
       return
    end
-   log("debug", string.format("Toggled pending key file=%s effective=%s", tostring(file), tostring(effective)))
-   _refresh_saves_view(nil)
+   Helpers.refresh_saves_view(nil)
 end
 
 function G.FUNCS.rewinder_btn_mark_keys(e)
+   if not REWINDER._mark_active and REWINDER._rename_active then
+      Helpers.reset_rename_state({ reason = "mark mode switch" })
+   end
+
    if REWINDER._mark_active then
       local success, fail = KeySaves.commit_pending()
       REWINDER._mark_active = false
@@ -440,25 +214,58 @@ function G.FUNCS.rewinder_btn_mark_keys(e)
       else
          log("info", string.format("Key-save commit complete: %d", success))
       end
-      _refresh_saves_view(nil)
+      Helpers.refresh_saves_view(nil)
+      Helpers.run_after_frame(Helpers.update_mode_button_labels)
       return
    end
 
    REWINDER._mark_active = true
    log("info", "Key-save mark mode enabled")
-   _refresh_saves_view(nil)
+   Helpers.refresh_saves_view(nil)
+   Helpers.run_after_frame(Helpers.update_mode_button_labels)
 end
 
 function G.FUNCS.rewinder_btn_filter_keys(e)
+   if REWINDER._rename_active then
+      Helpers.reset_rename_state({ reason = "filter toggle" })
+   end
+
    REWINDER._filter_active = not REWINDER._filter_active
    local per_page = (REWINDER._saves_ui_refs and REWINDER._saves_ui_refs.per_page) or 8
-   local target_page = _page_with_current_save(per_page)
+   local target_page = Helpers.page_with_current_save(per_page)
    log("info", string.format(
       "Key-save filter mode %s -> target page %d",
       (REWINDER._filter_active and "enabled" or "disabled"),
       target_page
    ))
-   _refresh_saves_view(target_page)
+   Helpers.refresh_saves_view(target_page)
+   Helpers.run_after_frame(Helpers.update_mode_button_labels)
+end
+
+function G.FUNCS.rewinder_btn_toggle_rename(e)
+   if not e or not e.config or not e.config.ref_table then return end
+   local mode = e.config.ref_table.mode
+   if mode ~= "rename" then return end
+
+   if not REWINDER._rename_active and REWINDER._mark_active then
+      log("warning", "Cannot enter rename mode while mark mode active")
+      return
+   end
+
+   if REWINDER._rename_active then
+      Helpers.snapshot_active_rename_edit()
+      local committed = Helpers.commit_pending_rename_drafts()
+      Helpers.reset_rename_state()
+      log("info", "Rename committed entries: " .. tostring(committed))
+      log("info", "Rename mode disabled")
+   else
+      REWINDER._rename_active = true
+      Helpers.reset_rename_state({ keep_active = true })
+      log("info", "Rename mode enabled")
+   end
+
+   Helpers.refresh_saves_view(nil)
+   Helpers.run_after_frame(Helpers.update_mode_button_labels)
 end
 
 function G.FUNCS.rewinder_save_update_page(args)
@@ -467,14 +274,19 @@ function G.FUNCS.rewinder_save_update_page(args)
    local callback_args = args.cycle_config.opt_args
    if not callback_args or not callback_args.ui then return end
 
+   local previous_page = args.cycle_config.current_option
    local per_page = callback_args.per_page or 8
    local saves_object = callback_args.ui
    local saves_wrap = saves_object.parent
    if not saves_wrap or not saves_wrap.config or not saves_wrap.config.object then return end
 
-   local entries = args._entries or _get_displayed_entries()
+   local entries = args._entries or Helpers.get_displayed_entries()
    local total_pages = math.max(1, math.ceil(#entries / per_page))
-   local page = _clamp_page(args.to_key, total_pages)
+   local page = UIShared.clamp_page(args.to_key, total_pages)
+   if REWINDER._rename_active and previous_page and previous_page ~= page and
+      (REWINDER._rename_editing_file or Helpers.rename_has_pending_drafts()) then
+      Helpers.reset_rename_state({ reason = "page change", log_level = "debug" })
+   end
 
    if REWINDER.ensure_meta_window_for_page and not REWINDER._filter_active then
       REWINDER.ensure_meta_window_for_page(page, per_page, 4)
@@ -482,7 +294,7 @@ function G.FUNCS.rewinder_save_update_page(args)
 
    local options = args._page_numbers or args.cycle_config.options or {}
    if #options ~= total_pages then
-      options = _build_page_numbers(total_pages)
+      options = UIShared.build_page_numbers(total_pages)
       if REWINDER._saves_ui_refs then
          REWINDER._saves_ui_refs.page_numbers = options
       end
@@ -490,7 +302,7 @@ function G.FUNCS.rewinder_save_update_page(args)
    args.cycle_config.options = options
 
    local total = #options
-   _log_ui(string.format("page %d/%d", page, total > 0 and total or 1))
+   Helpers.log_ui(string.format("page %d/%d", page, total > 0 and total or 1))
 
    saves_wrap.config.object:remove()
    saves_wrap.config.object = UIBox({
@@ -549,15 +361,14 @@ function G.FUNCS.rewinder_save_update_page(args)
       end
    end
 
-   _update_mode_button_labels()
+   Helpers.update_mode_button_labels()
+   Helpers.refresh_pending_row_badges(entries, page, per_page)
 
    if cycle_node and cycle_node.UIBox then
       cycle_node.UIBox:recalculate()
    end
 end
 
---- Game Over rewind button callback
--- Loads the latest save from the rewinder list (same as clicking it in the save list)
 function G.FUNCS.rewinder_game_over_rewind(e)
    if not REWINDER then return end
    local entries = REWINDER.get_save_files and REWINDER.get_save_files()
@@ -570,21 +381,5 @@ function G.FUNCS.rewinder_game_over_rewind(e)
    if not file then return end
 
    log("info", "Game over: loading latest save -> " .. tostring(file))
-
-   if REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
-      REWINDER._SaveManager._set_cache_current_file(file)
-   end
-
-   if REWINDER._SaveManager then
-      local idx = REWINDER._SaveManager.get_index_by_file and REWINDER._SaveManager.get_index_by_file(file)
-      if idx then
-         if REWINDER.set_pending_index then
-            REWINDER.set_pending_index(idx)
-         elseif REWINDER._SaveManager then
-            REWINDER._SaveManager.pending_index = idx
-         end
-      end
-   end
-
-   REWINDER.load_and_start_from_file(file)
+   _load_save_file(file)
 end

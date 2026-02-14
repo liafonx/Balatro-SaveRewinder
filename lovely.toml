@@ -246,6 +246,51 @@ source = "Utils/ScaleNumberHook.lua"
 load_now = true
 before = "globals.lua"
 
+[[patches]]
+[patches.module]
+name = "UIShared"
+source = "UI/Shared.lua"
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "UILayout"
+source = "UI/Layout.lua"
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "UIIconFactory"
+source = "UI/IconFactory.lua"
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "UISaveRows"
+source = "UI/SaveRows.lua"
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "UIOverlayBuilder"
+source = "UI/OverlayBuilder.lua"
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "UIButtonCallbackHelpers"
+source = "UI/ButtonCallbackHelpers.lua"
+before = "globals.lua"
+
+# Allow per-input cursor color override (used by rewinder rename input).
+[[patches]]
+[patches.pattern]
+target = "functions/UI_definitions.lua"
+pattern = "local position_text_colour = lighten(copy_table(G.C.BLUE), 0.4)"
+position = "at"
+match_indent = true
+payload = "local position_text_colour = (args.position_text_colour and copy_table(args.position_text_colour)) or lighten(copy_table(G.C.BLUE), 0.4)"
+
 # Defensive blind-chip normalization at arithmetic callsites.
 # Uses NaNProtection.chips_met_target() to recover nil chips while preserving NaN/inf semantics.
 [[patches]]
