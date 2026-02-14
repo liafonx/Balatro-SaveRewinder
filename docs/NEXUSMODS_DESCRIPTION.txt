@@ -1,0 +1,91 @@
+[center][size=5][b]Save Rewinder[/b][/size]
+
+[url=https://github.com/Liafonx/Balatro-SaveRewinder]GitHub[/url] | [url=https://github.com/Liafonx/Balatro-SaveRewinder/blob/main/README_zh.md]简体中文[/url]
+
+[i]Undo mistakes. Experiment freely. Never lose progress.[/i][/center]
+
+Save Rewinder automatically creates save points as you play Balatro, letting you rewind to any recent moment with a single keystroke.
+
+[list]
+[*][b]Automatic snapshots[/b] — Saves every action (Blind, Hand, Shop).
+[*][b]Instant Undo[/b] — Press S (Keyboard) or L3 (Controller) to rewind immediately.
+[*][b]Quick Saveload[/b] — Press L (Keyboard) or R3 (Controller) to instantly reload.
+[*][b]Key Saves[/b] — Mark important saves and filter the list to key saves only.
+[*][b]Rename Saves[/b] — Enter pencil mode and rename save entries inline.
+[*][b]Game Over Rewind[/b] — Rewind to the last save directly from the game over panel.
+[*][b]Rewind freely[/b] — Stepped-back saves preserved until you make a new action (trigger a new save).
+[*][b]Overflow Protection[/b] — Rewind/save-load safely with extreme naneinf/inf scores.
+[/list]
+
+[size=4][b]Installation[/b][/size]
+
+[list=1]
+[*]Install [url=https://github.com/Steamopollys/Steamodded]Steamodded[/url] for Balatro
+[*]Download the latest version zip file from the Files tab
+[*]Extract the zip file — it contains a [font=Courier New]SaveRewinder[/font] folder
+[*]Copy the [font=Courier New]SaveRewinder[/font] folder directly into your game's [font=Courier New]Mods[/font] folder
+[*]Launch Balatro — you'll see [b]Save Rewinder[/b] in the mods list
+[/list]
+
+[color=orange][b]⚠️ Important:[/b][/color] Make sure [font=Courier New]Mods/SaveRewinder/[/font] contains mod files directly (like [font=Courier New]main.lua[/font]), not another nested [font=Courier New]SaveRewinder[/font] folder.
+
+[size=4][b]Quick Start[/b][/size]
+
+[b]Controls[/b]
+[list]
+[*][b]Step back[/b]: [font=Courier New]S[/font] / [font=Courier New]L3[/font]
+[*][b]Quick saveload[/b]: [font=Courier New]L[/font] / [font=Courier New]R3[/font]
+[*][b]Open saves list[/b]: [font=Courier New]Ctrl+S[/font] / [font=Courier New]X[/font] (Pause Menu)
+[/list]
+
+[b]Tip:[/b] Open the Options menu and click the [color=orange][b]orange "Saves" button[/b][/color] (or press Ctrl+S / X) to browse and restore any save.
+
+[b]Save list bottom buttons:[/b]
+[list]
+[*][b]Check key saves[/b] — Text button, shows only key saves.
+[*][b]★ Edit key saves[/b] — Star icon button, enters mark mode.
+[*][b]✏️ Rename mode[/b] — Pencil icon button, edits save titles inline.
+[*][b]▶ Current save[/b] — Triangle icon button, jumps to your currently loaded save.
+[/list]
+
+[b]How to use icon buttons:[/b]
+[list=1]
+[*]Press [b]★ Edit key saves[/b].
+[*]Click save rows to toggle key marks (pending changes show as a white dot badge on row edge).
+[*]Press [b]★ Save marking changes[/b] to apply, or close the panel to discard pending edits.
+[*]Use [b]Check key saves[/b] to filter and [b]▶ Current save[/b] to jump back to your current position.
+[/list]
+
+[b]Rename flow:[/b]
+[list=1]
+[*]Press [b]✏️[/b] to enter rename mode.
+[*]Click a save row and edit the title (pending changes show as a white dot badge on row edge).
+[*]Click [b]✏️[/b] again to commit pending rename drafts.
+[/list]
+
+[b]Enter key behavior (when saves overlay is open):[/b]
+[list]
+[*]Mark mode + Enter = same as [b]★ Save marking changes[/b].
+[*]Rename mode + editing row + Enter = stage current row draft and exit row edit.
+[*]Rename mode + not editing row + Enter = same as [b]✏️[/b] commit/exit.
+[/list]
+
+[size=4][b]Configuration[/b][/size]
+Configure settings in the Steamodded mod menu:
+[list]
+[*]Choose when to save (Blind, Hand, Round, Shop)
+[*]Toggle blind icons and animations
+[*]Set max antes to keep (Default: 4)
+[*]Configure overflow score handling (cap at 1.8e308 or keep as naneinf)
+[*]Customize keyboard and controller keybinds
+[/list]
+
+[size=4][b]Notes[/b][/size]
+[list]
+[*]Saves are stored in [font=Courier New][Profile]/SaveRewinder/[/font]
+[*]Saves are for the [b]current run only[/b]. Quitting and continuing preserves history, but starting a new run clears old saves.
+[/list]
+
+[line]
+
+[center][size=2]Made for Balatro players who want to learn, experiment, and have fun without fear.[/size][/center]
