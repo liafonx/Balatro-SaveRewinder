@@ -361,6 +361,7 @@ function G.FUNCS.rewinder_save_update_page(args)
       end
    end
 
+   Helpers.update_paging_arrow_visuals(total_pages)
    Helpers.update_mode_button_labels()
    Helpers.refresh_pending_row_badges(entries, page, per_page)
 

@@ -240,6 +240,31 @@ function M.update_saves_outline_colour()
    end
 end
 
+function M.update_paging_arrow_visuals(total_pages)
+   if not (G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return end
+   local cycle_node = G.OVERLAY_MENU:get_UIE_by_ID("rewinder_page_cycle")
+   if not (cycle_node and cycle_node.children) then return end
+
+   local enabled = (total_pages or 1) >= 2
+   local arrow_colour = enabled and G.C.BLUE or G.C.BLACK
+   local text_colour = enabled and G.C.UI.TEXT_LIGHT or G.C.UI.TEXT_INACTIVE
+
+   -- children[1] = left arrow, children[3] = right arrow
+   for _, idx in ipairs({1, 3}) do
+      local arrow = cycle_node.children[idx]
+      if arrow and arrow.config then
+         arrow.config.colour = arrow_colour
+         arrow.config.hover = enabled
+         arrow.config.shadow = enabled
+         arrow.config.button = enabled and 'option_cycle' or nil
+      end
+      -- Each arrow has one text child (the '<' / '>' character)
+      if arrow and arrow.children and arrow.children[1] and arrow.children[1].config then
+         arrow.children[1].config.colour = text_colour
+      end
+   end
+end
+
 function M.reset_key_save_state(discard_pending, preserve_filter_mode)
    local had_pending = KeySaves.has_pending and KeySaves.has_pending() or false
    if discard_pending and REWINDER._mark_active then
