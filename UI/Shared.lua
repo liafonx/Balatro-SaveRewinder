@@ -71,6 +71,9 @@ function M.get_saves_outline_colour()
    if REWINDER and (REWINDER._rename_active or REWINDER._mark_active) then
       return G.C.RED or {0.9, 0.2, 0.2, 1}
    end
+   if REWINDER and REWINDER._filter_active then
+      return REWINDER.KEY_SAVE_COLOR or {0.2, 0.7, 0.7, 1}
+   end
    return M.get_saves_outline_inactive_colour()
 end
 

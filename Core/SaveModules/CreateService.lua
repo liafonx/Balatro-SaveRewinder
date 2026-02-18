@@ -216,6 +216,13 @@ return function(ctx)
       else
          ctx.index.invalidate_derived_indexes()
       end
+
+      local bucket_trimmed = Pruning.trim_type_round_bucket(dir, S.save_cache, E, display_type, state_info.round)
+      if bucket_trimmed > 0 then
+         ctx.index.invalidate_save_cache_view()
+         ctx.index.rebuild_file_index()
+      end
+
       M._set_cache_current_file(filename)
    end
 

@@ -91,6 +91,83 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants, opts)
 
     return removed_count
 end
+-- Config index to actual per-type-per-round limit mapping (matches main.lua options order)
+local TYPE_ROUND_LIMIT_VALUES = { 8, 16, 64, 128 }  -- Index 5 = "All" (nil)
+
+-- Trims oldest non-key saves in a (display_type + round) bucket down to limit.
+-- save_cache is oldest-first order; removes entries in-place and deletes files.
+-- Returns number of removed entries.
+function M.trim_type_round_bucket(save_dir, save_cache, entry_constants, display_type, round)
+    local limit_config = (REWINDER and REWINDER.config and REWINDER.config.max_saves_per_type_per_round) or 5
+    local limit = TYPE_ROUND_LIMIT_VALUES[limit_config]
+    if not limit then
+        if Logger.is_verbose() then
+            M.debug_log("debug", string.format("Type-round trim: limit=all bucket=%s/%s (skip)", tostring(display_type), tostring(round)))
+        end
+        return 0
+    end
+
+    local E_FILE = entry_constants.ENTRY_FILE
+    local E_ROUND = entry_constants.ENTRY_ROUND
+    local E_DISPLAY_TYPE = entry_constants.ENTRY_DISPLAY_TYPE
+    local E_IS_KEY = entry_constants.ENTRY_IS_KEY
+
+    -- Collect indices of non-key entries matching the bucket (oldest-first order).
+    local non_key_indices = {}
+    for i, e in ipairs(save_cache) do
+        if e[E_ROUND] == round and e[E_DISPLAY_TYPE] == display_type and e[E_IS_KEY] ~= true then
+            non_key_indices[#non_key_indices + 1] = i
+        end
+    end
+
+    local non_key_count = #non_key_indices
+    local excess = non_key_count - limit
+    if Logger.is_verbose() then
+        M.debug_log("debug", string.format(
+            "Type-round trim: bucket=%s/%s non_key=%d limit=%d excess=%d",
+            tostring(display_type), tostring(round), non_key_count, limit, math.max(0, excess)))
+    end
+
+    if excess <= 0 then return 0 end
+
+    -- Mark oldest non-key entries for removal (first `excess` in oldest-first order).
+    local remove_set = {}
+    for j = 1, excess do
+        remove_set[non_key_indices[j]] = true
+    end
+
+    -- Delete files and compact save_cache in-place.
+    local removed = 0
+    local write = 1
+    local total = #save_cache
+    for read = 1, total do
+        if remove_set[read] then
+            local ok, err = pcall(_remove_save_file_pair, save_dir, save_cache[read][E_FILE])
+            if not ok then
+                M.debug_log("error", string.format(
+                    "Type-round trim: failed to delete file=%s bucket=%s/%s err=%s",
+                    tostring(save_cache[read][E_FILE]), tostring(display_type), tostring(round), tostring(err)))
+            end
+            removed = removed + 1
+        else
+            if write ~= read then
+                save_cache[write] = save_cache[read]
+            end
+            write = write + 1
+        end
+    end
+    for i = write, total do
+        save_cache[i] = nil
+    end
+
+    if removed > 0 then
+        M.debug_log("info", string.format(
+            "Type-round trim: removed %d oldest non-key saves bucket=%s/%s",
+            removed, tostring(display_type), tostring(round)))
+    end
+    return removed
+end
+
 -- Prunes future saves using timestamp boundary.
 -- Internal cache order is oldest-first, so "future" saves are a contiguous tail.
 function M.prune_future_saves(save_dir, prune_boundary, save_cache, entry_constants)
