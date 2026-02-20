@@ -26,30 +26,44 @@ local function dim_colour(colour, factor)
    }
 end
 
-function G.UIDEF.rewinder_saves()
-   local get_entries = REWINDER._get_displayed_entries or REWINDER.get_save_files
-   local entries = get_entries()
+function G.UIDEF.rewinder_saves(opts)
+   opts = opts or {}
+   local loading_state = opts.loading_state
+   local loading_mode = loading_state ~= nil
+
+   local entries = {}
+   if not loading_mode then
+      local get_entries = REWINDER._get_displayed_entries or REWINDER.get_save_files
+      entries = get_entries()
+   end
    local per_page = 8
 
    local total_pages = math.max(1, math.ceil(#entries / per_page))
    local page_numbers = UIShared.build_page_numbers(total_pages)
 
    local initial_page = 1
-   local SM = REWINDER._SaveManager
-   local current_idx = SM and (SM.current_index or SM.find_current_index and SM.find_current_index())
-   local display_idx = current_idx
-   if REWINDER._filter_active and current_idx then
-      display_idx = REWINDER._key_save_reverse_map and REWINDER._key_save_reverse_map[current_idx] or nil
+   if not loading_mode then
+      local SM = REWINDER._SaveManager
+      local current_idx = SM and (SM.current_index or SM.find_current_index and SM.find_current_index())
+      local display_idx = current_idx
+      if REWINDER._filter_active and current_idx then
+         display_idx = REWINDER._key_save_reverse_map and REWINDER._key_save_reverse_map[current_idx] or nil
+      end
+      if display_idx and display_idx >= 1 then
+         initial_page = math.ceil(display_idx / per_page)
+      end
    end
-   if display_idx and display_idx >= 1 then
-      initial_page = math.ceil(display_idx / per_page)
-   end
-   if REWINDER.ensure_meta_window_for_page and not REWINDER._filter_active then
+   if REWINDER.ensure_meta_window_for_page and not REWINDER._filter_active and not loading_mode then
       REWINDER.ensure_meta_window_for_page(initial_page, per_page, 4)
    end
 
    local saves_box = UIBox({
-      definition = REWINDER.get_saves_page({ entries = entries, per_page = per_page, page_num = initial_page }),
+      definition = REWINDER.get_saves_page({
+         entries = entries,
+         per_page = per_page,
+         page_num = initial_page,
+         loading_state = loading_state,
+      }),
       config = { type = "cm" },
    })
 
@@ -58,6 +72,7 @@ function G.UIDEF.rewinder_saves()
    REWINDER._saves_ui_refs.per_page = per_page
    REWINDER._saves_ui_refs.entries = entries
    REWINDER._saves_ui_refs.page_numbers = page_numbers
+   REWINDER._saves_ui_refs.loading_state = loading_state
 
    local mark_label = REWINDER._mark_active and loc("rewinder_mark_keys_active", "Save marking changes")
       or loc("rewinder_mark_keys", "Edit key saves")
@@ -71,9 +86,10 @@ function G.UIDEF.rewinder_saves()
    local filter_button_colour = G.C.BLUE
    local icon_button_border_colour = UIShared.get_icon_button_border_colour()
    local disabled_icon_button_border_colour = UIShared.get_icon_button_disabled_border_colour()
-   local mark_enabled = not REWINDER._rename_active
-   local rename_enabled = not REWINDER._mark_active
-   local jump_enabled = not (REWINDER._rename_active or REWINDER._mark_active)
+   local mark_enabled = (not REWINDER._rename_active) and (not loading_mode)
+   local rename_enabled = (not REWINDER._mark_active) and (not loading_mode)
+   local jump_enabled = (not (REWINDER._rename_active or REWINDER._mark_active)) and (not loading_mode)
+   local filter_enabled = not loading_mode
    local mark_button_ref = { label = { text = mark_label } }
    local filter_button_ref = { label = { text = filter_label } }
    REWINDER._saves_ui_refs.mark_button_ref = mark_button_ref
@@ -123,12 +139,12 @@ function G.UIDEF.rewinder_saves()
                   nodes = {
                      UIBox_button({
                         id = "rewinder_btn_filter_keys",
-                        button = "rewinder_btn_filter_keys",
+                        button = filter_enabled and "rewinder_btn_filter_keys" or nil,
                         label = {},
                         dynamic_label = filter_button_ref.label,
                         minw = Layout.FILTER_BUTTON_W,
                         scale = 0.42,
-                        colour = filter_button_colour,
+                        colour = filter_enabled and filter_button_colour or dim_colour(filter_button_colour),
                         focus_args = { nav = "wide" },
                      }),
                   },

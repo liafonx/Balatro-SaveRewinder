@@ -13,11 +13,87 @@ REWINDER._rename_pending = REWINDER._rename_pending or {}
 REWINDER._rename_pending_clear = REWINDER._rename_pending_clear or {}
 
 local UIShared = require("UIShared")
+local SaveListSync = require("SaveListSync")
 local Helpers = require("UIButtonCallbackHelpers")
 local KeySaves = Helpers.KeySaves
 local log = Helpers.log
 
 Helpers.bootstrap()
+REWINDER._saves_open_sync = REWINDER._saves_open_sync or nil
+
+local function _rewinder_queue_depth()
+   local SM = REWINDER and REWINDER._SaveManager
+   if not (SM and SM.rewinder_queue_depth) then return 0 end
+   return tonumber(SM.rewinder_queue_depth()) or 0
+end
+
+local function _is_saves_overlay_open()
+   local SM = REWINDER and REWINDER._SaveManager
+   return (SM and SM.is_overlay_open and SM.is_overlay_open()) or (REWINDER and REWINDER.saves_open)
+end
+
+local function _open_saves_overlay(definition, action_label, loading_mode)
+   G.FUNCS.overlay_menu({ definition = definition })
+
+   Helpers.update_mode_button_labels()
+   if not loading_mode then
+      Helpers.refresh_pending_badges()
+   end
+   Helpers.update_paging_arrow_visuals((REWINDER._saves_ui_refs and REWINDER._saves_ui_refs.page_numbers and #REWINDER._saves_ui_refs.page_numbers) or 1)
+   if loading_mode then
+      Helpers.log_ui(action_label or "opened")
+      return
+   end
+   local start, finish, size = Helpers.recenter_meta_on_open()
+   Helpers.log_ui(action_label or "opened", start, finish, size)
+end
+
+local function _swap_overlay_without_animation(definition)
+   if not (G and UIBox and G.ROOM_ATTACH) then return false end
+   if G.OVERLAY_MENU then
+      G.OVERLAY_MENU:remove()
+   end
+
+   G.OVERLAY_MENU = UIBox({
+      definition = definition,
+      config = {
+         align = "cm",
+         offset = { x = 0, y = 0 },
+         major = G.ROOM_ATTACH,
+         bond = "Weak",
+      },
+   })
+
+   if G.OVERLAY_MENU and G.OVERLAY_MENU.alignment then
+      G.OVERLAY_MENU.alignment.offset.y = 0
+   end
+   if G.OVERLAY_MENU and G.OVERLAY_MENU.align_to_major then
+      G.OVERLAY_MENU:align_to_major()
+   end
+   return G.OVERLAY_MENU ~= nil
+end
+
+local function _rebuild_saves_overlay_after_loading(action_label)
+   if not _is_saves_overlay_open() then return end
+   local definition = G.UIDEF.rewinder_saves()
+   local swapped = _swap_overlay_without_animation(definition)
+   if not swapped then
+      _open_saves_overlay(definition, action_label or "opened (sync complete)", false)
+   else
+      Helpers.update_mode_button_labels()
+      Helpers.update_paging_arrow_visuals((REWINDER._saves_ui_refs and REWINDER._saves_ui_refs.page_numbers and #REWINDER._saves_ui_refs.page_numbers) or 1)
+      local start, finish, size = Helpers.recenter_meta_on_open()
+      Helpers.log_ui(action_label or "opened (sync complete)", start, finish, size)
+   end
+   Helpers.run_after_frame(Helpers.refresh_pending_badges)
+   Helpers.run_after_frame(Helpers.snap_saves_focus_to_current)
+end
+
+local function _start_saves_open_sync(queue_depth)
+   return SaveListSync.start(queue_depth, function()
+      _rebuild_saves_overlay_after_loading("opened (sync complete)")
+   end)
+end
 
 local function _load_save_file(file)
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
@@ -39,6 +115,7 @@ local function _load_save_file(file)
 end
 
 function G.FUNCS.rewinder_save_close(e)
+   SaveListSync.cancel()
    Helpers.reset_key_save_state(true, true)
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager.set_overlay_open then
       REWINDER._SaveManager.set_overlay_open(false)
@@ -57,16 +134,41 @@ end
 function G.FUNCS.rewinder_save_open(e)
    if not G.FUNCS or not G.FUNCS.overlay_menu then return end
    Helpers.ensure_exit_overlay_wrapped()
-   if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager.set_overlay_open then
-      REWINDER._SaveManager.set_overlay_open(true)
+   local SM = REWINDER and REWINDER._SaveManager
+   if SM and SM.set_overlay_open then
+      SM.set_overlay_open(true)
    end
 
-   G.FUNCS.overlay_menu({ definition = G.UIDEF.rewinder_saves() })
+   local queue_depth = _rewinder_queue_depth()
+   local should_defer_entries = queue_depth > 0 and SM and SM.flush_all_pending_rewinder
+   if should_defer_entries then
+      local loading_message = UIShared.loc("rewinder_syncing_saves", "Syncing pending saves...")
+      local loading_detail = string.format(
+         UIShared.loc("rewinder_syncing_saves_detail", "Queued saves: %d"),
+         queue_depth
+      )
 
-   Helpers.update_mode_button_labels()
-   Helpers.refresh_pending_badges()
-   local start, finish, size = Helpers.recenter_meta_on_open()
-   Helpers.log_ui("opened", start, finish, size)
+      _open_saves_overlay(
+         G.UIDEF.rewinder_saves({
+            loading_state = {
+               queued = queue_depth,
+               message = loading_message,
+               detail = loading_detail,
+            },
+         }),
+         "opened (sync pending)",
+         true
+      )
+      if not _start_saves_open_sync(queue_depth) then
+         if SM and SM.flush_all_pending_rewinder then
+            SM.flush_all_pending_rewinder("pre_overlay_open_fallback")
+         end
+         _rebuild_saves_overlay_after_loading("opened (sync fallback)")
+      end
+      return
+   end
+
+   _open_saves_overlay(G.UIDEF.rewinder_saves(), "opened")
    Helpers.run_after_frame(Helpers.refresh_pending_badges)
    Helpers.run_after_frame(Helpers.snap_saves_focus_to_current)
 end
@@ -269,6 +371,7 @@ function G.FUNCS.rewinder_btn_toggle_rename(e)
 end
 
 function G.FUNCS.rewinder_save_update_page(args)
+   if REWINDER and REWINDER._saves_ui_refs and REWINDER._saves_ui_refs.loading_state then return end
    if not args or not args.cycle_config then return end
 
    local callback_args = args.cycle_config.opt_args
@@ -383,4 +486,19 @@ function G.FUNCS.rewinder_game_over_rewind(e)
 
    log("info", "Game over: loading latest save -> " .. tostring(file))
    _load_save_file(file)
+end
+
+function G.FUNCS.rewinder_config_change(args)
+   args = args or {}
+   if args.cycle_config and args.cycle_config.ref_table and args.cycle_config.ref_value then
+      local ref_value = args.cycle_config.ref_value
+      args.cycle_config.ref_table[ref_value] = args.to_key
+
+      if ref_value == "keep_antes" then
+         local SM = REWINDER and REWINDER._SaveManager
+         if SM and SM.apply_retention_policy_now then
+            SM.apply_retention_policy_now()
+         end
+      end
+   end
 end

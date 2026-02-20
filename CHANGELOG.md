@@ -4,6 +4,10 @@ English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/ma
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [Unreleased]
+### Added
+- **Max saves per type per round**: New config option to limit saves of the same type within a round (choices: 8, 16, 64, 128, All; default: 16).
+
 ## [1.5.5] - 2026-02-14
 ### Added
 - **Game Over rewind action**: Added a rewind button on the game over panel.

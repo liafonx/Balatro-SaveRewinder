@@ -45,6 +45,7 @@ function M.new(base_meta_limit)
 
       pending_async_files = {},
       pending_async_count = 0,
+      bucket_counts = nil,
 
       ordinal_state = _new_ordinal_state(),
       last_current_file = false,

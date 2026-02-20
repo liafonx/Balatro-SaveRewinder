@@ -22,6 +22,8 @@ return function(ctx)
 
    function M.reset_for_new_run()
       M.invalidate_async_saves()
+      if M.invalidate_queue_and_thread then M.invalidate_queue_and_thread() end
+      if REWINDER then REWINDER._rw_flush_fallback = false end
       M._pending_skip_reason = nil
       M._loaded_mark_applied = nil
       M._loaded_display_type = nil
@@ -88,6 +90,9 @@ return function(ctx)
       opts = opts or {}
       local mark_restore = not opts.skip_restore_identical
       local reason = mark_restore and "restore" or "step"
+      if M.flush_all_pending_rewinder then
+         M.flush_all_pending_rewinder("pre_load")
+      end
       ctx.index.process_async_save_results()
 
       M.get_save_files()
@@ -173,6 +178,9 @@ return function(ctx)
    end
 
    function M.revert_to_previous_save()
+      if M.flush_all_pending_rewinder then
+         M.flush_all_pending_rewinder("pre_step")
+      end
       local entries = M.get_save_files()
       if not entries or #entries == 0 then
          M.debug_log("warning", "Cannot step back: no saves available")

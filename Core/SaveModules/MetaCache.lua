@@ -39,8 +39,12 @@ return function(ctx)
       entry[E.ENTRY_IS_KEY] = nil
    end
 
-   local function _drop_meta(file)
+   local function _drop_meta(file, force)
       if not file or not S.meta_cache[file] then return end
+      if not force and index and index.is_async_pending and index.is_async_pending(file) then
+         -- Keep metadata for pending async saves in memory until write completes.
+         return
+      end
       S.meta_cache[file] = nil
       S.meta_cache_size = math.max(0, S.meta_cache_size - 1)
       S.meta_lru_ts[file] = nil
@@ -67,13 +71,20 @@ return function(ctx)
       while S.meta_cache_size > S.meta_cache_limit do
          local candidate, min_ts = nil, nil
          for file, ts in pairs(S.meta_lru_ts) do
-            if not _is_pinned(file) and (not min_ts or ts < min_ts) then
+            local is_pending = index and index.is_async_pending and index.is_async_pending(file)
+            if not _is_pinned(file) and not is_pending and (not min_ts or ts < min_ts) then
                candidate, min_ts = file, ts
             end
          end
          if not candidate then break end
+         local before = S.meta_cache_size
          _drop_meta(candidate)
-         evicted = evicted + 1
+         if S.meta_cache_size < before then
+            evicted = evicted + 1
+         else
+            -- Defensive: avoid re-selecting the same non-droppable candidate.
+            S.meta_lru_ts[candidate] = nil
+         end
       end
 
       if evicted > 0 and Logger.is_verbose() then
@@ -105,36 +116,24 @@ return function(ctx)
       if not S.save_cache_by_file then return end
       for file in pairs(S.meta_cache) do
          if not S.save_cache_by_file[file] then
-            _drop_meta(file)
+            _drop_meta(file, true)
          end
       end
    end
 
-   local function _list_and_sort_entries()
-      local dir = M.get_save_dir()
-      local files = love.filesystem.getDirectoryItems(dir)
-      local entries = {}
-      for _, file in ipairs(files) do
-         if file:match("%.jkr$") then
-            local full = dir .. "/" .. file
-            local info = love.filesystem.getInfo(full)
-            if info and info.type == "file" then
-               local ante_str, round_str, index_str = file:match("^(%d+)%-(%d+)%-(%d+)%.jkr$")
-               local ante = tonumber(ante_str) or 0
-               local round = tonumber(round_str) or 0
-               local index_id = tonumber(index_str) or 0
-               entries[#entries + 1] = {
-                  file, ante, round, index_id,
-                  nil, nil, nil, nil, false, nil, nil, nil, nil,
-               }
-            end
-         end
-      end
-
-      table.sort(entries, function(a, b)
-         return a[E.ENTRY_INDEX] < b[E.ENTRY_INDEX]
-      end)
-      return entries
+   local function _build_meta_from_entry(entry)
+      if not entry then return nil end
+      if not entry[E.ENTRY_DISPLAY_TYPE] then return nil end
+      return {
+         money = entry[E.ENTRY_MONEY],
+         signature = entry[E.ENTRY_SIGNATURE],
+         discards_used = entry[E.ENTRY_DISCARDS_USED],
+         hands_played = entry[E.ENTRY_HANDS_PLAYED],
+         blind_idx = entry[E.ENTRY_BLIND_IDX],
+         display_type = entry[E.ENTRY_DISPLAY_TYPE],
+         ordinal = entry[E.ENTRY_ORDINAL],
+         is_key = entry[E.ENTRY_IS_KEY] == true,
+      }
    end
 
    function M.set_overlay_open(is_open)
@@ -206,6 +205,33 @@ return function(ctx)
       end
 
       local dir = M.get_save_dir()
+      local is_pending = index.is_async_pending and index.is_async_pending(file)
+      if is_pending and index.is_async_save_ready and index.is_async_save_ready(file) then
+         index.clear_async_pending(file)
+         is_pending = false
+      end
+
+      if is_pending then
+         -- Queue mode: entry metadata is authoritative until file+meta land on disk.
+         local pending_meta = _build_meta_from_entry(entry)
+         if pending_meta then
+            _cache_meta(file, pending_meta)
+            _apply_meta_to_entry(entry, pending_meta)
+            return true
+         end
+         return false
+      end
+
+      local save_path = dir .. "/" .. file
+      local save_info = love.filesystem.getInfo(save_path)
+      if not save_info or save_info.type ~= "file" then
+         -- Stale cache entries can occur briefly around prune/refresh windows.
+         if Logger.is_verbose() then
+            M.debug_log("debug", "Skip meta read for missing save file: " .. tostring(file))
+         end
+         return false
+      end
+
       local meta = S.meta_cache[file]
       if meta then
          _touch_lru(file)
@@ -222,8 +248,15 @@ return function(ctx)
          return true
       end
 
-      M.debug_log("error", "Missing .meta file for: " .. file)
-      _clear_entry_meta(entry)
+      local rebuilt = _build_meta_from_entry(entry)
+      if rebuilt and rebuilt.signature and MetaFile.write_meta_file(meta_path, rebuilt) then
+         _cache_meta(file, rebuilt)
+         _apply_meta_to_entry(entry, rebuilt)
+         M.debug_log("warning", "Rebuilt missing .meta file for: " .. file)
+         return true
+      end
+
+      M.debug_log("warning", "Missing .meta file for: " .. file)
       return false
    end
 
@@ -275,54 +308,8 @@ return function(ctx)
       return true
    end
 
-   function M.get_save_files(force_reload)
-      index.process_async_save_results()
-      if S.save_cache and not force_reload then
-         index.update_cache_current_flags()
-         if not S.save_cache_by_file then index.rebuild_file_index() end
-         return index.get_save_cache_view()
-      end
-
-      S.save_cache = _list_and_sort_entries()
-      index.invalidate_save_cache_view()
-      local newest = S.save_cache and S.save_cache[#S.save_cache]
-      if newest and newest[E.ENTRY_INDEX] then
-         M._last_generated_id = math.max(M._last_generated_id or 0, newest[E.ENTRY_INDEX])
-      end
-      index.rebuild_file_index()
-      _purge_meta_cache()
-      index.update_cache_current_flags(true)
-      return index.get_save_cache_view()
-   end
-
-   function M.preload_all_metadata(force_reload)
-      local entries = M.get_save_files(force_reload)
-      if entries and #entries > 0 then
-         M.ensure_meta_window(1, M.META_CACHE_BASE_LIMIT)
-      end
-      return entries
-   end
-
-   function M.clear_all_saves()
-      M.invalidate_async_saves()
-      local dir = M.get_save_dir()
-      if love.filesystem.getInfo(dir) then
-         for _, file in ipairs(love.filesystem.getDirectoryItems(dir)) do
-            love.filesystem.remove(dir .. "/" .. file)
-         end
-      end
-
-      M.debug_log("info", "Cleared all saves")
-      S.save_cache = {}
-      S.save_cache_view = nil
-      S.meta_cache = {}
-      S.meta_cache_size = 0
-      S.meta_lru_ts = {}
-      S.meta_lru_clock = 0
-      S.meta_cache_limit = M.META_CACHE_BASE_LIMIT
-      index.reset_async_state()
-      index.reset_all_indices()
-   end
+   -- get_save_files, preload_all_metadata, and clear_all_saves
+   -- now live in IndexStore where file discovery belongs.
 
    function api.cache_meta(file, meta)
       _cache_meta(file, meta)

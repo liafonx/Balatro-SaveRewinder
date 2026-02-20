@@ -47,6 +47,7 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants, opts)
     end
     -- Single-pass in-place compaction (O(N), avoids repeated table.remove shifts)
     local removed_count = 0
+    local removed_files = {}
     local write = 1
     local total = #all_entries
     for read = 1, total do
@@ -68,7 +69,9 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants, opts)
                 write = write + 1
             else
                 -- Remove old saves per retention policy
-                _remove_save_file_pair(save_dir, e[ENTRY_FILE])
+                local removed_file = e[ENTRY_FILE]
+                _remove_save_file_pair(save_dir, removed_file)
+                removed_files[#removed_files + 1] = removed_file
                 removed_count = removed_count + 1
             end
         else
@@ -89,22 +92,26 @@ function M.apply_retention_policy(save_dir, all_entries, entry_constants, opts)
         M.debug_log("debug", "Retention policy: no pruning needed")
     end
 
-    return removed_count
+    return removed_count, removed_files
 end
 -- Config index to actual per-type-per-round limit mapping (matches main.lua options order)
 local TYPE_ROUND_LIMIT_VALUES = { 8, 16, 64, 128 }  -- Index 5 = "All" (nil)
+
+function M.get_type_round_limit(config_index)
+    return TYPE_ROUND_LIMIT_VALUES[config_index]
+end
 
 -- Trims oldest non-key saves in a (display_type + round) bucket down to limit.
 -- save_cache is oldest-first order; removes entries in-place and deletes files.
 -- Returns number of removed entries.
 function M.trim_type_round_bucket(save_dir, save_cache, entry_constants, display_type, round)
     local limit_config = (REWINDER and REWINDER.config and REWINDER.config.max_saves_per_type_per_round) or 5
-    local limit = TYPE_ROUND_LIMIT_VALUES[limit_config]
+    local limit = M.get_type_round_limit(limit_config)
     if not limit then
         if Logger.is_verbose() then
             M.debug_log("debug", string.format("Type-round trim: limit=all bucket=%s/%s (skip)", tostring(display_type), tostring(round)))
         end
-        return 0
+        return 0, {}
     end
 
     local E_FILE = entry_constants.ENTRY_FILE
@@ -128,7 +135,7 @@ function M.trim_type_round_bucket(save_dir, save_cache, entry_constants, display
             tostring(display_type), tostring(round), non_key_count, limit, math.max(0, excess)))
     end
 
-    if excess <= 0 then return 0 end
+    if excess <= 0 then return 0, {} end
 
     -- Mark oldest non-key entries for removal (first `excess` in oldest-first order).
     local remove_set = {}
@@ -138,16 +145,19 @@ function M.trim_type_round_bucket(save_dir, save_cache, entry_constants, display
 
     -- Delete files and compact save_cache in-place.
     local removed = 0
+    local removed_files = {}
     local write = 1
     local total = #save_cache
     for read = 1, total do
         if remove_set[read] then
-            local ok, err = pcall(_remove_save_file_pair, save_dir, save_cache[read][E_FILE])
+            local removed_file = save_cache[read][E_FILE]
+            local ok, err = pcall(_remove_save_file_pair, save_dir, removed_file)
             if not ok then
                 M.debug_log("error", string.format(
                     "Type-round trim: failed to delete file=%s bucket=%s/%s err=%s",
-                    tostring(save_cache[read][E_FILE]), tostring(display_type), tostring(round), tostring(err)))
+                    tostring(removed_file), tostring(display_type), tostring(round), tostring(err)))
             end
+            removed_files[#removed_files + 1] = removed_file
             removed = removed + 1
         else
             if write ~= read then
@@ -165,7 +175,7 @@ function M.trim_type_round_bucket(save_dir, save_cache, entry_constants, display
             "Type-round trim: removed %d oldest non-key saves bucket=%s/%s",
             removed, tostring(display_type), tostring(round)))
     end
-    return removed
+    return removed, removed_files
 end
 
 -- Prunes future saves using timestamp boundary.

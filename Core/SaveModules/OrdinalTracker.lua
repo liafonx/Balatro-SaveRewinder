@@ -17,21 +17,6 @@ return function(ctx)
       S.ordinal_state.defeated_boss_idx = nil
    end
 
-   function M.reset_loaded_state_if_stale()
-      if M._pending_skip_reason then return end
-      M._loaded_mark_applied = nil
-      M._loaded_ante = nil
-      M._loaded_round = nil
-      M._loaded_money = nil
-      M._loaded_discards = nil
-      M._loaded_hands = nil
-      M._loaded_display_type = nil
-      M.skip_next_save = false
-      M._restore_active = false
-      _reset_ordinal_state(nil, nil, nil)
-      S.ordinal_state.defeated_boss_idx = nil
-   end
-
    local function _init_ordinal_state_from_entry(entry)
       if not entry then
          _reset_ordinal_state(nil, nil, nil)

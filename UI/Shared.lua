@@ -9,11 +9,11 @@ function M.loc(key, fallback)
    return fallback
 end
 
-function M.run_after_frame(func)
+function M.schedule_after_delay(delay, func)
    if G and G.E_MANAGER and Event then
       G.E_MANAGER:add_event(Event({
          trigger = "after",
-         delay = 0,
+         delay = delay or 0,
          func = function()
             func()
             return true
@@ -22,6 +22,10 @@ function M.run_after_frame(func)
       return
    end
    func()
+end
+
+function M.run_after_frame(func)
+   M.schedule_after_delay(0, func)
 end
 
 function M.clamp_page(page, total_pages)

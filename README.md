@@ -83,6 +83,7 @@ In the Steamodded config menu for Save Rewinder:
 - Choose when to save (Blind, Hand, Round, Shop).
 - Toggle blind icons and animations.
 - Set max antes to keep (Default: 4).
+- Set max saves per type per round (Default: 16).
 - Configure overflow score handling (cap at 1.8e308 or keep as naneinf).
 - Customize keyboard and controller keybinds.
 

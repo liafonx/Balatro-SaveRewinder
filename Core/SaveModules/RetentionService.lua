@@ -62,7 +62,7 @@ return function(ctx)
       if loaded > 0 and Logger.is_verbose() then
          M.debug_log("debug", "Loaded key flags before retention prune: " .. tostring(loaded))
       end
-      Pruning.apply_retention_policy(save_dir, entries, E, {
+      return Pruning.apply_retention_policy(save_dir, entries, E, {
          should_preserve_entry = _retention_should_preserve_entry,
       })
    end

@@ -277,8 +277,10 @@ function M.build_icon_button(opts)
    local disabled_border_colour = opts.disabled_border_colour or UIShared.get_icon_button_disabled_border_colour()
    local icon_colour = opts.icon_colour or UIShared.get_icon_button_icon_colour()
    local disabled_icon_colour = opts.disabled_icon_colour or UIShared.get_icon_button_disabled_icon_colour()
-   local inner_r = math.max(0.01, Layout.ICON_BUTTON_RADIUS - Layout.ICON_BUTTON_BORDER * 0.5)
-   local inner_side = Layout.ICON_BUTTON_SIDE - Layout.ICON_BUTTON_BORDER * 2
+   local border = math.max(0, Layout.ICON_BUTTON_BORDER or 0)
+   -- Keep inner/outer rounded rectangles concentric so border thickness is uniform.
+   local inner_r = math.max(0.01, (Layout.ICON_BUTTON_RADIUS or 0) - border)
+   local inner_side = math.max(0.01, (Layout.ICON_BUTTON_SIDE or 0) - border * 2)
    local enabled = (opts.enabled ~= false)
    local icon_obj = opts.icon
    if icon_obj and type(icon_obj.colour) == "table" then

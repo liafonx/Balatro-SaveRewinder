@@ -53,12 +53,64 @@ function REWINDER.should_skip_save_run()
    if not snapshot then return false end
 
    local last = REWINDER._save_gate_last
+   local now = (love and love.timer and love.timer.getTime) and love.timer.getTime() or 0
+   local duplicate_window = 0.05
    if _save_gate_equal(last, snapshot) then
-      return true
+      local last_t = REWINDER._save_gate_last_t or 0
+      if (now - last_t) < duplicate_window then
+         return true
+      end
    end
 
    REWINDER._save_gate_last = snapshot
+   REWINDER._save_gate_last_t = now
    return false
+end
+
+local function _contains_object_ref_bounded(root, max_nodes)
+   if type(root) ~= "table" then return false, 0, false end
+   local stack = { root }
+   local seen = {}
+   local visited = 0
+   local truncated = false
+   local limit = max_nodes or 12000
+
+   while #stack > 0 do
+      local node = stack[#stack]
+      stack[#stack] = nil
+      if type(node) == "table" and not seen[node] then
+         seen[node] = true
+         visited = visited + 1
+         if visited >= limit then
+            truncated = true
+            break
+         end
+         if Object and node.is and type(node.is) == "function" and node:is(Object) then
+            return true, visited, truncated
+         end
+         for _, value in pairs(node) do
+            if type(value) == "table" and not seen[value] then
+               stack[#stack + 1] = value
+            end
+         end
+      end
+   end
+   return false, visited, truncated
+end
+
+function REWINDER.validate_culled_table_once(culled_table)
+   if REWINDER._culled_validate_done then return end
+   REWINDER._culled_validate_done = true
+   if not Logger.is_verbose() then return end
+   if type(culled_table) ~= "table" then return end
+
+   local has_object_ref, visited, truncated = _contains_object_ref_bounded(culled_table.cardAreas, 20000)
+   if has_object_ref then
+      log("warning", "Selective cull check: Object ref found in cardAreas (unexpected)")
+      return
+   end
+   local suffix = truncated and " (bounded scan reached)" or ""
+   log("debug", string.format("Selective cull check passed: cardAreas scanned=%d%s", visited, suffix))
 end
 
 local function derive_file_from_rewinder_id(bm, savetext)
@@ -73,31 +125,7 @@ local function derive_file_from_rewinder_id(bm, savetext)
 end
 
 local function reset_save_manager_for_new_run(bm)
-   if not bm then return end
-   if bm.reset_for_new_run then
-      bm.reset_for_new_run()
-      return
-   end
-   if bm.invalidate_async_saves then
-      bm.invalidate_async_saves()
-   end
-   bm._pending_skip_reason = nil
-   bm._loaded_mark_applied = nil
-   bm._loaded_display_type = nil
-   bm.current_index = nil
-   bm._restore_active = nil
-   bm._last_loaded_file = nil
-   bm.skip_next_save = false
-   bm.pending_future_prune_boundary = nil
-   bm.skipping_pack_open = nil
-   bm._last_save_sig = nil
-   bm._last_save_time = nil
-   if bm.set_overlay_open then
-      bm.set_overlay_open(false)
-   end
-   if bm.reset_ordinal_state then
-      bm.reset_ordinal_state()
-   end
+   if bm and bm.reset_for_new_run then bm.reset_for_new_run() end
 end
 
 local function clear_all_saves_next_frame()
@@ -122,6 +150,8 @@ function Game:start_run(args)
    args = args or {}
    -- Reset semantic save gate state on every run entry.
    REWINDER._save_gate_last = nil
+   REWINDER._rw_last_shop_flush_t = nil
+   REWINDER._rw_last_play_flush_t = nil
    -- 1. Mark the loaded state and derive _file from _rewinder_id if needed
    if args.savetext and REWINDER.mark_loaded_state then
       local BM = REWINDER._SaveManager
@@ -170,6 +200,10 @@ function Game:start_run(args)
    REWINDER.saves_open = false
    REWINDER._debug_alert = nil
    if not args.savetext then
+      REWINDER._rw_first_flush_file = nil
+      REWINDER._rw_first_flush_time = nil
+      REWINDER._rw_flush_verified = false
+      REWINDER._rw_flush_fallback = false
       -- Brand new run - reset SaveManager internal state directly
       local BM = REWINDER._SaveManager
       reset_save_manager_for_new_run(BM)
@@ -215,7 +249,8 @@ end
 -- This function is called via a regex patch in lovely.toml,
 -- injecting it directly into the game's save_run function.
 function REWINDER.defer_save_creation()
-   if G.culled_table then
+   if G.culled_table and not G.culled_table._rewinder_processed then
+      G.culled_table._rewinder_processed = true
       -- Generate unique ID BEFORE game writes save.jkr
       -- This ID will be persisted in save.jkr by the game's save logic,
       -- enabling exact O(1) matching when user clicks "Continue"
@@ -226,7 +261,7 @@ function REWINDER.defer_save_creation()
          unique_id = math.floor(os.time() * 1000)
       end
       G.culled_table._rewinder_id = unique_id
-      -- Save immediately using the same table as the vanilla game save.
+      -- Create a rewinder save entry from the current culled table.
       local SM = REWINDER and REWINDER._SaveManager
       if SM and SM.create_save then
          SM.create_save(G.culled_table)
@@ -234,4 +269,11 @@ function REWINDER.defer_save_creation()
          require("SaveManager").create_save(G.culled_table)
       end
    end
+end
+
+-- Trickle flush: delegates to QueueService (installed on SaveManager).
+-- Called from lovely.toml patch after each save_run.
+function REWINDER.flush_pending_rewinder()
+   local SM = REWINDER and REWINDER._SaveManager
+   if SM and SM.flush_trickle_pending then SM.flush_trickle_pending() end
 end

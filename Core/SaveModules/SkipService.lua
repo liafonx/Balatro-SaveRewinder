@@ -52,6 +52,20 @@ return function(ctx)
       end
    end
 
+   function M.reset_loaded_state_if_stale()
+      if M._pending_skip_reason then return end
+      M._loaded_mark_applied = nil
+      M._loaded_ante = nil
+      M._loaded_round = nil
+      M._loaded_money = nil
+      M._loaded_discards = nil
+      M._loaded_hands = nil
+      M._loaded_display_type = nil
+      M.skip_next_save = false
+      M._restore_active = false
+      if M.reset_ordinal_state then M.reset_ordinal_state() end
+   end
+
    function M.set_skip_context(context)
       context = context or {}
       if context.reason ~= nil then M._pending_skip_reason = context.reason end

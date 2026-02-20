@@ -53,6 +53,8 @@ return {
             rewinder_filter_keys_active = '返回全部存档',
             rewinder_rename_prompt = '输入自定义名称',
             rewinder_all_saves_deleted = '所有存档已删除',
+            rewinder_syncing_saves = '正在同步排队存档...',
+            rewinder_syncing_saves_detail = '排队存档：%d',
 
             rewinder_ante_label = '底注',
             rewinder_ante_round_spacing = '  ',

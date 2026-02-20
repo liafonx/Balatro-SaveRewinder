@@ -76,6 +76,13 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
+name = "SaveThread"
+source = "Utils/SaveThread.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
 name = "Pruning"
 source = "Utils/Pruning.lua"
 load_now = true
@@ -154,6 +161,13 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
+name = "SaveManagerQueueService"
+source = "Core/SaveModules/QueueService.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
 name = "SaveManager"
 source = "Core/SaveManager.lua"
 load_now = true
@@ -200,13 +214,40 @@ position = "after"
 match_indent = true
 payload = "if REWINDER and REWINDER._SaveManager then REWINDER._SaveManager.skipping_pack_open = true end"
 
+# Performance: avoid full recursive_table_cull on sections already serialized by :save().
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = "G.culled_table =  recursive_table_cull{"
+position = "at"
+match_indent = true
+payload = "G.culled_table = {"
+
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = "GAME = G.GAME,"
+position = "at"
+match_indent = true
+payload = "GAME = recursive_table_cull(G.GAME),"
+
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = "ACTION = G.action or nil,"
+position = "at"
+match_indent = true
+payload = "ACTION = G.action and recursive_table_cull(G.action) or nil,"
+
 [[patches]]
 [patches.pattern]
 target = "functions/misc_functions.lua"
 pattern = "if G.F_NO_SAVING == true then return end"
 position = "after"
 match_indent = true
-payload = "if REWINDER and REWINDER.should_skip_save_run and REWINDER.should_skip_save_run() then return end"
+payload = """
+if REWINDER and REWINDER.should_skip_save_run and REWINDER.should_skip_save_run() then return end
+if REWINDER and REWINDER.config and REWINDER.config.debug_saves then REWINDER._save_run_t0 = love.timer.getTime() end"""
 
 [[patches]]
 [patches.regex]
@@ -215,9 +256,15 @@ pattern = "G.ARGS.save_run = G.culled_table"
 position = "after"
 payload = """
    G.ARGS.rewinder_copy_path = nil
+   G.ARGS.rewinder_meta_path = nil
+   G.ARGS.rewinder_meta_data = nil
    G.FILE_HANDLER = G.FILE_HANDLER or {}
-   G.FILE_HANDLER.force = true
-   if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end"""
+   if REWINDER and REWINDER.config and REWINDER.config.debug_saves and REWINDER._save_run_t0 and REWINDER.debug_log then REWINDER.debug_log("debug", string.format("save_run: %.2fms", (love.timer.getTime() - REWINDER._save_run_t0) * 1000)) end
+   if REWINDER then REWINDER._save_run_t0 = nil end
+   if REWINDER and REWINDER.validate_culled_table_once then REWINDER.validate_culled_table_once(G.culled_table) end
+   if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end
+   if REWINDER and REWINDER.defer_save_creation then REWINDER.defer_save_creation() end
+   if REWINDER and REWINDER.flush_pending_rewinder then REWINDER.flush_pending_rewinder() end"""
 
 # Create rewinder save at actual queue point (1:1 with save_run thread request).
 [[patches]]
@@ -226,7 +273,36 @@ target = "game.lua"
 pattern = "if G.FILE_HANDLER.run then"
 position = "after"
 match_indent = true
-payload = "if REWINDER and REWINDER.defer_save_creation and G.ARGS and G.ARGS.save_run then REWINDER.defer_save_creation() end"
+payload = """
+local _rw_push_t0, _rw_q_before = nil, nil
+if REWINDER and REWINDER.config and REWINDER.config.debug_saves then
+   _rw_push_t0 = love.timer.getTime()
+   if G and G.SAVE_MANAGER and G.SAVE_MANAGER.channel and G.SAVE_MANAGER.channel.getCount then
+      _rw_q_before = G.SAVE_MANAGER.channel:getCount()
+   end
+end"""
+
+# Profile full FILE_HANDLER flush cost (all save messages, same update tick).
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "if G.FILE_HANDLER.metrics then"
+position = "before"
+match_indent = true
+payload = """
+local _rw_flush_t0 = nil
+if REWINDER and REWINDER.config and REWINDER.config.debug_saves then _rw_flush_t0 = love.timer.getTime() end"""
+
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "G.FILE_HANDLER.force = false"
+position = "before"
+match_indent = true
+payload = """
+if _rw_flush_t0 and REWINDER and REWINDER.debug_log then
+   REWINDER.debug_log("debug", string.format("file_handler_flush: %.2fms", (love.timer.getTime() - _rw_flush_t0) * 1000))
+end"""
 
 # Thread piggyback: carry rewinder copy destination with vanilla save_run request
 [[patches]]
@@ -237,7 +313,16 @@ position = "at"
 match_indent = true
 payload = """
 profile_num = G.SETTINGS.profile,
-rewinder_copy_path = G.ARGS.rewinder_copy_path})"""
+rewinder_copy_path = G.ARGS.rewinder_copy_path,
+rewinder_meta_path = G.ARGS.rewinder_meta_path,
+rewinder_meta_data = G.ARGS.rewinder_meta_data})
+if _rw_push_t0 and REWINDER and REWINDER.debug_log then
+   local _rw_q_after = nil
+   if G and G.SAVE_MANAGER and G.SAVE_MANAGER.channel and G.SAVE_MANAGER.channel.getCount then
+      _rw_q_after = G.SAVE_MANAGER.channel:getCount()
+   end
+   REWINDER.debug_log("debug", string.format("save_run_push: %.2fms q:%s->%s force=%s", (love.timer.getTime() - _rw_push_t0) * 1000, tostring(_rw_q_before), tostring(_rw_q_after), tostring(G.FILE_HANDLER and G.FILE_HANDLER.force)))
+end"""
 
 # Thread piggyback: write save.jkr and rewinder copy from one packed/compressed blob
 [[patches]]
@@ -252,6 +337,9 @@ local compressed_save = love.data.compress('string', 'deflate', packed_save, 1)
 love.filesystem.write(prefix_profile..'save.jkr', compressed_save)
 if request.rewinder_copy_path then
     love.filesystem.write(request.rewinder_copy_path, compressed_save)
+end
+if request.rewinder_meta_path and request.rewinder_meta_data then
+    love.filesystem.write(request.rewinder_meta_path, request.rewinder_meta_data)
 end"""
 
 # Sanitize ALL round_scores.amt fields after loading a save (NaN serialized as nil)
@@ -345,6 +433,12 @@ payload = "if G.PROFILES[G.SETTINGS.profile].high_scores[score] and NaNProtectio
 name = "ScaleNumberHook"
 source = "Utils/ScaleNumberHook.lua"
 load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "SaveListSync"
+source = "UI/SaveListSync.lua"
 before = "globals.lua"
 
 [[patches]]

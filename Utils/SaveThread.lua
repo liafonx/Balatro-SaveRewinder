@@ -88,6 +88,14 @@ while true do
                 end
             end
 
+            -- Optional metadata sidecar write
+            if req.meta_path and req.meta_data then
+                local ok_meta = love.filesystem.write(req.meta_path, req.meta_data)
+                if not ok_meta then
+                    error("write failed for " .. tostring(req.meta_path))
+                end
+            end
+
             DONE_CH:push({
                 status = "ok",
                 file = req.file,
@@ -170,13 +178,30 @@ function M.push_save(save_table, path, main_save_path, file, clamp_infinity_scor
         if not M.start() then return false end
     end
 
+    local opts
+    if type(save_table) == "table" and path == nil then
+        opts = save_table
+    else
+        -- Backward-compatible positional signature.
+        opts = {
+            save_table = save_table,
+            path = path,
+            main_save_path = main_save_path,
+            file = file,
+            clamp_infinity_scores = clamp_infinity_scores,
+            big_backend_mode = big_backend_mode,
+        }
+    end
+
     local ok, err = pcall(M._channel.push, M._channel, {
-        save_table = save_table,
-        path = path,
-        main_save_path = main_save_path,
-        file = file,
-        clamp_infinity_scores = (clamp_infinity_scores == true),
-        big_backend_mode = (big_backend_mode == true),
+        save_table = opts.save_table,
+        path = opts.path,
+        main_save_path = opts.main_save_path,
+        file = opts.file,
+        clamp_infinity_scores = (opts.clamp_infinity_scores == true),
+        big_backend_mode = (opts.big_backend_mode == true),
+        meta_path = opts.meta_path,
+        meta_data = opts.meta_data,
         generation = M._generation or 0,
     })
 

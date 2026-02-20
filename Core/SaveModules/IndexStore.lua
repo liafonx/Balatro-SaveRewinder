@@ -22,10 +22,8 @@ return function(ctx)
       S.save_cache_view = nil
    end
 
-   function api.prepend_save_view_entry(entry)
-      if S.save_cache_view then
-         table.insert(S.save_cache_view, 1, entry)
-      end
+   function api.prepend_save_view_entry()
+      S.save_cache_view = nil
    end
 
    function api.get_save_cache_view()
@@ -63,6 +61,21 @@ return function(ctx)
 
    function api.invalidate_derived_indexes()
       S.save_index_by_file, S.save_cache_by_id = nil, nil
+   end
+
+   function api.remove_files_from_index(files)
+      if not files then return end
+      for _, file in ipairs(files) do
+         if file and S.save_cache_by_file then
+            S.save_cache_by_file[file] = nil
+         end
+         if file then
+            api.clear_async_pending(file)
+         end
+      end
+      S.save_cache_view = nil
+      S.save_index_by_file = nil
+      S.save_cache_by_id = nil
    end
 
    function api.update_cache_current_flags(force)
@@ -198,6 +211,87 @@ return function(ctx)
 
    function M._set_cache_current_file(file)
       return api.set_cache_current_file(file)
+   end
+
+   -- ── File Discovery (scan disk for .jkr files) ──────────────────────────
+
+   local function _list_and_sort_entries()
+      local dir = M.get_save_dir()
+      local files = love.filesystem.getDirectoryItems(dir)
+      local entries = {}
+      for _, file in ipairs(files) do
+         if file:match("%.jkr$") then
+            local full = dir .. "/" .. file
+            local info = love.filesystem.getInfo(full)
+            if info and info.type == "file" then
+               local ante_str, round_str, index_str = file:match("^(%d+)%-(%d+)%-(%d+)%.jkr$")
+               local ante = tonumber(ante_str) or 0
+               local round = tonumber(round_str) or 0
+               local index_id = tonumber(index_str) or 0
+               entries[#entries + 1] = {
+                  file, ante, round, index_id,
+                  nil, nil, nil, nil, false, nil, nil, nil, nil,
+               }
+            end
+         end
+      end
+
+      table.sort(entries, function(a, b)
+         return a[E.ENTRY_INDEX] < b[E.ENTRY_INDEX]
+      end)
+      return entries
+   end
+
+   function M.get_save_files(force_reload)
+      api.process_async_save_results()
+      if S.save_cache and not force_reload then
+         api.update_cache_current_flags()
+         if not S.save_cache_by_file then api.rebuild_file_index() end
+         return api.get_save_cache_view()
+      end
+
+      S.save_cache = _list_and_sort_entries()
+      S.bucket_counts = nil
+      api.invalidate_save_cache_view()
+      local newest = S.save_cache and S.save_cache[#S.save_cache]
+      if newest and newest[E.ENTRY_INDEX] then
+         M._last_generated_id = math.max(M._last_generated_id or 0, newest[E.ENTRY_INDEX])
+      end
+      api.rebuild_file_index()
+      if ctx.meta and ctx.meta.purge_meta_cache then ctx.meta.purge_meta_cache() end
+      api.update_cache_current_flags(true)
+      return api.get_save_cache_view()
+   end
+
+   function M.preload_all_metadata(force_reload)
+      local entries = M.get_save_files(force_reload)
+      if entries and #entries > 0 then
+         M.ensure_meta_window(1, M.META_CACHE_BASE_LIMIT)
+      end
+      return entries
+   end
+
+   function M.clear_all_saves()
+      M.invalidate_async_saves()
+      if M.invalidate_queue_and_thread then M.invalidate_queue_and_thread() end
+      local dir = M.get_save_dir()
+      if love.filesystem.getInfo(dir) then
+         for _, file in ipairs(love.filesystem.getDirectoryItems(dir)) do
+            love.filesystem.remove(dir .. "/" .. file)
+         end
+      end
+
+      M.debug_log("info", "Cleared all saves")
+      S.save_cache = {}
+      S.save_cache_view = nil
+      S.meta_cache = {}
+      S.meta_cache_size = 0
+      S.meta_lru_ts = {}
+      S.meta_lru_clock = 0
+      S.meta_cache_limit = M.META_CACHE_BASE_LIMIT
+      S.bucket_counts = nil
+      api.reset_async_state()
+      api.reset_all_indices()
    end
 
    return api

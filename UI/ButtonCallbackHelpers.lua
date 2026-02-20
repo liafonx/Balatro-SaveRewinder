@@ -132,9 +132,11 @@ function M.update_mode_button_labels()
    local disabled_icon_border_colour = UIShared.get_icon_button_disabled_border_colour()
    local icon_colour = UIShared.get_icon_button_icon_colour()
    local disabled_icon_colour = UIShared.get_icon_button_disabled_icon_colour()
-   local mark_enabled = not REWINDER._rename_active
-   local rename_enabled = not REWINDER._mark_active
-   local jump_enabled = not (REWINDER._rename_active or REWINDER._mark_active)
+   local loading_mode = refs.loading_state ~= nil
+   local mark_enabled = (not REWINDER._rename_active) and (not loading_mode)
+   local rename_enabled = (not REWINDER._mark_active) and (not loading_mode)
+   local jump_enabled = (not (REWINDER._rename_active or REWINDER._mark_active)) and (not loading_mode)
+   local filter_enabled = not loading_mode
 
    local function dim_colour(colour, factor)
       if type(colour) ~= "table" then return colour end
@@ -190,8 +192,9 @@ function M.update_mode_button_labels()
    apply_icon_enabled("rewinder_btn_mark_keys_icon", mark_enabled)
 
    local filter_btn = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_filter_keys")
+   apply_button_enabled(filter_btn, filter_enabled, "rewinder_btn_filter_keys")
    if filter_btn and filter_btn.config then
-      filter_btn.config.colour = blue_colour
+      filter_btn.config.colour = filter_enabled and blue_colour or dim_colour(blue_colour)
    end
 
    local rename_fill = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_toggle_rename_fill")
@@ -709,6 +712,8 @@ local function _resolve_cycle_config(refs, current_option, per_page, entries)
       }
    end
 
+   -- Loading shell temporarily disables paging callback; restore it once real entries are rendered.
+   cycle_config.opt_callback = cycle_config.opt_callback or "rewinder_save_update_page"
    cycle_config.opt_args = cycle_config.opt_args or {}
    cycle_config.opt_args.ui = refs.saves_box
    cycle_config.opt_args.per_page = per_page

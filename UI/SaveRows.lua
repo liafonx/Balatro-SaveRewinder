@@ -448,9 +448,35 @@ function REWINDER.get_saves_page(args)
    local entries = args.entries or {}
    local per_page = args.per_page or 8
    local page_num = args.page_num or 1
+   local loading_state = args.loading_state
 
    local content
-   if #entries == 0 then
+   if loading_state then
+      local loading_text = loading_state.message or loc("rewinder_syncing_saves", "Syncing pending saves...")
+      local detail_template = loc("rewinder_syncing_saves_detail", "Queued saves: %d")
+      local queued = tonumber(loading_state.queued) or 0
+      local detail_text = loading_state.detail or string.format(detail_template, queued)
+      content = {
+         n = G.UIT.C,
+         config = { align = "cm", padding = 0.08, r = 0.1, colour = G.C.CLEAR },
+         nodes = {
+            {
+               n = G.UIT.R,
+               config = { align = "cm", padding = 0.04, colour = G.C.CLEAR },
+               nodes = {
+                  { n = G.UIT.T, config = { text = loading_text, colour = G.C.ORANGE or {1, 0.6, 0.2, 1}, scale = 0.5 } },
+               },
+            },
+            {
+               n = G.UIT.R,
+               config = { align = "cm", padding = 0.02, colour = G.C.CLEAR },
+               nodes = {
+                  { n = G.UIT.T, config = { text = detail_text, colour = G.C.UI.TEXT_LIGHT, scale = 0.42 } },
+               },
+            },
+         },
+      }
+   elseif #entries == 0 then
       local empty_key = REWINDER._filter_active and "rewinder_no_key_saves" or "rewinder_no_saves"
       local empty_text = REWINDER._filter_active and "No key saves marked" or "No saves yet"
       content = {

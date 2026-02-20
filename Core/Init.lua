@@ -8,6 +8,7 @@ local StateSignature = require("StateSignature")
 local SaveManager = require("SaveManager")
 local KeySaves = require("KeySaves")
 local NaNProtection = require("NaNProtection")
+local SaveThread = require("SaveThread")
 
 -- Expose NaNProtection as global for lovely patches
 _G.NaNProtection = NaNProtection
@@ -48,6 +49,9 @@ REWINDER.key_saves_get_key_saves = KeySaves.get_key_saves
 -- Internal State Access (via module reference, since scalars are copied by value)
 -- Expose the SaveManager module itself so callbacks can access/modify internal state
 REWINDER._SaveManager = SaveManager
+REWINDER._SaveThread = SaveThread
+REWINDER._freeze_save_table = SaveManager.freeze_save_table
+SaveThread.start()
 
 -- Export entry index constants for UI access (auto-copy from SaveManager)
 for key, value in pairs(SaveManager) do
@@ -86,6 +90,24 @@ REWINDER.debug_log = Logger.log  -- Simple log without module name
 REWINDER._cache_initialized = false
 REWINDER._main_save_matched = false  -- Whether save.jkr has been matched to a cache entry
 local _game_set_render_settings = Game.set_render_settings
+
+local function _apply_initial_match(entry_file, idx, log_level, log_label)
+   if SaveManager.set_current_file then
+      SaveManager.set_current_file(entry_file, idx)
+   else
+      SaveManager._last_loaded_file = entry_file
+      SaveManager.current_index = idx
+      if SaveManager._set_cache_current_file then
+         SaveManager._set_cache_current_file(entry_file)
+      end
+   end
+   if SaveManager.ensure_meta_window then
+      SaveManager.ensure_meta_window(idx, SaveManager.META_CACHE_BASE_LIMIT)
+   end
+   REWINDER._main_save_matched = true
+   log(log_level or "info", tostring(log_label or "Matched save") .. ": " .. tostring(entry_file))
+end
+
 function Game:set_render_settings(...)
    local ret = _game_set_render_settings(self, ...)
    
@@ -98,6 +120,12 @@ function Game:set_render_settings(...)
             local entries = SaveManager.preload_all_metadata(true)
             local count = entries and #entries or 0
             log("info", "Found " .. count .. " saves on disk (meta window: " .. tostring(SaveManager.META_CACHE_BASE_LIMIT or 32) .. ")")
+
+            -- Build type/round bucket counts during loading so first in-run save
+            -- respects max_saves_per_type_per_round immediately after restart.
+            if SaveManager._rebuild_bucket_counts then
+               SaveManager._rebuild_bucket_counts()
+            end
             
             -- Step 2: Match save.jkr to a cache entry (for Continue game)
             -- This pre-computes the current save index during loading
@@ -118,20 +146,7 @@ function Game:set_render_settings(...)
                            local entry, idx = SaveManager.get_entry_by_id(rewinder_id)
                            if entry then
                               -- Exact match found via ID!
-                              if SaveManager.set_current_file then
-                                 SaveManager.set_current_file(entry[SaveManager.ENTRY_FILE], idx)
-                              else
-                                 SaveManager._last_loaded_file = entry[SaveManager.ENTRY_FILE]
-                                 SaveManager.current_index = idx
-                                 if SaveManager._set_cache_current_file then
-                                    SaveManager._set_cache_current_file(entry[SaveManager.ENTRY_FILE])
-                                 end
-                              end
-                              if SaveManager.ensure_meta_window then
-                                 SaveManager.ensure_meta_window(idx, SaveManager.META_CACHE_BASE_LIMIT)
-                              end
-                              REWINDER._main_save_matched = true
-                              log("info", "Matched save.jkr by ID: " .. entry[SaveManager.ENTRY_FILE])
+                              _apply_initial_match(entry[SaveManager.ENTRY_FILE], idx, "info", "Matched save.jkr by ID")
                            else
                               log("debug", "No match for _rewinder_id (" .. tostring(rewinder_id) .. ":" .. type(rewinder_id) .. ")")
                            end
@@ -139,20 +154,7 @@ function Game:set_render_settings(...)
 
                         -- FINAL FALLBACK: no match found, use newest save
                         if not REWINDER._main_save_matched and entries[1] then
-                           if SaveManager.set_current_file then
-                              SaveManager.set_current_file(entries[1][SaveManager.ENTRY_FILE], 1)
-                           else
-                              SaveManager._last_loaded_file = entries[1][SaveManager.ENTRY_FILE]
-                              SaveManager.current_index = 1
-                              if SaveManager._set_cache_current_file then
-                                 SaveManager._set_cache_current_file(entries[1][SaveManager.ENTRY_FILE])
-                              end
-                           end
-                           if SaveManager.ensure_meta_window then
-                              SaveManager.ensure_meta_window(1, SaveManager.META_CACHE_BASE_LIMIT)
-                           end
-                           REWINDER._main_save_matched = true
-                           log("debug", "No match in init, using newest: " .. entries[1][SaveManager.ENTRY_FILE])
+                           _apply_initial_match(entries[1][SaveManager.ENTRY_FILE], 1, "debug", "No match in init, using newest")
                         end
                      end
                   end
@@ -168,17 +170,3 @@ function Game:set_render_settings(...)
    return ret
 end
 G.FUNCS = G.FUNCS or {}
-G.FUNCS.rewinder_config_change = function(args)
-   args = args or {}
-   if args.cycle_config and args.cycle_config.ref_table and args.cycle_config.ref_value then
-      local ref_value = args.cycle_config.ref_value
-      args.cycle_config.ref_table[ref_value] = args.to_key
-      
-      -- If keep_antes changed, immediately apply retention policy
-      if ref_value == "keep_antes" and SaveManager then
-         if SaveManager.apply_retention_policy_now then
-            SaveManager.apply_retention_policy_now()
-         end
-      end
-   end
-end

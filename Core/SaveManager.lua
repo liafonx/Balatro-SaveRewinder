@@ -17,6 +17,7 @@ local RetentionService = require("SaveManagerRetentionService")
 local SkipService = require("SaveManagerSkipService")
 local LoadService = require("SaveManagerLoadService")
 local CreateService = require("SaveManagerCreateService")
+local QueueService = require("SaveManagerQueueService")
 
 local M = {}
 
@@ -50,6 +51,12 @@ M.pending_index = nil
 M._last_save_sig = nil
 M._last_save_time = nil
 M._last_save_sig_parts = nil
+M._rw_queue = {}
+M._rw_queue_head = 1
+M._rw_queue_tail = 0
+M._rw_cancelled_files = {}
+M._rw_last_enqueued_sig = nil
+M._rw_last_enqueued_t = nil
 
 function M.generate_unique_id()
    local now_ms = os.time() * 1000
@@ -80,6 +87,9 @@ function M.set_current_index(idx)
    M.current_index = idx
 end
 
+-- Queue infrastructure (ring buffer, flush, sync fallback) lives in QueueService.
+-- Functions are installed directly on M by QueueService(ctx).
+
 local S = RuntimeState.new(M.META_CACHE_BASE_LIMIT)
 local ctx = {
    M = M,
@@ -99,6 +109,7 @@ ctx.retention = RetentionService(ctx)
 ctx.skip = SkipService(ctx)
 ctx.load = LoadService(ctx)
 ctx.create = CreateService(ctx)
+ctx.queue = QueueService(ctx)
 
 function M.get_entry_with_meta(file)
    if not file then return nil end
@@ -129,6 +140,7 @@ function M.update_entry_is_key(file, is_key)
       S.meta_lru_clock = S.meta_lru_clock + 1
       S.meta_lru_ts[file] = S.meta_lru_clock
    end
+   S.bucket_counts = nil
    M.debug_log("debug", string.format("update_entry_is_key: file=%s is_key=%s", tostring(file), tostring(normalized)))
 end
 

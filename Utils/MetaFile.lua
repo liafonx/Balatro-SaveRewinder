@@ -41,9 +41,8 @@ end
 -- Reused line buffer to avoid per-save table allocation in write_meta_file.
 local _meta_lines_buf = {}
 
--- Writes metadata to .meta file (fast path for future reads)
-function M.write_meta_file(meta_path, entry_meta)
-    if not entry_meta or not entry_meta.signature then return false end
+function M.serialize_meta(entry_meta)
+    if not entry_meta or not entry_meta.signature then return nil end
 
     _meta_lines_buf[1] = "money=" .. tostring(entry_meta.money or 0)
     _meta_lines_buf[2] = "signature=" .. entry_meta.signature
@@ -67,7 +66,13 @@ function M.write_meta_file(meta_path, entry_meta)
     -- Clear trailing stale slot if previous call had more fields.
     _meta_lines_buf[n + 1] = nil
 
-    local content = table.concat(_meta_lines_buf, "\n", 1, n)
+    return table.concat(_meta_lines_buf, "\n", 1, n)
+end
+
+-- Writes metadata to .meta file (fast path for future reads)
+function M.write_meta_file(meta_path, entry_meta)
+    local content = M.serialize_meta(entry_meta)
+    if not content then return false end
     local success, err = pcall(love.filesystem.write, meta_path, content)
     if not success then
         M.debug_log("error", "Failed to write meta file: " .. tostring(err))

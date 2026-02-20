@@ -54,6 +54,8 @@ return {
             rewinder_filter_keys_active = 'Return to all saves',
             rewinder_rename_prompt = 'Enter custom name',
             rewinder_all_saves_deleted = 'All saves deleted',
+            rewinder_syncing_saves = 'Syncing pending saves...',
+            rewinder_syncing_saves_detail = 'Queued saves: %d',
 
             rewinder_ante_label = 'Ante',
             rewinder_ante_round_spacing = ' ',
