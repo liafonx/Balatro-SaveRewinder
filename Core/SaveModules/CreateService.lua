@@ -302,7 +302,8 @@ return function(ctx)
          -- Queue saturated: try direct SaveThread push before piggyback fallback.
          local direct_pushed = false
          local SaveThread = REWINDER and REWINDER._SaveThread
-         if SaveThread and SaveThread.push_save and SaveThread.start and SaveThread.start() then
+         if not (REWINDER and REWINDER._rw_flush_fallback)
+            and SaveThread and SaveThread.push_save and SaveThread.start and SaveThread.start() then
             local req = M.build_rewinder_push_request and M.build_rewinder_push_request({
                save_table = run_data,
                rewinder_copy_path = full_path,

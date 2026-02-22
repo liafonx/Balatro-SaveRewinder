@@ -193,7 +193,7 @@ function M.push_save(save_table, path, main_save_path, file, clamp_infinity_scor
         }
     end
 
-    local ok, err = pcall(M._channel.push, M._channel, {
+    local req = {
         save_table = opts.save_table,
         path = opts.path,
         main_save_path = opts.main_save_path,
@@ -203,9 +203,20 @@ function M.push_save(save_table, path, main_save_path, file, clamp_infinity_scor
         meta_path = opts.meta_path,
         meta_data = opts.meta_data,
         generation = M._generation or 0,
-    })
+    }
+    local ok, err = pcall(M._channel.push, M._channel, req)
 
     if not ok then
+        local recover = REWINDER and REWINDER.recover_save_run_payload
+        if recover and type(req.save_table) == "table" then
+            req.save_table = recover(req.save_table, err)
+            local ok2, err2 = pcall(M._channel.push, M._channel, req)
+            if ok2 then
+                M.debug_log("warning", "channel:push recovered by recursive recull")
+                return true
+            end
+            err = err2
+        end
         M.debug_log("error", "channel:push failed: " .. tostring(err))
         return false
     end

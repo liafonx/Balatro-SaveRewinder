@@ -242,6 +242,21 @@ payload = "ACTION = G.action and recursive_table_cull(G.action) or nil,"
 [[patches]]
 [patches.pattern]
 target = "functions/misc_functions.lua"
+pattern = "BACK = G.GAME.selected_back:save(),"
+position = "at"
+match_indent = true
+payload = "BACK = recursive_table_cull(G.GAME.selected_back:save()),"
+
+[[patches]]
+[patches.regex]
+target = "functions/misc_functions.lua"
+pattern = '''BACK\s*=\s*G\.GAME\.selected_back:save\(\),'''
+position = "at"
+payload = "BACK = recursive_table_cull(G.GAME.selected_back:save()),"
+
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
 pattern = "if G.F_NO_SAVING == true then return end"
 position = "after"
 match_indent = true
@@ -262,6 +277,13 @@ payload = """
    if REWINDER and REWINDER.config and REWINDER.config.debug_saves and REWINDER._save_run_t0 and REWINDER.debug_log then REWINDER.debug_log("debug", string.format("save_run: %.2fms", (love.timer.getTime() - REWINDER._save_run_t0) * 1000)) end
    if REWINDER then REWINDER._save_run_t0 = nil end
    if REWINDER and REWINDER.validate_culled_table_once then REWINDER.validate_culled_table_once(G.culled_table) end
+   if REWINDER and REWINDER._force_save_run_recull and recursive_table_cull and type(G.ARGS.save_run) == 'table' then
+      local _rw_ok, _rw_reculled = pcall(recursive_table_cull, G.ARGS.save_run)
+      if _rw_ok and type(_rw_reculled) == 'table' then
+         G.ARGS.save_run = _rw_reculled
+         G.culled_table = _rw_reculled
+      end
+   end
    if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end
    if REWINDER and REWINDER.defer_save_creation then REWINDER.defer_save_creation() end
    if REWINDER and REWINDER.flush_pending_rewinder then REWINDER.flush_pending_rewinder() end"""
@@ -301,28 +323,46 @@ position = "before"
 match_indent = true
 payload = """
 if _rw_flush_t0 and REWINDER and REWINDER.debug_log then
-   REWINDER.debug_log("debug", string.format("file_handler_flush: %.2fms", (love.timer.getTime() - _rw_flush_t0) * 1000))
+   local _rw_had_flush_work = (G and G.FILE_HANDLER and (G.FILE_HANDLER.metrics or G.FILE_HANDLER.progress or G.FILE_HANDLER.settings or G.FILE_HANDLER.run))
+   if _rw_had_flush_work then
+      REWINDER.debug_log("debug", string.format("file_handler_flush: %.2fms", (love.timer.getTime() - _rw_flush_t0) * 1000))
+   end
 end"""
 
 # Thread piggyback: carry rewinder copy destination with vanilla save_run request
 [[patches]]
-[patches.pattern]
+[patches.regex]
 target = "game.lua"
-pattern = "profile_num = G.SETTINGS.profile})"
+pattern = '''G\.SAVE_MANAGER\.channel:push\(\{\s*type = 'save_run',\s*save_table = G\.ARGS\.save_run,\s*profile_num = G\.SETTINGS\.profile\}\)'''
 position = "at"
-match_indent = true
 payload = """
-profile_num = G.SETTINGS.profile,
-rewinder_copy_path = G.ARGS.rewinder_copy_path,
-rewinder_meta_path = G.ARGS.rewinder_meta_path,
-rewinder_meta_data = G.ARGS.rewinder_meta_data})
-if _rw_push_t0 and REWINDER and REWINDER.debug_log then
-   local _rw_q_after = nil
-   if G and G.SAVE_MANAGER and G.SAVE_MANAGER.channel and G.SAVE_MANAGER.channel.getCount then
-      _rw_q_after = G.SAVE_MANAGER.channel:getCount()
-   end
-   REWINDER.debug_log("debug", string.format("save_run_push: %.2fms q:%s->%s force=%s", (love.timer.getTime() - _rw_push_t0) * 1000, tostring(_rw_q_before), tostring(_rw_q_after), tostring(G.FILE_HANDLER and G.FILE_HANDLER.force)))
-end"""
+local _rw_req = {
+    type = 'save_run',
+    save_table = G.ARGS.save_run,
+    profile_num = G.SETTINGS.profile,
+    rewinder_copy_path = G.ARGS.rewinder_copy_path,
+    rewinder_meta_path = G.ARGS.rewinder_meta_path,
+    rewinder_meta_data = G.ARGS.rewinder_meta_data
+}
+local _rw_ok, _rw_err = pcall(G.SAVE_MANAGER.channel.push, G.SAVE_MANAGER.channel, _rw_req)
+if not _rw_ok then
+    if REWINDER and REWINDER.recover_save_run_payload then
+        _rw_req.save_table = REWINDER.recover_save_run_payload(_rw_req.save_table, _rw_err)
+        local _rw_ok2, _rw_err2 = pcall(G.SAVE_MANAGER.channel.push, G.SAVE_MANAGER.channel, _rw_req)
+        if not _rw_ok2 and REWINDER and REWINDER.debug_log then
+            REWINDER.debug_log("error", "save_run_push failed after recovery: " .. tostring(_rw_err2))
+        end
+    elseif REWINDER and REWINDER.debug_log then
+        REWINDER.debug_log("error", "save_run_push failed: " .. tostring(_rw_err))
+    end
+end
+	if _rw_push_t0 and REWINDER and REWINDER.debug_log then
+	   local _rw_q_after = nil
+	   if G and G.SAVE_MANAGER and G.SAVE_MANAGER.channel and G.SAVE_MANAGER.channel.getCount then
+	      _rw_q_after = G.SAVE_MANAGER.channel:getCount()
+	   end
+	   REWINDER.debug_log("debug", string.format("save_run_push: %.2fms q:%s->%s force=%s", (love.timer.getTime() - _rw_push_t0) * 1000, tostring(_rw_q_before), tostring(_rw_q_after), tostring(G.FILE_HANDLER and G.FILE_HANDLER.force)))
+	end"""
 
 # Thread piggyback: write save.jkr and rewinder copy from one packed/compressed blob
 [[patches]]
