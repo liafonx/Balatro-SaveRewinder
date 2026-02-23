@@ -272,6 +272,64 @@ function REWINDER.create_pending_dot_icon(outer_colour, inner_colour, w, h)
    return PendingDotIcon(w or 0.20, h or 0.20, outer_colour or G.C.RED, inner_colour)
 end
 
+-- Download/export icon: centered solid down arrow.
+local DownloadIcon = Moveable:extend()
+
+function DownloadIcon:init(w, h, colour)
+   Moveable.init(self, 0, 0, w or 0.40, h or 0.40)
+   self.colour = colour or G.C.WHITE
+   self.states = {
+      drag     = { can = false },
+      hover    = { can = false },
+      collide  = { can = false },
+   }
+end
+
+function DownloadIcon:draw()
+   if not self.VT then return end
+
+   prep_draw(self, 1)
+   love.graphics.scale(1 / G.TILESIZE)
+
+   local w_px = self.VT.w * G.TILESIZE
+   local h_px = self.VT.h * G.TILESIZE
+   local c = self.colour
+   local min_dim = math.min(w_px, h_px)
+   local cx = w_px * 0.5
+   local shaft_w = math.max(2.2, min_dim * 0.24)
+   local shaft_top = math.floor(h_px * 0.12 + 0.5) + 0.5
+   local head_top = math.floor(h_px * 0.55 + 0.5) + 0.5
+   local head_tip = math.floor(h_px * 0.82 + 0.5) + 0.5
+   local head_half_w = math.max(2.7, min_dim * 0.285)
+
+   local function _draw_symbol(dx, dy, r, g, b, a)
+      love.graphics.setColor(r, g, b, a)
+
+      -- Single-silhouette arrow using a shaft rectangle + connected triangle head.
+      love.graphics.rectangle("fill",
+         cx - shaft_w * 0.5 + dx, shaft_top + dy,
+         shaft_w, (head_top - shaft_top)
+      )
+      love.graphics.polygon("fill",
+         cx - head_half_w + dx, head_top + dy,
+         cx + head_half_w + dx, head_top + dy,
+         cx + dx, head_tip + dy
+      )
+
+   end
+
+   if G.SETTINGS.GRAPHICS.shadows == "On" then
+      _draw_symbol(1, 1, 0, 0, 0, 0.3)
+   end
+   _draw_symbol(0, 0, c[1], c[2], c[3], c[4] or 1)
+
+   love.graphics.pop()
+end
+
+function REWINDER.create_download_icon(colour, w, h)
+   return DownloadIcon(w or 0.40, h or 0.40, colour)
+end
+
 function M.build_icon_button(opts)
    local border_colour = opts.border_colour or G.C.UI.TEXT_LIGHT or {0.85, 0.85, 0.85, 1}
    local disabled_border_colour = opts.disabled_border_colour or UIShared.get_icon_button_disabled_border_colour()

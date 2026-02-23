@@ -11,10 +11,13 @@ REWINDER._rename_editing_file = REWINDER._rename_editing_file or nil
 REWINDER._rename_input_ref = REWINDER._rename_input_ref or nil
 REWINDER._rename_pending = REWINDER._rename_pending or {}
 REWINDER._rename_pending_clear = REWINDER._rename_pending_clear or {}
+REWINDER._export_active       = REWINDER._export_active       or false
+REWINDER._export_selection    = REWINDER._export_selection    or {}
 
 local UIShared = require("UIShared")
 local SaveListSync = require("SaveListSync")
 local Helpers = require("UIButtonCallbackHelpers")
+local ExportService = require("ExportService")
 local KeySaves = Helpers.KeySaves
 local log = Helpers.log
 
@@ -95,6 +98,13 @@ local function _start_saves_open_sync(queue_depth)
    end)
 end
 
+local function _update_path_ref(path_ref, text)
+   if not path_ref then return end
+   path_ref.full_text = text
+   local fmt = REWINDER and REWINDER.format_export_dir_display
+   path_ref.text = (type(fmt) == "function") and fmt(text) or text
+end
+
 local function _load_save_file(file)
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager._set_cache_current_file then
       REWINDER._SaveManager._set_cache_current_file(file)
@@ -117,6 +127,7 @@ end
 function G.FUNCS.rewinder_save_close(e)
    SaveListSync.cancel()
    Helpers.reset_key_save_state(true, true)
+   Helpers.reset_export_state()
    if REWINDER and REWINDER._SaveManager and REWINDER._SaveManager.set_overlay_open then
       REWINDER._SaveManager.set_overlay_open(false)
    end
@@ -307,6 +318,9 @@ function G.FUNCS.rewinder_btn_mark_keys(e)
    if not REWINDER._mark_active and REWINDER._rename_active then
       Helpers.reset_rename_state({ reason = "mark mode switch" })
    end
+   if not REWINDER._mark_active and REWINDER._export_active then
+      Helpers.reset_export_state()
+   end
 
    if REWINDER._mark_active then
       local success, fail = KeySaves.commit_pending()
@@ -361,6 +375,9 @@ function G.FUNCS.rewinder_btn_toggle_rename(e)
       log("info", "Rename committed entries: " .. tostring(committed))
       log("info", "Rename mode disabled")
    else
+      if REWINDER._export_active then
+         Helpers.reset_export_state()
+      end
       REWINDER._rename_active = true
       Helpers.reset_rename_state({ keep_active = true })
       log("info", "Rename mode enabled")
@@ -486,6 +503,72 @@ function G.FUNCS.rewinder_game_over_rewind(e)
 
    log("info", "Game over: loading latest save -> " .. tostring(file))
    _load_save_file(file)
+end
+
+-- Toggle export mode on/off, or commit the current selection.
+function G.FUNCS.rewinder_btn_toggle_export(e)
+   -- Entering export resets other exclusive modes
+   if REWINDER._mark_active then
+      Helpers.reset_key_save_state(true, true)
+   end
+   if REWINDER._rename_active then
+      Helpers.reset_rename_state({ reason = "export mode" })
+   end
+
+   if REWINDER._export_active then
+      -- No selection: leave export mode immediately
+      if not next(REWINDER._export_selection) then
+         Helpers.reset_export_state()
+         _rebuild_saves_overlay_after_loading("export_exit")
+         return
+      end
+      -- Commit export
+      local ok, fail_count = ExportService.export_selected(REWINDER._export_selection)
+      if fail_count > 0 then
+         log("warning", string.format("Export complete with failures: ok=%d fail=%d", ok, fail_count))
+      else
+         log("info", string.format("Export complete: ok=%d", ok))
+      end
+      Helpers.reset_export_state()
+      _rebuild_saves_overlay_after_loading("export_complete")
+   else
+      -- Enter export mode
+      REWINDER._export_active    = true
+      REWINDER._export_selection = {}
+      _rebuild_saves_overlay_after_loading("export_enter")
+   end
+end
+
+-- Toggle selection of a single save row in export mode.
+function G.FUNCS.rewinder_save_toggle_export_select(e)
+   if not REWINDER._export_active then return end
+   if not e or not e.config or not e.config.ref_table then return end
+   local file = e.config.ref_table.file
+   if not file then return end
+   if REWINDER._export_selection[file] then
+      REWINDER._export_selection[file] = nil
+   else
+      REWINDER._export_selection[file] = true
+   end
+   Helpers.refresh_saves_view(nil)
+end
+
+-- Paste clipboard text as the export directory path.
+function G.FUNCS.rewinder_export_paste_dir(e)
+   if not (e and e.config and e.config.ref_table) then return end
+   local text = love.system.getClipboardText()
+   if type(text) ~= "string" then return end
+   text = text:match("^%s*(.-)%s*$") or text
+   if text == "" then return end
+   REWINDER.config.export_dir = text
+   _update_path_ref(e.config.ref_table.path_ref, ExportService.get_export_dir())
+end
+
+-- Reset the export directory to the computed default.
+function G.FUNCS.rewinder_export_reset_dir(e)
+   if not (e and e.config and e.config.ref_table) then return end
+   REWINDER.config.export_dir = ""
+   _update_path_ref(e.config.ref_table.path_ref, ExportService.get_export_dir())
 end
 
 function G.FUNCS.rewinder_config_change(args)

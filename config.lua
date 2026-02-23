@@ -9,6 +9,10 @@ return {
 	show_blind_image = true,  -- Show blind image instead of round number in save list
 	animate_blind_image = true,  -- Enable animation and hover effects for blind images
 	clamp_infinity_scores = false,  -- Convert infinity scores to max safe value (1.8e308) to prevent crashes
+	export_dir = nil,           -- nil → computed default (<save_root>/SW-Exports/<profile>)
+	export_full_seed_non_seeded = false, -- non-seeded runs: false=first4…last4, true=full (seeded runs always full)
+	export_seed_mode = 1,       -- legacy compatibility: 1 = first4…last4, 2 = full
+	export_include_meta = false, -- also copy .meta sidecar alongside .jkr
 	keybinds = {
 		step_back = {
 			keyboard = { s = true },

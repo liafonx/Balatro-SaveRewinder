@@ -66,6 +66,14 @@ return {
             rewinder_separator = ' • ',
             
 	        rewinder_game_over_button = '起死回生！',
+
+            -- 导出模式
+            rewinder_tab_export           = '导出',
+            rewinder_export_dir_label     = '导出目录',
+            rewinder_export_paste         = '粘贴',
+            rewinder_export_reset_dir     = '重置',
+            rewinder_export_seed_label    = '非种子局文件夹名显示完整种子',
+            rewinder_export_include_meta  = '同时导出 .meta 附属文件',
         },
     },
 }

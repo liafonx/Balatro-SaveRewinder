@@ -145,4 +145,59 @@ function M.sync_to_main_save(run_data)
     return true
 end
 
+-- Check if a file exists at an absolute OS path.
+function M.file_exists_os(path)
+   if type(path) ~= "string" or path == "" then return false end
+   local fh = io.open(path, "rb")
+   if fh then
+      fh:close()
+      return true
+   end
+   return false
+end
+
+-- Sanitize a string for safe use as a filesystem path component.
+-- Replaces forbidden characters and collapses whitespace to underscores.
+function M.sanitize_path_component(str)
+   if type(str) ~= "string" then return "" end
+   local s = str:match("^%s*(.-)%s*$") or str
+   s = s:gsub('[\\/:*?"<>|\r\n\t]', "_")
+   s = s:gsub(" +", "_")
+   return s
+end
+
+-- Platform-aware directory creation (creates parent directories as needed).
+function M.create_dir_os(path)
+   if type(path) ~= "string" or path == "" then return false end
+   local sep = package.config:sub(1, 1)
+   local ok
+   if sep == "\\" then
+      local win_path = path:gsub("/", "\\"):gsub('"', '\\"')
+      ok = os.execute('mkdir "' .. win_path .. '" 2>NUL')
+   else
+      local unix_path = path:gsub("'", "'\\''")
+      ok = os.execute("mkdir -p '" .. unix_path .. "'")
+   end
+   return ok ~= false
+end
+
+-- Copy a love.filesystem file to an absolute OS path.
+-- Returns true on success, false on failure.
+function M.copy_love_to_os(love_relative_src, os_abs_dest)
+   if type(love_relative_src) ~= "string" or type(os_abs_dest) ~= "string" then return false end
+   local data = love.filesystem.read(love_relative_src)
+   if not data then
+      M.debug_log("error", "copy_love_to_os: cannot read " .. love_relative_src)
+      return false
+   end
+   local fh, err = io.open(os_abs_dest, "wb")
+   if not fh then
+      M.debug_log("error", "copy_love_to_os: cannot open dest " .. os_abs_dest .. " err=" .. tostring(err))
+      return false
+   end
+   fh:write(data)
+   fh:close()
+   return true
+end
+
 return M

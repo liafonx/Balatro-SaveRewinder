@@ -15,16 +15,7 @@ local function build_page_cycle_config(page_numbers, initial_page, saves_box, pe
    }
 end
 
-local function dim_colour(colour, factor)
-   if type(colour) ~= "table" then return colour end
-   factor = factor or 0.45
-   return {
-      (colour[1] or 1) * factor,
-      (colour[2] or 1) * factor,
-      (colour[3] or 1) * factor,
-      colour[4] or 1,
-   }
-end
+local dim_colour = UIShared.dim_colour
 
 function G.UIDEF.rewinder_saves(opts)
    opts = opts or {}
@@ -86,10 +77,11 @@ function G.UIDEF.rewinder_saves(opts)
    local filter_button_colour = G.C.BLUE
    local icon_button_border_colour = UIShared.get_icon_button_border_colour()
    local disabled_icon_button_border_colour = UIShared.get_icon_button_disabled_border_colour()
-   local mark_enabled = (not REWINDER._rename_active) and (not loading_mode)
-   local rename_enabled = (not REWINDER._mark_active) and (not loading_mode)
-   local jump_enabled = (not (REWINDER._rename_active or REWINDER._mark_active)) and (not loading_mode)
+   local mark_enabled   = (not REWINDER._rename_active) and (not REWINDER._export_active) and (not loading_mode)
+   local rename_enabled = (not REWINDER._mark_active) and (not REWINDER._export_active) and (not loading_mode)
+   local jump_enabled   = (not (REWINDER._rename_active or REWINDER._mark_active or REWINDER._export_active)) and (not loading_mode)
    local filter_enabled = not loading_mode
+   local export_enabled = not (loading_mode or REWINDER._mark_active or REWINDER._rename_active)
    local mark_button_ref = { label = { text = mark_label } }
    local filter_button_ref = { label = { text = filter_label } }
    REWINDER._saves_ui_refs.mark_button_ref = mark_button_ref
@@ -111,93 +103,118 @@ function G.UIDEF.rewinder_saves(opts)
       focus_args = { nav = "wide" },
    })
 
-   return create_UIBox_generic_options({
-      back_func = "rewinder_save_close",
-      minw = Layout.SAVE_ENTRY_W,
-      back_id = "rewinder_back",
-      outline_colour = save_window_outline_colour,
-      contents = {
+   local export_button_colour = {0.15, 0.45, 0.75, 1}
+
+   local contents = {}
+
+   -- Row 1: saves box
+   contents[#contents + 1] = {
+      n = G.UIT.R,
+      config = { align = "cm" },
+      nodes = {
+         { n = G.UIT.O, config = { id = "rewinder_saves", object = saves_box } },
+      },
+   }
+
+   -- Row 2: page cycle
+   contents[#contents + 1] = {
+      n = G.UIT.R,
+      config = { align = "cm", colour = G.C.CLEAR },
+      nodes = { page_cycle },
+   }
+
+   -- Row 3: mode buttons
+   contents[#contents + 1] = {
+      n = G.UIT.R,
+      config = { align = "cm", colour = G.C.CLEAR },
+      nodes = {
          {
-            n = G.UIT.R,
-            config = { align = "cm" },
+            n = G.UIT.C,
+            config = { align = "cm", minw = Layout.MODE_ROW_HALF_W, padding = 0.05 },
             nodes = {
-               { n = G.UIT.O, config = { id = "rewinder_saves", object = saves_box } },
+               UIBox_button({
+                  id = "rewinder_btn_filter_keys",
+                  button = filter_enabled and "rewinder_btn_filter_keys" or nil,
+                  label = {},
+                  dynamic_label = filter_button_ref.label,
+                  minw = Layout.FILTER_BUTTON_W,
+                  scale = 0.42,
+                  colour = filter_enabled and filter_button_colour or dim_colour(filter_button_colour),
+                  focus_args = { nav = "wide" },
+               }),
             },
          },
          {
-            n = G.UIT.R,
-            config = { align = "cm", colour = G.C.CLEAR },
-            nodes = { page_cycle },
-         },
-         {
-            n = G.UIT.R,
-            config = { align = "cm", colour = G.C.CLEAR },
+            n = G.UIT.C,
+            config = { align = "cm", minw = Layout.MODE_ROW_HALF_W, padding = 0.05 },
             nodes = {
                {
-                  n = G.UIT.C,
-                  config = { align = "cm", minw = Layout.MODE_ROW_HALF_W, padding = 0.05 },
+                  n = G.UIT.R,
+                  config = { align = "cm", colour = G.C.CLEAR },
                   nodes = {
-                     UIBox_button({
-                        id = "rewinder_btn_filter_keys",
-                        button = filter_enabled and "rewinder_btn_filter_keys" or nil,
-                        label = {},
-                        dynamic_label = filter_button_ref.label,
-                        minw = Layout.FILTER_BUTTON_W,
-                        scale = 0.42,
-                        colour = filter_enabled and filter_button_colour or dim_colour(filter_button_colour),
+                     UIIconFactory.build_icon_button({
+                        id = "rewinder_btn_mark_keys",
+                        button = "rewinder_btn_mark_keys",
+                        fill_id = "rewinder_btn_mark_keys_fill",
+                        fill_colour = mark_enabled and mark_button_colour or dim_colour(mark_button_colour),
+                        icon = REWINDER.create_star_icon(G.C.WHITE, Layout.ICON_BUTTON_ICON_SIZE, Layout.ICON_BUTTON_ICON_SIZE),
+                        border_colour = icon_button_border_colour,
+                        disabled_border_colour = disabled_icon_button_border_colour,
+                        enabled = mark_enabled,
                         focus_args = { nav = "wide" },
                      }),
-                  },
-               },
-               {
-                  n = G.UIT.C,
-                  config = { align = "cm", minw = Layout.MODE_ROW_HALF_W, padding = 0.05 },
-                  nodes = {
-                     {
-                        n = G.UIT.R,
-                        config = { align = "cm", colour = G.C.CLEAR },
-                        nodes = {
-                           UIIconFactory.build_icon_button({
-                              id = "rewinder_btn_mark_keys",
-                              button = "rewinder_btn_mark_keys",
-                              fill_id = "rewinder_btn_mark_keys_fill",
-                              fill_colour = mark_enabled and mark_button_colour or dim_colour(mark_button_colour),
-                              icon = REWINDER.create_star_icon(G.C.WHITE, Layout.ICON_BUTTON_ICON_SIZE, Layout.ICON_BUTTON_ICON_SIZE),
-                              border_colour = icon_button_border_colour,
-                              disabled_border_colour = disabled_icon_button_border_colour,
-                              enabled = mark_enabled,
-                              focus_args = { nav = "wide" },
-                           }),
-                           UIIconFactory.build_icon_button({
-                              id = "rewinder_btn_toggle_rename",
-                              button = "rewinder_btn_toggle_rename",
-                              fill_id = "rewinder_btn_toggle_rename_fill",
-                              fill_colour = rename_enabled and rename_button_colour or dim_colour(rename_button_colour),
-                              icon = REWINDER.create_pencil_icon(G.C.WHITE, Layout.ICON_BUTTON_ICON_SIZE, Layout.ICON_BUTTON_ICON_SIZE),
-                              border_colour = icon_button_border_colour,
-                              disabled_border_colour = disabled_icon_button_border_colour,
-                              enabled = rename_enabled,
-                              ref_table = { mode = "rename" },
-                              focus_args = { nav = "wide" },
-                           }),
-                           UIIconFactory.build_icon_button({
-                              id = "rewinder_btn_jump_to_current",
-                              button = "rewinder_save_jump_to_current",
-                              fill_id = "rewinder_btn_jump_to_current_fill",
-                              fill_colour = jump_enabled and jump_button_colour or dim_colour(jump_button_colour),
-                              icon = REWINDER.create_triangle_icon(G.C.WHITE, Layout.ICON_BUTTON_ICON_SIZE, Layout.ICON_BUTTON_ICON_SIZE),
-                              border_colour = icon_button_border_colour,
-                              disabled_border_colour = disabled_icon_button_border_colour,
-                              enabled = jump_enabled,
-                              focus_args = { nav = "wide", button = "y", set_button_pip = true },
-                           }),
-                        },
-                     },
+                     UIIconFactory.build_icon_button({
+                        id = "rewinder_btn_toggle_rename",
+                        button = "rewinder_btn_toggle_rename",
+                        fill_id = "rewinder_btn_toggle_rename_fill",
+                        fill_colour = rename_enabled and rename_button_colour or dim_colour(rename_button_colour),
+                        icon = REWINDER.create_pencil_icon(G.C.WHITE, Layout.ICON_BUTTON_ICON_SIZE, Layout.ICON_BUTTON_ICON_SIZE),
+                        border_colour = icon_button_border_colour,
+                        disabled_border_colour = disabled_icon_button_border_colour,
+                        enabled = rename_enabled,
+                        ref_table = { mode = "rename" },
+                        focus_args = { nav = "wide" },
+                     }),
+                     UIIconFactory.build_icon_button({
+                        id = "rewinder_btn_export",
+                        button = export_enabled and "rewinder_btn_toggle_export" or nil,
+                        fill_id = "rewinder_btn_export_fill",
+                        fill_colour = export_enabled
+                           and export_button_colour
+                           or dim_colour(export_button_colour),
+                        icon = REWINDER.create_download_icon(
+                           export_enabled and G.C.WHITE or UIShared.get_icon_button_disabled_icon_colour(),
+                           Layout.ICON_BUTTON_ICON_SIZE, Layout.ICON_BUTTON_ICON_SIZE
+                        ),
+                        border_colour = icon_button_border_colour,
+                        disabled_border_colour = disabled_icon_button_border_colour,
+                        enabled = export_enabled,
+                        focus_args = { nav = "wide" },
+                     }),
+                     UIIconFactory.build_icon_button({
+                        id = "rewinder_btn_jump_to_current",
+                        button = "rewinder_save_jump_to_current",
+                        fill_id = "rewinder_btn_jump_to_current_fill",
+                        fill_colour = jump_enabled and jump_button_colour or dim_colour(jump_button_colour),
+                        icon = REWINDER.create_triangle_icon(G.C.WHITE, Layout.ICON_BUTTON_ICON_SIZE, Layout.ICON_BUTTON_ICON_SIZE),
+                        border_colour = icon_button_border_colour,
+                        disabled_border_colour = disabled_icon_button_border_colour,
+                        enabled = jump_enabled,
+                        focus_args = { nav = "wide", button = "y", set_button_pip = true },
+                     }),
                   },
                },
             },
          },
       },
+   }
+
+   return create_UIBox_generic_options({
+      back_func      = "rewinder_save_close",
+      minw           = Layout.SAVE_ENTRY_W,
+      back_id        = "rewinder_back",
+      outline_colour = save_window_outline_colour,
+      contents       = contents,
    })
 end
 

@@ -67,12 +67,23 @@ function M.get_icon_button_disabled_icon_colour()
    return {0.45, 0.45, 0.45, 1}
 end
 
+function M.dim_colour(colour, factor)
+   if type(colour) ~= "table" then return colour end
+   factor = factor or 0.45
+   return {
+      (colour[1] or 1) * factor,
+      (colour[2] or 1) * factor,
+      (colour[3] or 1) * factor,
+      colour[4] or 1,
+   }
+end
+
 function M.get_saves_outline_inactive_colour()
    return G.C.JOKER_GREY or {0.5, 0.5, 0.5, 1}
 end
 
 function M.get_saves_outline_colour()
-   if REWINDER and (REWINDER._rename_active or REWINDER._mark_active) then
+   if REWINDER and (REWINDER._export_active or REWINDER._rename_active or REWINDER._mark_active) then
       return G.C.RED or {0.9, 0.2, 0.2, 1}
    end
    if REWINDER and REWINDER._filter_active then

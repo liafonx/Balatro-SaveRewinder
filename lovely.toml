@@ -483,6 +483,12 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
+name = "ExportService"
+source = "Core/ExportService.lua"
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
 name = "UIShared"
 source = "UI/Shared.lua"
 before = "globals.lua"

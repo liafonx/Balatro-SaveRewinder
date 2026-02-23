@@ -176,8 +176,10 @@ function REWINDER.build_save_node(entry, opts)
    opts = opts or {}
    local file = entry[REWINDER.ENTRY_FILE]
 
-   local show_blind_image = REWINDER.config and REWINDER.config.show_blind_image
-   local is_mark_mode = REWINDER._mark_active == true
+   local show_blind_image   = REWINDER.config and REWINDER.config.show_blind_image
+   local is_mark_mode       = REWINDER._mark_active == true
+   local is_export_mode     = REWINDER._export_active == true
+   local is_export_selected = is_export_mode and (REWINDER._export_selection and REWINDER._export_selection[file]) == true
 
    local ante_text = ""
    if entry[REWINDER.ENTRY_ANTE] then
@@ -412,7 +414,14 @@ function REWINDER.build_save_node(entry, opts)
    end
 
    local is_row_editing = is_rename_editing
-   local row_button = is_mark_mode and "rewinder_save_toggle_key" or "rewinder_save_restore"
+   local row_button
+   if is_export_mode then
+      row_button = "rewinder_save_toggle_export_select"
+   elseif is_mark_mode then
+      row_button = "rewinder_save_toggle_key"
+   else
+      row_button = "rewinder_save_restore"
+   end
    local row_colour = button_colour
    if is_row_editing and type(button_colour) == "table" then
       row_colour = darken(copy_table(button_colour), 0.3)

@@ -435,6 +435,11 @@ local function _dispatch_rewinder_overlay_enter()
       return true
    end
 
+   if REWINDER and REWINDER._export_active and G.FUNCS.rewinder_btn_toggle_export then
+      G.FUNCS.rewinder_btn_toggle_export()
+      return true
+   end
+
    return false
 end
 

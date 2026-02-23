@@ -103,6 +103,11 @@ function M.rename_has_pending_drafts()
    return next(REWINDER._rename_pending or {}) ~= nil or next(REWINDER._rename_pending_clear or {}) ~= nil
 end
 
+function M.reset_export_state()
+   REWINDER._export_active    = false
+   REWINDER._export_selection = {}
+end
+
 function M.reset_rename_state(opts)
    opts = opts or {}
    local had_state = REWINDER._rename_active or REWINDER._rename_editing_file ~= nil or M.rename_has_pending_drafts()
@@ -133,21 +138,13 @@ function M.update_mode_button_labels()
    local icon_colour = UIShared.get_icon_button_icon_colour()
    local disabled_icon_colour = UIShared.get_icon_button_disabled_icon_colour()
    local loading_mode = refs.loading_state ~= nil
-   local mark_enabled = (not REWINDER._rename_active) and (not loading_mode)
-   local rename_enabled = (not REWINDER._mark_active) and (not loading_mode)
-   local jump_enabled = (not (REWINDER._rename_active or REWINDER._mark_active)) and (not loading_mode)
+   local mark_enabled   = (not REWINDER._rename_active) and (not REWINDER._export_active) and (not loading_mode)
+   local rename_enabled = (not REWINDER._mark_active) and (not REWINDER._export_active) and (not loading_mode)
+   local jump_enabled   = (not (REWINDER._rename_active or REWINDER._mark_active or REWINDER._export_active)) and (not loading_mode)
    local filter_enabled = not loading_mode
+   local export_enabled = not (loading_mode or REWINDER._mark_active or REWINDER._rename_active)
 
-   local function dim_colour(colour, factor)
-      if type(colour) ~= "table" then return colour end
-      factor = factor or 0.45
-      return {
-         (colour[1] or 1) * factor,
-         (colour[2] or 1) * factor,
-         (colour[3] or 1) * factor,
-         colour[4] or 1,
-      }
-   end
+   local dim_colour = UIShared.dim_colour
 
    local function apply_button_enabled(node, enabled, active_button_name)
       if not (node and node.config) then return end
@@ -219,6 +216,18 @@ function M.update_mode_button_labels()
       jump_fill.config.colour = jump_enabled and jump_colour or dim_colour(jump_colour)
    end
    apply_icon_enabled("rewinder_btn_jump_to_current_icon", jump_enabled)
+
+   local export_colour = REWINDER._export_active and (G.C.RED or {0.9, 0.2, 0.2, 1}) or {0.15, 0.45, 0.75, 1}
+   local export_btn  = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_export")
+   local export_fill = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_export_fill")
+   apply_button_enabled(export_btn, export_enabled, "rewinder_btn_toggle_export")
+   if export_btn and export_btn.config then
+      export_btn.config.colour = export_enabled and icon_border_colour or disabled_icon_border_colour
+   end
+   if export_fill and export_fill.config then
+      export_fill.config.colour = export_enabled and export_colour or dim_colour(export_colour)
+   end
+   apply_icon_enabled("rewinder_btn_export_icon", export_enabled)
 
    M.update_saves_outline_colour()
 end
@@ -342,6 +351,7 @@ function M.ensure_exit_overlay_wrapped()
    G.FUNCS.exit_overlay_menu = function(...)
       if REWINDER and REWINDER.saves_open then
          M.reset_key_save_state(true, true)
+         M.reset_export_state()
          if REWINDER._SaveManager and REWINDER._SaveManager.set_overlay_open then
             REWINDER._SaveManager.set_overlay_open(false)
          end
@@ -401,7 +411,12 @@ local function _entry_has_pending_badge(entry)
          or (REWINDER._rename_pending_clear and REWINDER._rename_pending_clear[file] == true)
    end
 
-   return key_pending or rename_pending
+   local export_pending = false
+   if REWINDER._export_active and file then
+      export_pending = (REWINDER._export_selection and REWINDER._export_selection[file] == true)
+   end
+
+   return key_pending or rename_pending or export_pending
 end
 
 local function _remove_pending_badge(row)

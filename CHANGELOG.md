@@ -6,6 +6,7 @@ All notable changes to Save Rewinder will be documented in this file.
 
 ## [Unreleased]
 ### Added
+- **Export saves**: Select saves from the overlay and export `.jkr` (and optionally `.meta`) files to an OS directory. Configurable export path, profile-aware default directory, paste/reset controls, and full seed display toggle for non-seeded runs.
 - **Max saves per type per round**: New config option to limit saves of the same type within a round (choices: 8, 16, 64, 128, All; default: 16).
 
 ## [1.5.5] - 2026-02-14

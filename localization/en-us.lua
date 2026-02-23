@@ -67,6 +67,14 @@ return {
             rewinder_separator = ' | ',
             
 	        rewinder_game_over_button = 'Resurrection !',
+
+            -- Export mode
+            rewinder_tab_export           = 'Export',
+            rewinder_export_dir_label     = 'Export directory',
+            rewinder_export_paste         = 'Paste',
+            rewinder_export_reset_dir     = 'Reset',
+            rewinder_export_seed_label    = 'Show full seed in folder name for non-seeded runs',
+            rewinder_export_include_meta  = 'Include .meta sidecar',
         },
     },
 }
