@@ -352,6 +352,7 @@ function Game:start_run(args)
       -- Brand new run - reset SaveManager internal state directly
       local BM = REWINDER._SaveManager
       reset_save_manager_for_new_run(BM)
+      REWINDER._new_run_dedup_armed = true
       log("debug", "Reset state (new run)")
       
       -- Prune all saves (new run destroys future of previous run)

@@ -12,6 +12,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 [*][b]Quick Saveload[/b] — Press L (Keyboard) or R3 (Controller) to instantly reload.
 [*][b]Key Saves[/b] — Mark important saves and filter the list to key saves only.
 [*][b]Rename Saves[/b] — Enter pencil mode and rename save entries inline.
+[*][b]Export Saves[/b] — Export save files to any custom directory.
 [*][b]Game Over Rewind[/b] — Rewind to the last save directly from the game over panel.
 [*][b]Rewind freely[/b] — Stepped-back saves preserved until you make a new action (trigger a new save).
 [*][b]Overflow Protection[/b] — Rewind/save-load safely with extreme naneinf/inf scores.
@@ -45,13 +46,14 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 [*][b]Check key saves[/b] — Text button, shows only key saves.
 [*][b]★ Edit key saves[/b] — Star icon button, enters mark mode.
 [*][b]✏️ Rename mode[/b] — Pencil icon button, edits save titles inline.
+[*][b]⬇ Export mode[/b] — Download icon button, enters export mode to select and export saves.
 [*][b]▶ Current save[/b] — Triangle icon button, jumps to your currently loaded save.
 [/list]
 
 [b]How to use icon buttons:[/b]
 [list=1]
 [*]Press [b]★ Edit key saves[/b].
-[*]Click save rows to toggle key marks (pending changes show as a white dot badge).
+[*]Click save rows to toggle key marks (pending changes show white dot badges).
 [*]Press [b]★ Save marking changes[/b] to apply, or close the panel to discard pending edits.
 [*]Use [b]Check key saves[/b] to filter and [b]▶ Current save[/b] to jump back to your current position.
 [/list]
@@ -59,8 +61,15 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 [b]Rename flow:[/b]
 [list=1]
 [*]Press [b]✏️[/b] to enter rename mode.
-[*]Click a save row and edit the title (pending changes show as a white dot badge).
+[*]Click a save row and edit the title (pending renames show white dot badges).
 [*]Click [b]✏️[/b] again to commit pending rename drafts.
+[/list]
+
+[b]Export flow:[/b]
+[list=1]
+[*]Press [b]⬇[/b] to enter export mode.
+[*]Click save rows to select them (selected rows show white dot badges).
+[*]Press [b]⬇[/b] again to export the selection. If nothing is selected, pressing [b]⬇[/b] exits export mode.
 [/list]
 
 [b]Enter key behavior (when saves overlay is open):[/b]
@@ -68,6 +77,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 [*]Mark mode + Enter = same as [b]★ Save marking changes[/b].
 [*]Rename mode + editing row + Enter = stage current row draft and exit row edit.
 [*]Rename mode + not editing row + Enter = same as [b]✏️[/b] commit/exit.
+[*]Export mode + Enter = same as [b]⬇[/b] (exports selection if rows selected, otherwise exits export mode).
 [/list]
 
 [size=4][b]Configuration[/b][/size]
@@ -76,13 +86,15 @@ Configure settings in the Steamodded mod menu:
 [*]Choose when to save (Blind, Hand, Round, Shop)
 [*]Toggle blind icons and animations
 [*]Set max antes to keep (Default: 4)
+[*]Set max saves per type per round (Default: 16)
 [*]Configure overflow score handling (cap at 1.8e308 or keep as naneinf)
 [*]Customize keyboard and controller keybinds
-[/list]
+[*]Configure export directory, seed display, and [font=Courier New].meta[/font] sidecar options
 
 [size=4][b]Notes[/b][/size]
 [list]
 [*]Saves are stored in [font=Courier New][Profile]/SaveRewinder/[/font]
+[*]Exported saves are written to [font=Courier New][Balatro save folder]/SW-Exports/[Profile]/[/font] by default (configurable in the Export tab).
 [*]Saves are for the [b]current run only[/b]. Quitting and continuing preserves history, but starting a new run clears old saves.
 [/list]
 

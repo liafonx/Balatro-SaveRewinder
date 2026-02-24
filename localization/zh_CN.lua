@@ -38,7 +38,7 @@ return {
             rewinder_state_selecting_hand_play = '操作手牌（出牌）',
             rewinder_state_selecting_hand_discard = '操作手牌（弃牌）',
             rewinder_state_end_of_round = '回合结束',
-            rewinder_state_choose_blind = '选择盲注',
+            rewinder_state_choose_blind = '选择下一个盲注',
             rewinder_state_in_run = '对局进行中',
 
             rewinder_no_saves = '暂无存档',

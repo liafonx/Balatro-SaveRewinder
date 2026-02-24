@@ -11,6 +11,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - 🔁 **Quick Saveload** — Press `L` (keyboard) or `R3` (controller) to instantly reload.
 - ⭐ **Key Saves** — Mark important saves and filter the list to key saves only.
 - ✏️ **Rename Saves** — Rename save entries in the save list.
+- ⬇ **Export Saves** — Export selected save files to any directory on your system.
 - 💀 **Game Over Rewind** — Rewind to your last save directly from the game over panel.
 - 🧪 **Experiment Freely** — Test strategies without fear; stepped-back saves stay available until you make a new action.
 - 🛡️ **Score Overflow Protection** — Rewind/save-load safely with extreme `naneinf/inf` scores (optional clamp to `1.8e308`).
@@ -51,9 +52,10 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - **Check key saves** — Text button. Shows only key saves.
 - **★ Edit key saves** — Star icon button. Enters mark mode so you can add/remove key marks.
 - **✏️ Rename mode** — Pencil icon button. Enter rename mode to edit save titles inline.
+- **⬇ Export mode** — Download icon button. Enter export mode to select and export saves.
 - **▶ Current save** — Triangle icon button. Jumps to your currently loaded save.
 
-How to use:
+Mark flow:
 1. Press **★ Edit key saves**.
 2. Click save rows to toggle key marks (pending changes show a white dot badge).
 3. Press **★ Save marking changes** to apply. Close the panel to discard pending edits.
@@ -65,12 +67,18 @@ Rename flow:
 3. Click the row again (or switch rows) to stage the draft (pending rename show a white dot badge).
 4. Press **✏️** again to commit staged rename drafts.
 
+Export flow:
+1. Press the **⬇** button to enter export mode.
+2. Click save rows to select them (selected rows show a white dot badge).
+3. Press **⬇** again to export the selection. If nothing is selected, pressing **⬇** exits export mode.
+
 ### Enter Key Behavior (Saves Overlay)
 
 When the saves overlay is open:
 - **Mark mode + Enter** — Same as clicking **★ Save marking changes** (commits mark edits / exits mark mode).
 - **Rename mode + editing a row + Enter** — Same as clicking that row again (stages current row draft and exits row editing).
 - **Rename mode + not editing a row + Enter** — Same as clicking **✏️** (commits staged rename drafts and exits rename mode).
+- **Export mode + Enter** — Same as clicking **⬇** (exports selection if rows are selected, otherwise exits export mode).
 
 ## Game Over Rewind
 
@@ -86,12 +94,14 @@ In the Steamodded config menu for Save Rewinder:
 - Set max saves per type per round (Default: 16).
 - Configure overflow score handling (cap at 1.8e308 or keep as naneinf).
 - Customize keyboard and controller keybinds.
+- Configure export directory, seed display, and `.meta` sidecar options.
 
 ## Save Data Location
 
 Saves are stored in `[Profile]/SaveRewinder/`.
-
 > ⚠️ **Note**: Saves are for the **current run only** and are cleared when starting a new run. Quitting and continuing later preserves your full history.
+
+Exported saves are written to `[Balatro folder]/SW-Exports/[Profile]/` by default. You can override this in the **Export** tab of the mod settings.
 
 ## Languages
 

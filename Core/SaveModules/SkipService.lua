@@ -102,6 +102,11 @@ return function(ctx)
 
    function M.consume_skip_on_save(save_table)
       S.skip_check_state_info = nil
+      if M._force_skip_next_save then
+         M._force_skip_next_save = nil
+         M.skip_next_save = false
+         return true
+      end
       if not M.skip_next_save then return false end
 
       if save_table and not save_table._file then

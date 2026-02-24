@@ -235,7 +235,7 @@ return function(ctx)
       local is_shop_state = display_type == "F" or display_type == "S" or display_type == "O" or display_type == "A"
       local blind_idx = 0
       if display_type == "B" then
-         blind_idx = 0
+         blind_idx = (state_info.round > 0) and actual_blind_idx or 0
       elseif is_shop_state and S.ordinal_state.defeated_boss_idx then
          blind_idx = S.ordinal_state.defeated_boss_idx
       elseif is_shop_state and S.ordinal_state.last_round == 3 and actual_blind_idx > 2 then
@@ -376,6 +376,11 @@ return function(ctx)
       _update_last_sig_cache(state_info, display_type)
       if Logger.is_verbose() then
          M.debug_log("info", "Created: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
+      end
+
+      if REWINDER and REWINDER._new_run_dedup_armed then
+         REWINDER._new_run_dedup_armed = nil
+         M._force_skip_next_save = true
       end
 
       if ante_changed then
