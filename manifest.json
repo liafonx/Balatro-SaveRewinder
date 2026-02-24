@@ -1,6 +1,6 @@
 {
     "name": "SaveRewinder",
-    "version_number": "1.6.0",
+    "version_number": "1.6.1",
     "website_url": "https://github.com/liafonx/Balatro-SaveRewinder",
     "description": "Undo mistakes and bookmark key moments. Auto-saves at key points, press S to rewind, and manage saves from the Saves menu.",
     "dependencies": [
