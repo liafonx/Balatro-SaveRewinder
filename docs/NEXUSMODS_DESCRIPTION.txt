@@ -90,8 +90,9 @@ Configure settings in the Steamodded mod menu:
 [*]Configure overflow score handling (cap at 1.8e308 or keep as naneinf)
 [*]Customize keyboard and controller keybinds
 [*]Configure export directory, seed display, and [font=Courier New].meta[/font] sidecar options
+[/list]
 
-[size=4][b]Notes[/b][/size]
+[size=4][b]Save Data Location[/b][/size]
 [list]
 [*]Saves are stored in [font=Courier New][Profile]/SaveRewinder/[/font]
 [*]Exported saves are written to [font=Courier New][Balatro save folder]/SW-Exports/[Profile]/[/font] by default (configurable in the Export tab).
