@@ -439,7 +439,7 @@ function REWINDER.build_save_node(entry, opts)
                colour = row_colour,
                minw = Layout.SAVE_ENTRY_W,
                maxw = Layout.SAVE_ENTRY_W,
-               padding = 0.08,
+               padding = 0.085,
                r = 0.1,
                hover = not is_row_editing,
                can_collide = true,
@@ -510,6 +510,26 @@ function REWINDER.get_saves_page(args)
          }))
       end
 
+      -- Fill remaining slots with invisible spacers whose dimensions exactly match a
+      -- real entry row (inner minh = text_scale + 2*inner_pad = 0.45 + 0.17 = 0.62,
+      -- outer pad = 0.06 each side) so the dialog is the same height on every page.
+      for _ = max_index + 1, per_page do
+         table.insert(nodes, {
+            n = G.UIT.R,
+            config = { align = "cm", padding = 0.06, colour = G.C.CLEAR },
+            nodes = {{
+               n = G.UIT.R,
+               config = {
+                  colour = G.C.CLEAR,
+                  minw = Layout.SAVE_ENTRY_W,
+                  maxw = Layout.SAVE_ENTRY_W,
+                  minh = 0.62,
+               },
+               nodes = {},
+            }},
+         })
+      end
+
       content = {
          n = G.UIT.R,
          config = { align = "tm", padding = 0.05, r = 0.1 },
@@ -517,7 +537,7 @@ function REWINDER.get_saves_page(args)
       }
    end
 
-   local calculated_minh = per_page * 0.72 + 0.1
+   local calculated_minh = per_page * 0.74 + 0.1
    return {
       n = G.UIT.ROOT,
       config = {

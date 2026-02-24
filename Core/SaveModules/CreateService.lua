@@ -114,6 +114,8 @@ return function(ctx)
    function M.create_save(run_data)
       ctx.index.process_async_save_results()
 
+      if M.consume_skip_on_save(run_data) then return end
+
       if not S.save_cache then M.get_save_files() end
       local dir = M.get_save_dir()
 
@@ -125,8 +127,6 @@ return function(ctx)
          ctx.index.invalidate_save_cache_view()
          ctx.index.rebuild_file_index()
       end
-
-      if M.consume_skip_on_save(run_data) then return end
       local perf_t0 = Logger.is_verbose() and love.timer.getTime() or nil
 
       local state_info = skip.consume_cached_state_info() or StateSignature.get_state_info(run_data)
