@@ -22,7 +22,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 |:---:|:---:|
 | ![Blind icons](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Save_list_with_blind_icon.png) | ![Round numbers](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Save_list_with_round_number.png) |
 | **Key Saves List** | **Mod Settings** |
-| ![Key Saves List](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Key_Saves_List.png) | ![Settings](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Mod_settings.png) |
+| ![Key Saves List](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Key_save_list.png) | ![Settings](https://raw.githubusercontent.com/Liafonx/Balatro-SaveRewinder/main/images/Mod_settings.png) |
 
 ## Installation
 
