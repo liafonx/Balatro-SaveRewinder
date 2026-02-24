@@ -146,7 +146,19 @@ return function(ctx)
       M.skipping_pack_open = nil
 
       if save_table and should_skip then save_table.REWINDER_SKIP_SAVE = true end
-      if should_skip then _align_save_id_to_current(save_table, "skip") end
+      if should_skip then
+         _align_save_id_to_current(save_table, "skip")
+         if not M.pending_future_prune_boundary and M._last_loaded_file then
+            local entry = M.get_entry_by_file and M.get_entry_by_file(M._last_loaded_file)
+            if entry and entry[E.ENTRY_INDEX] and S.save_cache and #S.save_cache > 0 then
+               local last_entry = S.save_cache[#S.save_cache]
+               if last_entry and last_entry[E.ENTRY_INDEX]
+                  and last_entry[E.ENTRY_INDEX] > entry[E.ENTRY_INDEX] then
+                  M.pending_future_prune_boundary = entry[E.ENTRY_INDEX]
+               end
+            end
+         end
+      end
       if not should_skip and Logger.is_verbose() then
          M.debug_log("info", "Saving: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
       end

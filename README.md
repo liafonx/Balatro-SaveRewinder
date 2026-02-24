@@ -11,7 +11,7 @@ Save Rewinder automatically creates save points as you play Balatro, letting you
 - 🔁 **Quick Saveload** — Press `L` (keyboard) or `R3` (controller) to instantly reload.
 - ⭐ **Key Saves** — Mark important saves and filter the list to key saves only.
 - ✏️ **Rename Saves** — Rename save entries in the save list.
-- ⬇ **Export Saves** — Export selected save files to any directory on your system.
+- ⬇️ **Export Saves** — Export selected save files to any directory on your system.
 - 💀 **Game Over Rewind** — Rewind to your last save directly from the game over panel.
 - 🧪 **Experiment Freely** — Test strategies without fear; stepped-back saves stay available until you make a new action.
 - 🛡️ **Score Overflow Protection** — Rewind/save-load safely with extreme `naneinf/inf` scores (optional clamp to `1.8e308`).

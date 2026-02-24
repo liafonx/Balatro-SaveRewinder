@@ -48,15 +48,10 @@ M.skipping_pack_open = nil
 M.pending_future_prune_boundary = nil
 M.current_index = nil
 M.pending_index = nil
-M._last_save_sig = nil
-M._last_save_time = nil
-M._last_save_sig_parts = nil
 M._rw_queue = {}
 M._rw_queue_head = 1
 M._rw_queue_tail = 0
 M._rw_cancelled_files = {}
-M._rw_last_enqueued_sig = nil
-M._rw_last_enqueued_t = nil
 
 function M.generate_unique_id()
    local now_ms = os.time() * 1000

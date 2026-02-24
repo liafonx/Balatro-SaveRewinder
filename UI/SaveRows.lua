@@ -517,7 +517,7 @@ function REWINDER.get_saves_page(args)
       }
    end
 
-   local calculated_minh = per_page * 0.78 + 0.1
+   local calculated_minh = per_page * 0.72 + 0.1
    return {
       n = G.UIT.ROOT,
       config = {

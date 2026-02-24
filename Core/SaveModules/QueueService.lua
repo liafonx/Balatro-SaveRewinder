@@ -110,34 +110,13 @@ return function(ctx)
    function M.enqueue_pending_rewinder(item)
       if not item then return false end
 
-      local now = (love and love.timer and love.timer.getTime) and love.timer.getTime() or nil
-      local duplicate_window = 0.12
-      local sig = item.signature
-      if sig then
-         local tail_item = ((M._rw_queue_tail or 0) >= (M._rw_queue_head or 1)) and M._rw_queue[M._rw_queue_tail] or nil
-         local last_sig = (tail_item and tail_item.signature) or M._rw_last_enqueued_sig
-         local last_t = (tail_item and tail_item.created_at) or M._rw_last_enqueued_t
-         if last_sig and last_t and sig == last_sig and now and (now - last_t) <= duplicate_window then
-            if Logger.is_verbose() then
-               M.debug_log("debug", string.format(
-                  "queue_dedupe: skip signature=%s dt=%.3fs",
-                  tostring(sig), now - last_t
-               ))
-            end
-            return "duplicate"
-         end
-      end
-
       if _queue_depth() >= 16 then
          return false
       end
+      local now = (love and love.timer and love.timer.getTime) and love.timer.getTime() or nil
       item.created_at = item.created_at or now or os.clock()
       M._rw_queue_tail = (M._rw_queue_tail or 0) + 1
       M._rw_queue[M._rw_queue_tail] = item
-      if item.signature then
-         M._rw_last_enqueued_sig = item.signature
-         M._rw_last_enqueued_t = item.created_at
-      end
       return true
    end
 
@@ -165,8 +144,6 @@ return function(ctx)
       M._rw_queue_head = 1
       M._rw_queue_tail = 0
       M._rw_cancelled_files = {}
-      M._rw_last_enqueued_sig = nil
-      M._rw_last_enqueued_t = nil
    end
 
    function M.cancel_pending_rewinder_by_files(files)

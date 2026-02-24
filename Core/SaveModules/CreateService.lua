@@ -94,51 +94,6 @@ return function(ctx)
       return count, unresolved
    end
 
-   local function _should_skip_duplicate(signature, display_type)
-      if not signature then return false end
-      if not M._last_save_sig or not M._last_save_time then return false end
-
-      local now = love.timer.getTime()
-      local elapsed = now - M._last_save_time
-      local duplicate_window = 0.10
-      if M._last_save_sig == signature and elapsed < duplicate_window then
-         if Logger.is_verbose() then
-            M.debug_log("debug", string.format(
-               "Skip essential duplicate signature dt=%.3fs type=%s",
-               elapsed, tostring(display_type)
-            ))
-         end
-         return true
-      end
-
-      return false
-   end
-
-   local function _should_skip_nonqueue_duplicate(signature, display_type)
-      if not signature then return false end
-      local last_sig = M._last_nonqueue_sig
-      local last_t = M._last_nonqueue_t
-      if not (last_sig and last_t) then return false end
-      local now = love.timer.getTime()
-      local duplicate_window = 0.12
-      if last_sig == signature and (now - last_t) < duplicate_window then
-         if Logger.is_verbose() then
-            M.debug_log("debug", string.format(
-               "Skip nonqueue duplicate signature dt=%.3fs type=%s",
-               now - last_t, tostring(display_type)
-            ))
-         end
-         return true
-      end
-      return false
-   end
-
-   local function _mark_nonqueue_duplicate_baseline(signature)
-      if not signature then return end
-      M._last_nonqueue_sig = signature
-      M._last_nonqueue_t = love.timer.getTime()
-   end
-
    local function _should_save_state(state, config)
       if not config then return true end
       if not S.state_filters then
@@ -156,16 +111,21 @@ return function(ctx)
       return not key or config[key] ~= false
    end
 
-   local function _update_last_sig_cache(state_info, display_type)
-      M._last_save_sig_parts = {
-         ante = state_info and state_info.ante or nil,
-         round = state_info and state_info.round or nil,
-         dtype = display_type,
-      }
-   end
-
    function M.create_save(run_data)
       ctx.index.process_async_save_results()
+
+      if not S.save_cache then M.get_save_files() end
+      local dir = M.get_save_dir()
+
+      if M.pending_future_prune_boundary then
+         M.invalidate_async_saves()
+         Pruning.prune_future_saves(dir, M.pending_future_prune_boundary, S.save_cache, E)
+         S.bucket_counts = nil
+         M.pending_future_prune_boundary = nil
+         ctx.index.invalidate_save_cache_view()
+         ctx.index.rebuild_file_index()
+      end
+
       if M.consume_skip_on_save(run_data) then return end
       local perf_t0 = Logger.is_verbose() and love.timer.getTime() or nil
 
@@ -188,23 +148,6 @@ return function(ctx)
 
       local display_type = ordinal.compute_display_type(state_info)
       local signature = ordinal.create_signature(state_info, display_type)
-
-      if _should_skip_duplicate(signature, display_type) then
-         skip.align_save_id_to_current(run_data, "duplicate")
-         return
-      end
-
-      if not S.save_cache then M.get_save_files() end
-      local dir = M.get_save_dir()
-
-      if M.pending_future_prune_boundary then
-         M.invalidate_async_saves()
-         Pruning.prune_future_saves(dir, M.pending_future_prune_boundary, S.save_cache, E)
-         S.bucket_counts = nil
-         M.pending_future_prune_boundary = nil
-         ctx.index.invalidate_save_cache_view()
-         ctx.index.rebuild_file_index()
-      end
 
       local unique_id = run_data._rewinder_id or M.generate_unique_id()
       local filename = string.format("%d-%d-%d.jkr", state_info.ante, state_info.round, unique_id)
@@ -281,23 +224,10 @@ return function(ctx)
             signature = signature,
          })
       end
-      if enqueue_result == "duplicate" then
-         skip.align_save_id_to_current(run_data, "queue_duplicate")
-         if Logger.is_verbose() then
-            M.debug_log("debug", string.format(
-               "create_save: queue dedupe file=%s type=%s",
-               tostring(filename), tostring(display_type)
-            ))
-         end
-         return
-      elseif enqueue_result == true then
+      if enqueue_result == true then
          wrote_async = true
       else
          used_nonqueue_path = true
-         if _should_skip_nonqueue_duplicate(signature, display_type) then
-            skip.align_save_id_to_current(run_data, "nonqueue_duplicate")
-            return
-         end
 
          -- Queue saturated: try direct SaveThread push before piggyback fallback.
          local direct_pushed = false
@@ -366,14 +296,12 @@ return function(ctx)
       ctx.index.prepend_save_view_entry()
 
       if wrote_async then ctx.index.mark_async_pending(filename) end
-      if used_nonqueue_path then
-         _mark_nonqueue_duplicate_baseline(signature)
-      end
       run_data._file = filename
       M.current_index = 1
-      M._last_save_sig = signature
-      M._last_save_time = love.timer.getTime()
-      _update_last_sig_cache(state_info, display_type)
+      if REWINDER and REWINDER._save_gate_pending then
+         REWINDER._save_gate_saved = REWINDER._save_gate_pending
+         REWINDER._save_gate_pending = nil
+      end
       if Logger.is_verbose() then
          M.debug_log("info", "Created: " .. StateSignature.describe_save(state_info.ante, state_info.round, display_type))
       end

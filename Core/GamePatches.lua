@@ -50,20 +50,14 @@ end
 
 function REWINDER.should_skip_save_run()
    local snapshot = _build_save_gate_snapshot()
-   if not snapshot then return false end
-
-   local last = REWINDER._save_gate_last
-   local now = (love and love.timer and love.timer.getTime) and love.timer.getTime() or 0
-   local duplicate_window = 0.05
-   if _save_gate_equal(last, snapshot) then
-      local last_t = REWINDER._save_gate_last_t or 0
-      if (now - last_t) < duplicate_window then
-         return true
-      end
+   if not snapshot then
+      REWINDER._save_gate_pending = nil
+      return false
    end
-
-   REWINDER._save_gate_last = snapshot
-   REWINDER._save_gate_last_t = now
+   if _save_gate_equal(REWINDER._save_gate_saved, snapshot) then
+      return true
+   end
+   REWINDER._save_gate_pending = snapshot
    return false
 end
 
@@ -290,7 +284,8 @@ REWINDER._start_run = Game.start_run
 function Game:start_run(args)
    args = args or {}
    -- Reset semantic save gate state on every run entry.
-   REWINDER._save_gate_last = nil
+   REWINDER._save_gate_saved = nil
+   REWINDER._save_gate_pending = nil
    REWINDER._rw_last_shop_flush_t = nil
    REWINDER._rw_last_play_flush_t = nil
    REWINDER._force_save_run_recull = false

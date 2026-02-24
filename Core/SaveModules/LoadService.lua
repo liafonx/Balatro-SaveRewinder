@@ -33,9 +33,6 @@ return function(ctx)
       M.skip_next_save = false
       M.pending_future_prune_boundary = nil
       M.skipping_pack_open = nil
-      M._last_save_sig = nil
-      M._last_save_time = nil
-      M._last_save_sig_parts = nil
       if M.set_overlay_open then M.set_overlay_open(false) end
       if M.reset_ordinal_state then M.reset_ordinal_state() end
    end
@@ -120,9 +117,6 @@ return function(ctx)
       M._restore_active = (reason == "restore")
       M._last_loaded_file = file
       M.skip_next_save = true
-      M._last_save_sig = nil
-      M._last_save_time = nil
-      M._last_save_sig_parts = nil
 
       skip.assign_loaded_fields(entry)
 

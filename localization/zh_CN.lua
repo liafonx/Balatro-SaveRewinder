@@ -18,7 +18,7 @@ return {
             rewinder_max_antes_per_run = '每局最多保留的盲注存档数',
             rewinder_max_saves_per_type_per_round = '每回合每类型最多存档数',
             rewinder_delete_all_saves_button = '删除所有存档',
-            rewinder_tab_keybinds = '键位设置',
+            rewinder_tab_keybinds = '键位',
             rewinder_keybinds_title = '键位设置',
             rewinder_keybind_step_back = '回退一个存档',
             rewinder_keybind_toggle_saves = '打开存档列表',
