@@ -178,7 +178,42 @@ function M.create_dir_os(path)
       local unix_path = path:gsub("'", "'\\''")
       ok = os.execute("mkdir -p '" .. unix_path .. "'")
    end
-   return ok ~= false
+   -- os.execute returns 0 (Lua 5.1/LuaJIT POSIX) or true (Lua 5.2+) on success.
+   -- Returns nil when no shell is available (e.g., iOS sandbox).
+   if ok == 0 or ok == true then return true end
+   -- Fallback: love.filesystem.createDirectory for paths within the love save dir.
+   -- On iOS the export target is always within Documents/ (the love save dir), so
+   -- converting to a relative path lets love handle recursive directory creation.
+   if love and love.filesystem and love.filesystem.getSaveDirectory
+      and love.filesystem.createDirectory then
+      local save_dir = (love.filesystem.getSaveDirectory() or ""):gsub("[/\\]+$", "")
+      local path_norm = path:gsub("[/\\]+$", "")
+      if save_dir ~= "" and #path_norm >= #save_dir
+         and path_norm:sub(1, #save_dir) == save_dir then
+         local rel = path_norm:sub(#save_dir + 1):gsub("^[/\\]+", "")
+         if rel ~= "" and love.filesystem.createDirectory(rel) then
+            M.debug_log("debug", "create_dir_os via love.filesystem: " .. rel)
+            return true
+         end
+      end
+   end
+   -- Fallback: recursive lfs.mkdir (LÖVE bundles lfs on most platforms).
+   local ok_lfs, lfs = pcall(require, "lfs")
+   if ok_lfs and lfs and type(lfs.mkdir) == "function" then
+      local norm = path:gsub("\\", "/")
+      local current = norm:sub(1, 1) == "/" and "" or "."
+      for part in norm:gmatch("[^/]+") do
+         current = current .. "/" .. part
+         lfs.mkdir(current)  -- ignore errors; dir may already exist
+      end
+      local attr = lfs.attributes(path)
+      if type(attr) == "table" and attr.mode == "directory" then
+         M.debug_log("debug", "create_dir_os via lfs: " .. path)
+         return true
+      end
+   end
+   M.debug_log("warning", "create_dir_os: all methods failed for: " .. tostring(path))
+   return false
 end
 
 -- Copy a love.filesystem file to an absolute OS path.

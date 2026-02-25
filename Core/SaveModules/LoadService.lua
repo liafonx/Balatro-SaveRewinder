@@ -116,13 +116,18 @@ return function(ctx)
       M._pending_skip_reason = reason
       M._restore_active = (reason == "restore")
       M._last_loaded_file = file
-      -- Do NOT set skip_next_save=true for restore/step operations.
-      -- Balatro does not call save_run during Game:start_run on a restore, so there
-      -- is no phantom save to suppress. Setting skip_next_save here causes the first
-      -- genuine user action (e.g. shop reroll) to be incorrectly dropped when its
-      -- state signature matches the loaded save (very common for shop saves since
-      -- money is captured before the reroll cost is deducted).
-      M.skip_next_save = false
+      -- After start_run completes, Balatro's update handlers (update_blind_select,
+      -- update_round_eval) fire a phantom save_run on the next frame. skip_next_save=true
+      -- arms the state-comparison gate in consume_skip_on_save: phantom calls (identical
+      -- state to the loaded save) are skipped; genuine user actions (changed state, e.g.
+      -- dollars deducted after a shop reroll) are NOT skipped. The gate is one-shot —
+      -- after it fires, all loaded fields are cleared and skip_next_save resets to false.
+      -- For SHOP restores nosave_shop suppresses the phantom, so the first genuine reroll
+      -- differs on dollars and passes through correctly.
+      -- Note: on the very first rewind after a new run, _force_skip_next_save (set by
+      -- new-run dedup) takes precedence and clears both flags, leaving subsequent rewinders
+      -- to use this state-comparison path correctly.
+      M.skip_next_save = true
 
       skip.assign_loaded_fields(entry)
 
