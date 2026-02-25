@@ -35,6 +35,19 @@ if SMODS and SMODS.current_mod then
       return _left_ellipsis(path, EXPORT_DIR_VISIBLE_CHARS)
    end
 
+   REWINDER.split_export_dir_display = function(full_path)
+      local FileIO = require("FileIO")
+      local profile = FileIO.get_profile and FileIO.get_profile() or "1"
+      local suffix = "/" .. tostring(profile)
+      local base = tostring(full_path or "")
+      -- Strip trailing profile suffix if present
+      if #base >= #suffix and string.sub(base, -#suffix) == suffix then
+         base = string.sub(base, 1, #base - #suffix)
+      end
+      local base_text = _left_ellipsis(base, EXPORT_DIR_VISIBLE_CHARS - #suffix)
+      return base_text, suffix
+   end
+
    -- Builders for repeated config UI structures
    local function _section_header(label_key, fallback)
       return {
@@ -375,95 +388,110 @@ if SMODS and SMODS.current_mod then
                if type(REWINDER.config.export_include_meta) ~= "boolean" then
                   REWINDER.config.export_include_meta = false
                end
+               local is_ios = love and love.system and love.system.getOS and love.system.getOS() == "iOS"
                local current_path = ExportService.get_export_dir()
+               local _base_text, _suffix_text = REWINDER.split_export_dir_display(current_path)
                local path_ref = {
                   full_text = current_path,
-                  text = REWINDER.format_export_dir_display(current_path),
+                  text = _base_text,
+                  suffix_text = _suffix_text,
                }
-               return {
-                  n = G.UIT.ROOT,
-                  config = { r = 0.1, minw = 9.8, align = "tm", padding = 0.2, colour = G.C.BLACK },
-                  nodes = {
-                     _section_header("rewinder_export_dir_label", "Export directory"),
-                     {
-                        n = G.UIT.R,
-                        config = { align = "cm", padding = 0.05 },
-                        nodes = {
-                           {
-                              n = G.UIT.C,
-                              config = {
-                                 align = "cl",
-                                 minw = EXPORT_DIR_INPUT_WIDTH,
-                                 maxw = EXPORT_DIR_INPUT_WIDTH,
-                                 minh = 0.48,
-                                 padding = 0.05,
-                                 r = 0.1,
-                                 colour = G.C.GREY,
-                                 shadow = true,
-                              },
-                              nodes = {
-                                 {
-                                    n = G.UIT.R,
-                                    config = {
-                                       align = "cm",
-                                       colour = G.C.CLEAR,
-                                       minw = EXPORT_DIR_INPUT_WIDTH - 0.28,
-                                       maxw = EXPORT_DIR_INPUT_WIDTH - 0.28,
-                                    },
-                                    nodes = {
-                                       { n = G.UIT.C, config = { minw = 0.14, colour = G.C.CLEAR } },
-                                       {
-                                          n = G.UIT.T,
-                                          config = {
-                                             ref_table = path_ref,
-                                             ref_value = "text",
-                                             colour = G.C.UI.TEXT_LIGHT,
-                                             scale = 0.32,
-                                          },
+               local export_tab_nodes = {
+                  _section_header("rewinder_export_dir_label", "Export directory"),
+                  {
+                     n = G.UIT.R,
+                     config = { align = "cm", padding = 0.05 },
+                     nodes = {
+                        {
+                           n = G.UIT.C,
+                           config = {
+                              align = "cl",
+                              minw = EXPORT_DIR_INPUT_WIDTH,
+                              maxw = EXPORT_DIR_INPUT_WIDTH,
+                              minh = 0.48,
+                              padding = 0.05,
+                              r = 0.1,
+                              colour = G.C.GREY,
+                              shadow = true,
+                           },
+                           nodes = {
+                              {
+                                 n = G.UIT.R,
+                                 config = {
+                                    align = "cm",
+                                    colour = G.C.CLEAR,
+                                    minw = EXPORT_DIR_INPUT_WIDTH - 0.28,
+                                    maxw = EXPORT_DIR_INPUT_WIDTH - 0.28,
+                                 },
+                                 nodes = {
+                                    { n = G.UIT.C, config = { minw = 0.14, colour = G.C.CLEAR } },
+                                    {
+                                       n = G.UIT.T,
+                                       config = {
+                                          ref_table = path_ref,
+                                          ref_value = "text",
+                                          colour = G.C.UI.TEXT_LIGHT,
+                                          scale = 0.32,
                                        },
-                                       { n = G.UIT.C, config = { minw = 0.14, colour = G.C.CLEAR } },
                                     },
+                                    {
+                                       n = G.UIT.T,
+                                       config = {
+                                          ref_table = path_ref,
+                                          ref_value = "suffix_text",
+                                          colour = {0.75, 0.75, 0.75, 1},
+                                          scale = 0.32,
+                                       },
+                                    },
+                                    { n = G.UIT.C, config = { minw = 0.14, colour = G.C.CLEAR } },
                                  },
                               },
                            },
                         },
                      },
-                     {
-                        n = G.UIT.R,
-                        config = { align = "cm", padding = 0.03 },
-                        nodes = {
-                           {
-                              n = G.UIT.C,
-                              config = { align = "cm", padding = 0.03 },
-                              nodes = {
-                                 UIBox_button({
-                                    label    = { _loc("rewinder_export_paste", "Paste") },
-                                    button   = "rewinder_export_paste_dir",
-                                    ref_table = { path_ref = path_ref },
-                                    minw = 1.7, minh = 0.48, scale = 0.35,
-                                    colour = G.C.BLUE,
-                                 }),
-                              },
+                  },
+               }
+               if not is_ios then
+                  export_tab_nodes[#export_tab_nodes + 1] = {
+                     n = G.UIT.R,
+                     config = { align = "cm", padding = 0.03 },
+                     nodes = {
+                        {
+                           n = G.UIT.C,
+                           config = { align = "cm", padding = 0.03 },
+                           nodes = {
+                              UIBox_button({
+                                 label    = { _loc("rewinder_export_paste", "Paste") },
+                                 button   = "rewinder_export_paste_dir",
+                                 ref_table = { path_ref = path_ref },
+                                 minw = 1.7, minh = 0.48, scale = 0.35,
+                                 colour = G.C.BLUE,
+                              }),
                            },
-                           {
-                              n = G.UIT.C,
-                              config = { align = "cm", padding = 0.03 },
-                              nodes = {
-                                 UIBox_button({
-                                    label    = { _loc("rewinder_export_reset_dir", "Reset") },
-                                    button   = "rewinder_export_reset_dir",
-                                    ref_table = { path_ref = path_ref },
-                                    minw = 1.7, minh = 0.48, scale = 0.35,
-                                    colour = G.C.GREY,
-                                 }),
-                              },
+                        },
+                        {
+                           n = G.UIT.C,
+                           config = { align = "cm", padding = 0.03 },
+                           nodes = {
+                              UIBox_button({
+                                 label    = { _loc("rewinder_export_reset_dir", "Reset") },
+                                 button   = "rewinder_export_reset_dir",
+                                 ref_table = { path_ref = path_ref },
+                                 minw = 1.7, minh = 0.48, scale = 0.35,
+                                 colour = G.C.GREY,
+                              }),
                            },
                         },
                      },
-                     _toggle_row("rewinder_export_seed_label", "Show full seed for non-seeded runs", "export_full_seed_non_seeded"),
-                     { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {} },
-                     _toggle_row("rewinder_export_include_meta", "Include .meta sidecar", "export_include_meta"),
-                  },
+                  }
+               end
+               export_tab_nodes[#export_tab_nodes + 1] = _toggle_row("rewinder_export_seed_label", "Show full seed for non-seeded runs", "export_full_seed_non_seeded")
+               export_tab_nodes[#export_tab_nodes + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {} }
+               export_tab_nodes[#export_tab_nodes + 1] = _toggle_row("rewinder_export_include_meta", "Include .meta sidecar", "export_include_meta")
+               return {
+                  n = G.UIT.ROOT,
+                  config = { r = 0.1, minw = 9.8, align = "tm", padding = 0.2, colour = G.C.BLACK },
+                  nodes = export_tab_nodes,
                }
             end,
          },

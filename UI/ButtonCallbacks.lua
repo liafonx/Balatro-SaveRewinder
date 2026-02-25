@@ -101,8 +101,14 @@ end
 local function _update_path_ref(path_ref, text)
    if not path_ref then return end
    path_ref.full_text = text
-   local fmt = REWINDER and REWINDER.format_export_dir_display
-   path_ref.text = (type(fmt) == "function") and fmt(text) or text
+   local split = REWINDER and REWINDER.split_export_dir_display
+   if type(split) == "function" then
+      path_ref.text, path_ref.suffix_text = split(text)
+   else
+      local fmt = REWINDER and REWINDER.format_export_dir_display
+      path_ref.text = (type(fmt) == "function") and fmt(text) or text
+      path_ref.suffix_text = ""
+   end
 end
 
 local function _load_save_file(file)
