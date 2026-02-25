@@ -418,3 +418,17 @@ function REWINDER.flush_pending_rewinder()
    local SM = REWINDER and REWINDER._SaveManager
    if SM and SM.flush_trickle_pending then SM.flush_trickle_pending() end
 end
+
+-- Periodic queue drain: flush queued saves independent of save_run.
+-- Without this, saves enqueued during the last save_run of a state
+-- (e.g. final shop reroll) never reach SaveThread until the next
+-- state transition or overlay open.
+REWINDER._game_update = Game.update
+function Game:update(dt)
+   REWINDER._game_update(self, dt)
+   local SM = REWINDER._SaveManager
+   if SM and SM.rewinder_queue_depth and SM.rewinder_queue_depth() > 0
+      and REWINDER.flush_pending_rewinder then
+      REWINDER.flush_pending_rewinder()
+   end
+end

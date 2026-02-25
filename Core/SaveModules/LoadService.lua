@@ -116,7 +116,13 @@ return function(ctx)
       M._pending_skip_reason = reason
       M._restore_active = (reason == "restore")
       M._last_loaded_file = file
-      M.skip_next_save = true
+      -- Do NOT set skip_next_save=true for restore/step operations.
+      -- Balatro does not call save_run during Game:start_run on a restore, so there
+      -- is no phantom save to suppress. Setting skip_next_save here causes the first
+      -- genuine user action (e.g. shop reroll) to be incorrectly dropped when its
+      -- state signature matches the loaded save (very common for shop saves since
+      -- money is captured before the reroll cost is deducted).
+      M.skip_next_save = false
 
       skip.assign_loaded_fields(entry)
 
