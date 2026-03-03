@@ -31,8 +31,7 @@ local function _rewinder_queue_depth()
 end
 
 local function _is_saves_overlay_open()
-   local SM = REWINDER and REWINDER._SaveManager
-   return (SM and SM.is_overlay_open and SM.is_overlay_open()) or (REWINDER and REWINDER.saves_open)
+   return UIShared.is_saves_overlay_open()
 end
 
 local function _open_saves_overlay(definition, action_label, loading_mode)
@@ -88,8 +87,8 @@ local function _rebuild_saves_overlay_after_loading(action_label)
       local start, finish, size = Helpers.recenter_meta_on_open()
       Helpers.log_ui(action_label or "opened (sync complete)", start, finish, size)
    end
-   Helpers.run_after_frame(Helpers.refresh_pending_badges)
-   Helpers.run_after_frame(Helpers.snap_saves_focus_to_current)
+   UIShared.run_after_frame(Helpers.refresh_pending_badges)
+   UIShared.run_after_frame(Helpers.snap_saves_focus_to_current)
 end
 
 local function _start_saves_open_sync(queue_depth)
@@ -186,8 +185,8 @@ function G.FUNCS.rewinder_save_open(e)
    end
 
    _open_saves_overlay(G.UIDEF.rewinder_saves(), "opened")
-   Helpers.run_after_frame(Helpers.refresh_pending_badges)
-   Helpers.run_after_frame(Helpers.snap_saves_focus_to_current)
+   UIShared.run_after_frame(Helpers.refresh_pending_badges)
+   UIShared.run_after_frame(Helpers.snap_saves_focus_to_current)
 end
 
 function G.FUNCS.rewinder_save_jump_to_current(e)
@@ -209,7 +208,7 @@ function G.FUNCS.rewinder_save_jump_to_current(e)
    end
 
    Helpers.refresh_saves_view(target_page)
-   Helpers.run_after_frame(Helpers.snap_saves_focus_to_current)
+   UIShared.run_after_frame(Helpers.snap_saves_focus_to_current)
 end
 
 function REWINDER.rewinder_save_jump_to_current()
@@ -296,7 +295,7 @@ function G.FUNCS.rewinder_save_restore(e)
       end
 
       Helpers.refresh_saves_view(nil)
-      Helpers.run_after_frame(Helpers.focus_rename_text_input)
+      UIShared.run_after_frame(Helpers.focus_rename_text_input)
       return
    end
 
@@ -337,14 +336,14 @@ function G.FUNCS.rewinder_btn_mark_keys(e)
          log("info", string.format("Key-save commit complete: %d", success))
       end
       Helpers.refresh_saves_view(nil)
-      Helpers.run_after_frame(Helpers.update_mode_button_labels)
+      UIShared.run_after_frame(Helpers.update_mode_button_labels)
       return
    end
 
    REWINDER._mark_active = true
    log("info", "Key-save mark mode enabled")
    Helpers.refresh_saves_view(nil)
-   Helpers.run_after_frame(Helpers.update_mode_button_labels)
+   UIShared.run_after_frame(Helpers.update_mode_button_labels)
 end
 
 function G.FUNCS.rewinder_btn_filter_keys(e)
@@ -361,7 +360,7 @@ function G.FUNCS.rewinder_btn_filter_keys(e)
       target_page
    ))
    Helpers.refresh_saves_view(target_page)
-   Helpers.run_after_frame(Helpers.update_mode_button_labels)
+   UIShared.run_after_frame(Helpers.update_mode_button_labels)
 end
 
 function G.FUNCS.rewinder_btn_toggle_rename(e)
@@ -390,7 +389,7 @@ function G.FUNCS.rewinder_btn_toggle_rename(e)
    end
 
    Helpers.refresh_saves_view(nil)
-   Helpers.run_after_frame(Helpers.update_mode_button_labels)
+   UIShared.run_after_frame(Helpers.update_mode_button_labels)
 end
 
 function G.FUNCS.rewinder_save_update_page(args)
@@ -591,3 +590,5 @@ function G.FUNCS.rewinder_config_change(args)
       end
    end
 end
+
+return {}

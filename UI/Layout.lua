@@ -9,6 +9,8 @@ local M = {
    ICON_BUTTON_PADDING = 0.08,
    ICON_BUTTON_RADIUS = 0.1,
    ICON_BUTTON_BORDER = 0.04,
+   MODE_ACTIVE_COLOUR = {0.9, 0.2, 0.2, 1},    -- fallback for G.C.RED
+   EXPORT_BUTTON_COLOUR = {0.15, 0.45, 0.75, 1},
 }
 
 M.MODE_ROW_HALF_W = M.SAVE_ENTRY_W * 0.5

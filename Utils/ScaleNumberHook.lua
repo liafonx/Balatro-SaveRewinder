@@ -10,8 +10,10 @@ local M = {}
 -- Flag to track if hook is installed
 M.installed = false
 
--- Threshold above which we bypass scale_number and return the base scale directly
-M.LARGE_NUMBER_THRESHOLD = 1e290
+-- Threshold above which we bypass scale_number and return the base scale directly.
+-- Shared from NaNProtection to keep a single source of truth.
+local _nan = require("NaNProtection")
+M.LARGE_NUMBER_THRESHOLD = _nan.LARGE_NUMBER_THRESHOLD
 
 local function should_use_base_scale(v)
     if type(v) ~= "number" then

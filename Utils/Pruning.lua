@@ -9,9 +9,16 @@ local KEEP_ANTES_VALUES = { 1, 2, 4, 6, 8, 16 }  -- Index 7 = "All" (nil)
 
 local function _remove_save_file_pair(save_dir, file)
     if not file then return end
-    love.filesystem.remove(save_dir .. "/" .. file)
+    local ok1 = love.filesystem.remove(save_dir .. "/" .. file)
+    if not ok1 then
+        M.debug_log("debug", "Failed to remove " .. tostring(file))
+    end
     if file:match("%.jkr$") then
-        love.filesystem.remove(save_dir .. "/" .. file:gsub("%.jkr$", ".meta"))
+        local meta = require("SaveManagerEntrySchema").meta_filename(file)
+        local ok2 = love.filesystem.remove(save_dir .. "/" .. meta)
+        if not ok2 then
+            M.debug_log("debug", "Failed to remove " .. tostring(meta))
+        end
     end
 end
 

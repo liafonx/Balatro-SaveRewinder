@@ -8,10 +8,12 @@ local StateSignature = require("StateSignature")
 local SaveManager = require("SaveManager")
 local KeySaves = require("KeySaves")
 local NaNProtection = require("NaNProtection")
+local BlindRecovery = require("BlindRecovery")
 local SaveThread = require("SaveThread")
 
--- Expose NaNProtection as global for lovely patches
+-- Expose as globals for lovely patches
 _G.NaNProtection = NaNProtection
+_G.BlindRecovery = BlindRecovery
 -- 2. Export API to REWINDER namespace (for UI and Hooks)
 REWINDER.PATHS = SaveManager.PATHS
 -- State & Logic

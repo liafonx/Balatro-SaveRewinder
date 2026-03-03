@@ -92,6 +92,21 @@ function M.get_saves_outline_colour()
    return M.get_saves_outline_inactive_colour()
 end
 
+function M.is_saves_overlay_open()
+   local SM = REWINDER and REWINDER._SaveManager
+   return (SM and SM.is_overlay_open and SM.is_overlay_open()) or (REWINDER and REWINDER.saves_open)
+end
+
+function M.compute_mode_enabled_flags(loading_mode)
+   return {
+      mark_enabled   = (not REWINDER._rename_active) and (not REWINDER._export_active) and (not loading_mode),
+      rename_enabled = (not REWINDER._mark_active) and (not REWINDER._export_active) and (not loading_mode),
+      jump_enabled   = (not (REWINDER._rename_active or REWINDER._mark_active or REWINDER._export_active)) and (not loading_mode),
+      filter_enabled = not loading_mode,
+      export_enabled = not (loading_mode or REWINDER._mark_active or REWINDER._rename_active),
+   }
+end
+
 REWINDER.get_pillar_namebox_colour = M.get_pillar_namebox_colour
 REWINDER.get_icon_button_border_colour = M.get_icon_button_border_colour
 REWINDER.get_icon_button_disabled_border_colour = M.get_icon_button_disabled_border_colour

@@ -12,11 +12,6 @@ local log = Logger.create("SaveListSync")
 
 local M = {}
 
-local function _is_saves_overlay_open()
-   local SM = REWINDER and REWINDER._SaveManager
-   return (SM and SM.is_overlay_open and SM.is_overlay_open()) or (REWINDER and REWINDER.saves_open)
-end
-
 local function _handle_sync_result(sync_state, result)
    if not (result and sync_state and sync_state.waiting) then return end
 
@@ -56,7 +51,7 @@ local function _tick(sync_state)
       REWINDER._saves_open_sync = nil
       return
    end
-   if not _is_saves_overlay_open() then
+   if not UIShared.is_saves_overlay_open() then
       REWINDER._saves_open_sync = nil
       return
    end

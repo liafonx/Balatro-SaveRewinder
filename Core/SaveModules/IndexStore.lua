@@ -78,6 +78,10 @@ return function(ctx)
       S.save_cache_by_id = nil
    end
 
+   function M.get_current_file()
+      return _get_current_file(M)
+   end
+
    function api.update_cache_current_flags(force)
       if not S.save_cache then return end
 

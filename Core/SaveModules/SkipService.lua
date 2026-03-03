@@ -8,36 +8,54 @@ return function(ctx)
 
    local api = {}
 
+   local function _set_loaded_fields(data)
+      M._loaded_ante          = data.ante
+      M._loaded_round         = data.round
+      M._loaded_money         = data.money
+      M._loaded_discards      = data.discards_used
+      M._loaded_hands         = data.hands_played
+      M._loaded_display_type  = data.display_type
+   end
+
+   local function _clear_loaded_fields()
+      M._loaded_ante         = nil
+      M._loaded_round        = nil
+      M._loaded_money        = nil
+      M._loaded_discards     = nil
+      M._loaded_hands        = nil
+      M._loaded_display_type = nil
+   end
+
    local function _assign_loaded_fields(entry, run_data)
       if entry then
          M.get_save_meta(entry, { force = true })
-         M._loaded_ante = entry[E.ENTRY_ANTE]
-         M._loaded_round = entry[E.ENTRY_ROUND]
-         M._loaded_money = entry[E.ENTRY_MONEY]
-         M._loaded_discards = entry[E.ENTRY_DISCARDS_USED]
-         M._loaded_hands = entry[E.ENTRY_HANDS_PLAYED]
-         M._loaded_display_type = entry[E.ENTRY_DISPLAY_TYPE]
+         local display_type = entry[E.ENTRY_DISPLAY_TYPE]
+         _set_loaded_fields({
+            ante = entry[E.ENTRY_ANTE],
+            round = entry[E.ENTRY_ROUND],
+            money = entry[E.ENTRY_MONEY],
+            discards_used = entry[E.ENTRY_DISCARDS_USED],
+            hands_played = entry[E.ENTRY_HANDS_PLAYED],
+            display_type = display_type,
+         })
          ordinal.init_ordinal_state_from_entry(entry)
          return
       end
 
       local state_info = StateSignature.get_state_info(run_data)
       if not state_info then
-         M._loaded_ante = nil
-         M._loaded_round = nil
-         M._loaded_money = nil
-         M._loaded_discards = nil
-         M._loaded_hands = nil
-         M._loaded_display_type = nil
+         _clear_loaded_fields()
          return
       end
       local display_type = ordinal.compute_display_type(state_info)
-      M._loaded_ante = state_info.ante
-      M._loaded_round = state_info.round
-      M._loaded_money = state_info.money
-      M._loaded_discards = state_info.discards_used
-      M._loaded_hands = state_info.hands_played
-      M._loaded_display_type = display_type
+      _set_loaded_fields({
+         ante = state_info.ante,
+         round = state_info.round,
+         money = state_info.money,
+         discards_used = state_info.discards_used,
+         hands_played = state_info.hands_played,
+         display_type = display_type,
+      })
    end
 
    local function _align_save_id_to_current(save_table, reason)
@@ -55,12 +73,7 @@ return function(ctx)
    function M.reset_loaded_state_if_stale()
       if M._pending_skip_reason then return end
       M._loaded_mark_applied = nil
-      M._loaded_ante = nil
-      M._loaded_round = nil
-      M._loaded_money = nil
-      M._loaded_discards = nil
-      M._loaded_hands = nil
-      M._loaded_display_type = nil
+      _clear_loaded_fields()
       M.skip_next_save = false
       M._restore_active = false
       if M.reset_ordinal_state then M.reset_ordinal_state() end
@@ -167,17 +180,13 @@ return function(ctx)
       M._restore_active = false
       M._pending_skip_reason = nil
       M._loaded_mark_applied = nil
-      M._loaded_ante = nil
-      M._loaded_round = nil
-      M._loaded_money = nil
-      M._loaded_discards = nil
-      M._loaded_hands = nil
-      M._loaded_display_type = nil
+      _clear_loaded_fields()
       return should_skip
    end
 
    api.assign_loaded_fields = _assign_loaded_fields
    api.align_save_id_to_current = _align_save_id_to_current
+   api.clear_loaded_fields = _clear_loaded_fields
    api.consume_cached_state_info = function()
       local v = S.skip_check_state_info
       S.skip_check_state_info = nil

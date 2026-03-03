@@ -12,31 +12,38 @@ return function(ctx)
    local MetaFile = ctx.MetaFile
    local Logger = ctx.Logger
    local index = ctx.index
+   local EntrySchema = require("SaveManagerEntrySchema")
 
    local api = {}
 
+   -- Drives _apply_meta_to_entry, _build_meta_from_entry, and _clear_entry_meta.
+   -- Each row: { entry_key, meta_key, apply_default?, read_as_bool? }
+   local META_FIELD_MAP = {
+      { entry_key = "ENTRY_MONEY",         meta_key = "money" },
+      { entry_key = "ENTRY_SIGNATURE",     meta_key = "signature" },
+      { entry_key = "ENTRY_DISCARDS_USED", meta_key = "discards_used" },
+      { entry_key = "ENTRY_HANDS_PLAYED",  meta_key = "hands_played" },
+      { entry_key = "ENTRY_BLIND_IDX",     meta_key = "blind_idx" },
+      { entry_key = "ENTRY_DISPLAY_TYPE",  meta_key = "display_type" },
+      { entry_key = "ENTRY_ORDINAL",       meta_key = "ordinal" },
+      { entry_key = "ENTRY_IS_KEY",        meta_key = "is_key", apply_default = false, read_as_bool = true },
+   }
+
    local function _apply_meta_to_entry(entry, meta)
       if not entry or not meta then return end
-      entry[E.ENTRY_MONEY] = meta.money
-      entry[E.ENTRY_SIGNATURE] = meta.signature
-      entry[E.ENTRY_DISCARDS_USED] = meta.discards_used
-      entry[E.ENTRY_HANDS_PLAYED] = meta.hands_played
-      entry[E.ENTRY_BLIND_IDX] = meta.blind_idx
-      entry[E.ENTRY_DISPLAY_TYPE] = meta.display_type
-      entry[E.ENTRY_ORDINAL] = meta.ordinal
-      entry[E.ENTRY_IS_KEY] = meta.is_key or false
+      for _, m in ipairs(META_FIELD_MAP) do
+         local v = meta[m.meta_key]
+         local val = v
+         if val == nil and m.apply_default ~= nil then val = m.apply_default end
+         entry[E[m.entry_key]] = val
+      end
    end
 
    local function _clear_entry_meta(entry)
       if not entry then return end
-      entry[E.ENTRY_MONEY] = nil
-      entry[E.ENTRY_SIGNATURE] = nil
-      entry[E.ENTRY_DISCARDS_USED] = nil
-      entry[E.ENTRY_HANDS_PLAYED] = nil
-      entry[E.ENTRY_BLIND_IDX] = nil
-      entry[E.ENTRY_DISPLAY_TYPE] = nil
-      entry[E.ENTRY_ORDINAL] = nil
-      entry[E.ENTRY_IS_KEY] = nil
+      for _, m in ipairs(META_FIELD_MAP) do
+         entry[E[m.entry_key]] = nil
+      end
    end
 
    local function _drop_meta(file, force)
@@ -55,7 +62,7 @@ return function(ctx)
    end
 
    local function _is_pinned(file)
-      local current = M._last_loaded_file or (G and G.SAVED_GAME and G.SAVED_GAME._file) or nil
+      local current = M.get_current_file and M.get_current_file() or (M._last_loaded_file or (G and G.SAVED_GAME and G.SAVED_GAME._file) or nil)
       return file and file == current
    end
 
@@ -124,16 +131,16 @@ return function(ctx)
    local function _build_meta_from_entry(entry)
       if not entry then return nil end
       if not entry[E.ENTRY_DISPLAY_TYPE] then return nil end
-      return {
-         money = entry[E.ENTRY_MONEY],
-         signature = entry[E.ENTRY_SIGNATURE],
-         discards_used = entry[E.ENTRY_DISCARDS_USED],
-         hands_played = entry[E.ENTRY_HANDS_PLAYED],
-         blind_idx = entry[E.ENTRY_BLIND_IDX],
-         display_type = entry[E.ENTRY_DISPLAY_TYPE],
-         ordinal = entry[E.ENTRY_ORDINAL],
-         is_key = entry[E.ENTRY_IS_KEY] == true,
-      }
+      local meta = {}
+      for _, m in ipairs(META_FIELD_MAP) do
+         local v = entry[E[m.entry_key]]
+         if m.read_as_bool then
+            meta[m.meta_key] = (v == true)
+         else
+            meta[m.meta_key] = v
+         end
+      end
+      return meta
    end
 
    function M.set_overlay_open(is_open)
@@ -239,7 +246,7 @@ return function(ctx)
          return true
       end
 
-      local meta_path = dir .. "/" .. file:gsub("%.jkr$", ".meta")
+      local meta_path = dir .. "/" .. EntrySchema.meta_filename(file)
       meta = MetaFile.read_meta_file(meta_path)
 
       if meta and meta.display_type then
@@ -288,7 +295,7 @@ return function(ctx)
       end
 
       local dir = M.get_save_dir()
-      local meta_path = dir .. "/" .. file:gsub("%.jkr$", ".meta")
+      local meta_path = dir .. "/" .. EntrySchema.meta_filename(file)
       local meta = S.meta_cache[file]
       if not meta then
          M.debug_log("error", "set_custom_state_name: meta cache miss for " .. file)

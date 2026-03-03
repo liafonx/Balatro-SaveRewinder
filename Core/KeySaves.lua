@@ -1,6 +1,7 @@
 local SaveManager = require("SaveManager")
 local MetaFile = require("MetaFile")
 local Logger = require("Logger")
+local EntrySchema = require("SaveManagerEntrySchema")
 
 local KeySaves = {}
 local debug_log = Logger.create("KeySaves")
@@ -9,7 +10,7 @@ local _pending = {}
 
 local function _meta_path_for_file(file)
    local dir = SaveManager.get_save_dir()
-   return dir .. "/" .. tostring(file):gsub("%.jkr$", ".meta")
+   return dir .. "/" .. EntrySchema.meta_filename(tostring(file))
 end
 
 local function _clear_pending()

@@ -4,6 +4,7 @@ local Logger = require("Logger")
 local KeySaves = require("KeySaves")
 local ScaleNumberHook = require("ScaleNumberHook")
 local UIShared = require("UIShared")
+local Layout = require("UILayout")
 require("UIIconFactory")
 
 local log = Logger.create("UI")
@@ -127,23 +128,14 @@ function M.update_mode_button_labels()
    local refs = REWINDER and REWINDER._saves_ui_refs
    if not refs then return end
 
-   local mark_active_colour = G.C.RED or {0.9, 0.2, 0.2, 1}
-   local blue_colour = G.C.BLUE
-   local rename_active_colour = G.C.RED or {0.9, 0.2, 0.2, 1}
    local rename_inactive_colour = UIShared.get_pillar_namebox_colour()
    local key_colour = REWINDER.KEY_SAVE_COLOR or {0.2, 0.7, 0.7, 1}
-   local jump_colour = G.C.ORANGE or {1, 0.6, 0.2, 1}
    local icon_border_colour = UIShared.get_icon_button_border_colour()
    local disabled_icon_border_colour = UIShared.get_icon_button_disabled_border_colour()
    local icon_colour = UIShared.get_icon_button_icon_colour()
    local disabled_icon_colour = UIShared.get_icon_button_disabled_icon_colour()
    local loading_mode = refs.loading_state ~= nil
-   local mark_enabled   = (not REWINDER._rename_active) and (not REWINDER._export_active) and (not loading_mode)
-   local rename_enabled = (not REWINDER._mark_active) and (not REWINDER._export_active) and (not loading_mode)
-   local jump_enabled   = (not (REWINDER._rename_active or REWINDER._mark_active or REWINDER._export_active)) and (not loading_mode)
-   local filter_enabled = not loading_mode
-   local export_enabled = not (loading_mode or REWINDER._mark_active or REWINDER._rename_active)
-
+   local flags = UIShared.compute_mode_enabled_flags(loading_mode)
    local dim_colour = UIShared.dim_colour
 
    local function apply_button_enabled(node, enabled, active_button_name)
@@ -166,68 +158,72 @@ function M.update_mode_button_labels()
       icon_obj.colour[4] = c[4] or icon_obj.colour[4]
    end
 
+   -- Dynamic label updates
    if refs.mark_button_ref and refs.mark_button_ref.label then
       refs.mark_button_ref.label.text = REWINDER._mark_active and UIShared.loc("rewinder_mark_keys_active", "Save marking changes")
          or UIShared.loc("rewinder_mark_keys", "Edit key saves")
    end
-
    if refs.filter_button_ref and refs.filter_button_ref.label then
       refs.filter_button_ref.label.text = REWINDER._filter_active and UIShared.loc("rewinder_filter_keys_active", "Return to all saves")
          or UIShared.loc("rewinder_filter_keys", "Check key saves")
    end
 
-   local mark_btn = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_mark_keys")
-   local mark_fill = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_mark_keys_fill")
-   apply_button_enabled(mark_btn, mark_enabled, "rewinder_btn_mark_keys")
-   if mark_btn and mark_btn.config then
-      mark_btn.config.colour = mark_enabled and icon_border_colour or disabled_icon_border_colour
-   end
-   if mark_fill and mark_fill.config then
-      local mark_colour = REWINDER._mark_active and mark_active_colour or key_colour
-      mark_fill.config.colour = mark_enabled and mark_colour or dim_colour(mark_colour)
-   end
-   apply_icon_enabled("rewinder_btn_mark_keys_icon", mark_enabled)
-
+   -- Filter button (text-only, no fill/icon)
    local filter_btn = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_filter_keys")
-   apply_button_enabled(filter_btn, filter_enabled, "rewinder_btn_filter_keys")
+   apply_button_enabled(filter_btn, flags.filter_enabled, "rewinder_btn_filter_keys")
    if filter_btn and filter_btn.config then
-      filter_btn.config.colour = filter_enabled and blue_colour or dim_colour(blue_colour)
+      filter_btn.config.colour = flags.filter_enabled and G.C.BLUE or dim_colour(G.C.BLUE)
    end
 
-   local rename_fill = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_toggle_rename_fill")
-   local rename_btn = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_toggle_rename")
-   apply_button_enabled(rename_btn, rename_enabled, "rewinder_btn_toggle_rename")
-   if rename_btn and rename_btn.config then
-      rename_btn.config.colour = rename_enabled and icon_border_colour or disabled_icon_border_colour
-   end
-   if rename_fill and rename_fill.config then
-      local rename_colour = REWINDER._rename_active and rename_active_colour or rename_inactive_colour
-      rename_fill.config.colour = rename_enabled and rename_colour or dim_colour(rename_colour)
-   end
-   apply_icon_enabled("rewinder_btn_toggle_rename_icon", rename_enabled)
+   -- Icon buttons config table: { id, fill_id, icon_id, callback, enabled, fill_colour_fn }
+   local active_red = G.C.RED or Layout.MODE_ACTIVE_COLOUR
+   local icon_buttons = {
+      {
+         id = "rewinder_btn_mark_keys",
+         fill_id = "rewinder_btn_mark_keys_fill",
+         icon_id = "rewinder_btn_mark_keys_icon",
+         callback = "rewinder_btn_mark_keys",
+         enabled = flags.mark_enabled,
+         fill_colour = REWINDER._mark_active and active_red or key_colour,
+      },
+      {
+         id = "rewinder_btn_toggle_rename",
+         fill_id = "rewinder_btn_toggle_rename_fill",
+         icon_id = "rewinder_btn_toggle_rename_icon",
+         callback = "rewinder_btn_toggle_rename",
+         enabled = flags.rename_enabled,
+         fill_colour = REWINDER._rename_active and active_red or rename_inactive_colour,
+      },
+      {
+         id = "rewinder_btn_jump_to_current",
+         fill_id = "rewinder_btn_jump_to_current_fill",
+         icon_id = "rewinder_btn_jump_to_current_icon",
+         callback = "rewinder_save_jump_to_current",
+         enabled = flags.jump_enabled,
+         fill_colour = G.C.ORANGE or {1, 0.6, 0.2, 1},
+      },
+      {
+         id = "rewinder_btn_export",
+         fill_id = "rewinder_btn_export_fill",
+         icon_id = "rewinder_btn_export_icon",
+         callback = "rewinder_btn_toggle_export",
+         enabled = flags.export_enabled,
+         fill_colour = REWINDER._export_active and active_red or Layout.EXPORT_BUTTON_COLOUR,
+      },
+   }
 
-   local jump_fill = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_jump_to_current_fill")
-   local jump_btn = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_jump_to_current")
-   apply_button_enabled(jump_btn, jump_enabled, "rewinder_save_jump_to_current")
-   if jump_btn and jump_btn.config then
-      jump_btn.config.colour = jump_enabled and icon_border_colour or disabled_icon_border_colour
+   for _, cfg in ipairs(icon_buttons) do
+      local btn = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID(cfg.id)
+      local fill = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID(cfg.fill_id)
+      apply_button_enabled(btn, cfg.enabled, cfg.callback)
+      if btn and btn.config then
+         btn.config.colour = cfg.enabled and icon_border_colour or disabled_icon_border_colour
+      end
+      if fill and fill.config then
+         fill.config.colour = cfg.enabled and cfg.fill_colour or dim_colour(cfg.fill_colour)
+      end
+      apply_icon_enabled(cfg.icon_id, cfg.enabled)
    end
-   if jump_fill and jump_fill.config then
-      jump_fill.config.colour = jump_enabled and jump_colour or dim_colour(jump_colour)
-   end
-   apply_icon_enabled("rewinder_btn_jump_to_current_icon", jump_enabled)
-
-   local export_colour = REWINDER._export_active and (G.C.RED or {0.9, 0.2, 0.2, 1}) or {0.15, 0.45, 0.75, 1}
-   local export_btn  = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_export")
-   local export_fill = G and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("rewinder_btn_export_fill")
-   apply_button_enabled(export_btn, export_enabled, "rewinder_btn_toggle_export")
-   if export_btn and export_btn.config then
-      export_btn.config.colour = export_enabled and icon_border_colour or disabled_icon_border_colour
-   end
-   if export_fill and export_fill.config then
-      export_fill.config.colour = export_enabled and export_colour or dim_colour(export_colour)
-   end
-   apply_icon_enabled("rewinder_btn_export_icon", export_enabled)
 
    M.update_saves_outline_colour()
 end
@@ -389,10 +385,6 @@ function M.snap_saves_focus_to_current()
          G.CONTROLLER:update_cursor()
       end
    end
-end
-
-function M.run_after_frame(func)
-   UIShared.run_after_frame(func)
 end
 
 local function _entry_has_pending_badge(entry)
@@ -619,7 +611,7 @@ function M.focus_rename_text_input()
    if input then
       G.FUNCS.select_text_input(input)
       _apply_live_rename_cursor_style()
-      M.run_after_frame(_apply_live_rename_cursor_style)
+      UIShared.run_after_frame(_apply_live_rename_cursor_style)
    end
 end
 

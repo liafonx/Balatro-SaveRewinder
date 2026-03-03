@@ -71,17 +71,18 @@ function G.UIDEF.rewinder_saves(opts)
       or loc("rewinder_filter_keys", "Check key saves")
    local rename_inactive_colour = UIShared.get_pillar_namebox_colour()
    local save_window_outline_colour = UIShared.get_saves_outline_colour()
-   local mark_button_colour = REWINDER._mark_active and (G.C.RED or {0.9, 0.2, 0.2, 1}) or (REWINDER.KEY_SAVE_COLOR or Layout.KEY_SAVE_COLOR)
-   local rename_button_colour = REWINDER._rename_active and (G.C.RED or {0.9, 0.2, 0.2, 1}) or rename_inactive_colour
+   local mark_button_colour = REWINDER._mark_active and (G.C.RED or Layout.MODE_ACTIVE_COLOUR) or (REWINDER.KEY_SAVE_COLOR or Layout.KEY_SAVE_COLOR)
+   local rename_button_colour = REWINDER._rename_active and (G.C.RED or Layout.MODE_ACTIVE_COLOUR) or rename_inactive_colour
    local jump_button_colour = G.C.ORANGE or {1, 0.6, 0.2, 1}
    local filter_button_colour = G.C.BLUE
    local icon_button_border_colour = UIShared.get_icon_button_border_colour()
    local disabled_icon_button_border_colour = UIShared.get_icon_button_disabled_border_colour()
-   local mark_enabled   = (not REWINDER._rename_active) and (not REWINDER._export_active) and (not loading_mode)
-   local rename_enabled = (not REWINDER._mark_active) and (not REWINDER._export_active) and (not loading_mode)
-   local jump_enabled   = (not (REWINDER._rename_active or REWINDER._mark_active or REWINDER._export_active)) and (not loading_mode)
-   local filter_enabled = not loading_mode
-   local export_enabled = not (loading_mode or REWINDER._mark_active or REWINDER._rename_active)
+   local flags = UIShared.compute_mode_enabled_flags(loading_mode)
+   local mark_enabled   = flags.mark_enabled
+   local rename_enabled = flags.rename_enabled
+   local jump_enabled   = flags.jump_enabled
+   local filter_enabled = flags.filter_enabled
+   local export_enabled = flags.export_enabled
    local mark_button_ref = { label = { text = mark_label } }
    local filter_button_ref = { label = { text = filter_label } }
    REWINDER._saves_ui_refs.mark_button_ref = mark_button_ref
@@ -103,7 +104,7 @@ function G.UIDEF.rewinder_saves(opts)
       focus_args = { nav = "wide" },
    })
 
-   local export_button_colour = {0.15, 0.45, 0.75, 1}
+   local export_button_colour = Layout.EXPORT_BUTTON_COLOUR
 
    local contents = {}
 

@@ -108,7 +108,10 @@ function M.write_save_file(run_data, full_path)
         return false, "pack:" .. tostring(packed_or_err)
     end
 
-    local compressed = love.data.compress("string", "deflate", packed_or_err, 1)
+    local ok_compress, compressed = pcall(love.data.compress, "string", "deflate", packed_or_err, 1)
+    if not ok_compress then
+        return false, "compress:" .. tostring(compressed)
+    end
 
     local ok_write, write_err = pcall(love.filesystem.write, full_path, compressed)
     if not ok_write then

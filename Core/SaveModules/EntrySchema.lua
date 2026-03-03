@@ -52,4 +52,8 @@ function M.index_to_blind_key(index)
    return BLIND_KEYS[index]
 end
 
+function M.meta_filename(file)
+   return file:gsub("%.jkr$", ".meta")
+end
+
 return M

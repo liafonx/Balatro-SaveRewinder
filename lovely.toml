@@ -7,21 +7,47 @@ priority = 5
 # Folder layout:
 # SaveRewinderMod/
 #     lovely.toml
+#     main.lua (Steamodded config)
 #     Core/
 #       Init.lua
-#       SaveManager.lua (includes EntryConstants, CacheManager, DuplicateDetector)
 #       GamePatches.lua
+#       SerializationGuard.lua
+#       SaveManager.lua
+#       KeySaves.lua
+#       ExportService.lua
+#       SaveModules/
+#         EntrySchema.lua
+#         RuntimeState.lua
+#         IndexStore.lua
+#         MetaCache.lua
+#         OrdinalTracker.lua
+#         RetentionService.lua
+#         SkipService.lua
+#         LoadService.lua
+#         CreateService.lua
+#         QueueService.lua
 #     Utils/
-#       StateSignature.lua
 #       Logger.lua
 #       MetaFile.lua
 #       FileIO.lua
+#       SaveThread.lua
 #       Pruning.lua
+#       StateSignature.lua
 #       Keybinds.lua
+#       NaNProtection.lua
+#       BlindRecovery.lua
+#       ControllerNavigation.lua
+#       ScaleNumberHook.lua
 #     UI/
 #       RewinderUI.lua
 #       ButtonCallbacks.lua
-#     main.lua (Steamodded config)
+#       SaveListSync.lua
+#       Shared.lua
+#       Layout.lua
+#       IconFactory.lua
+#       SaveRows.lua
+#       OverlayBuilder.lua
+#       ButtonCallbackHelpers.lua
 
 [[patches]]
 [patches.copy]
@@ -183,8 +209,22 @@ before = "globals.lua"
 
 [[patches]]
 [patches.module]
+name = "SerializationGuard"
+source = "Core/SerializationGuard.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
 name = "NaNProtection"
 source = "Utils/NaNProtection.lua"
+load_now = true
+before = "globals.lua"
+
+[[patches]]
+[patches.module]
+name = "BlindRecovery"
+source = "Utils/BlindRecovery.lua"
 load_now = true
 before = "globals.lua"
 
@@ -284,7 +324,7 @@ payload = """
          G.culled_table = _rw_reculled
       end
    end
-   if NaNProtection then NaNProtection.sanitize_round_scores_presave(G.GAME) end
+   if BlindRecovery then BlindRecovery.sanitize_round_scores_presave(G.GAME) end
    if REWINDER and REWINDER.defer_save_creation then REWINDER.defer_save_creation() end
    if REWINDER and REWINDER.flush_pending_rewinder then REWINDER.flush_pending_rewinder() end"""
 
@@ -389,7 +429,7 @@ target = "game.lua"
 pattern = "self.GAME = saveTable and saveTable.GAME or self:init_game_object()"
 position = "after"
 match_indent = true
-payload = "if NaNProtection then NaNProtection.sanitize_round_scores(self.GAME); NaNProtection.sanitize_game_blind(self.GAME); NaNProtection.ensure_game_chips(self.GAME) end"
+payload = "if BlindRecovery then BlindRecovery.sanitize_round_scores(self.GAME); BlindRecovery.sanitize_game_blind(self.GAME); BlindRecovery.ensure_game_chips(self.GAME) end"
 
 # Recover blind chips from chip_text when legacy/corrupt saves lose numeric chips on load.
 # Keeps target NaN/inf semantics without broad arithmetic fallbacks in score checks.
@@ -400,7 +440,7 @@ pattern = "self.chips = blindTable.chips"
 position = "at"
 match_indent = true
 payload = """
-self.chips = (NaNProtection and NaNProtection.recover_blind_chips and NaNProtection.recover_blind_chips(blindTable.chips, blindTable.chip_text, self.chips)) or blindTable.chips or self.chips"""
+self.chips = (BlindRecovery and BlindRecovery.recover_blind_chips and BlindRecovery.recover_blind_chips(blindTable.chips, blindTable.chip_text, self.chips)) or blindTable.chips or self.chips"""
 
 # Keep blind chip text initialized if missing; otherwise preserve saved text as-is.
 [[patches]]
@@ -410,7 +450,7 @@ pattern = "self.chip_text = blindTable.chip_text"
 position = "at"
 match_indent = true
 payload = """
-self.chip_text = (NaNProtection and NaNProtection.recover_blind_chip_text and NaNProtection.recover_blind_chip_text(blindTable.chip_text, self.chips)) or blindTable.chip_text"""
+self.chip_text = (BlindRecovery and BlindRecovery.recover_blind_chip_text and BlindRecovery.recover_blind_chip_text(blindTable.chip_text, self.chips)) or blindTable.chip_text"""
 
 # Encode NaN/inf as explicit arithmetic expressions during serialization.
 # This avoids bare `nan/inf` tokens that unpack as nil and crash later.
@@ -427,7 +467,7 @@ payload = "if type_v == 'number' then local _big = (REWINDER and REWINDER.config
 target = "functions/state_events.lua"
 pattern = '''ease_to = G\.GAME\.chips \+ math\.floor\([^\n]+\),'''
 position = "at"
-payload = "ease_to = (NaNProtection and NaNProtection.safe_ease_chips and NaNProtection.safe_ease_chips(hand_chips, mult)) or (G.GAME.chips + math.floor(hand_chips*mult)),"
+payload = "ease_to = (BlindRecovery and BlindRecovery.safe_ease_chips and BlindRecovery.safe_ease_chips(hand_chips, mult)) or (G.GAME.chips + math.floor(hand_chips*mult)),"
 
 # Defensive: sanitize ease event values in engine/event.lua
 # Line 62: handle() re-reads start_val from ref_table (could be nil/NaN from corrupted save)
@@ -464,6 +504,14 @@ pattern = "if G.PROFILES[G.SETTINGS.profile].high_scores[score] and math.floor(a
 position = "at"
 match_indent = true
 payload = "if G.PROFILES[G.SETTINGS.profile].high_scores[score] and NaNProtection and NaNProtection.score_gt and NaNProtection.score_gt(amt, G.PROFILES[G.SETTINGS.profile].high_scores[score].amt) then"
+
+# Controller navigation helpers; install() is called from Keybinds.lua at load and deferred.
+[[patches]]
+[patches.module]
+name = "ControllerNavigation"
+source = "Utils/ControllerNavigation.lua"
+load_now = true
+before = "globals.lua"
 
 # Install scale_number hook module
 # Loads early as a module; install() is called from UI/ButtonCallbacks.lua
@@ -533,7 +581,7 @@ match_indent = true
 payload = "local position_text_colour = (args.position_text_colour and copy_table(args.position_text_colour)) or lighten(copy_table(G.C.BLUE), 0.4)"
 
 # Defensive blind-chip normalization at arithmetic callsites.
-# Uses NaNProtection.chips_met_target() to recover nil chips while preserving NaN/inf semantics.
+# Uses BlindRecovery.chips_met_target() to recover nil chips while preserving NaN/inf semantics.
 [[patches]]
 [patches.pattern]
 target = "functions/state_events.lua"
@@ -542,7 +590,7 @@ pattern = """if G.GAME.chips - G.GAME.blind.chips >= 0 then
             end"""
 position = "at"
 match_indent = true
-payload = """if NaNProtection and NaNProtection.chips_met_target and NaNProtection.chips_met_target() then
+payload = """if BlindRecovery and BlindRecovery.chips_met_target and BlindRecovery.chips_met_target() then
                 game_over = false
             end"""
 
@@ -553,7 +601,7 @@ pattern = """if G.GAME.chips - G.GAME.blind.chips >= 0 then
         add_round_eval_row({dollars = G.GAME.blind.dollars, name='blind1', pitch = pitch})"""
 position = "at"
 match_indent = true
-payload = """if NaNProtection and NaNProtection.chips_met_target and NaNProtection.chips_met_target() then
+payload = """if BlindRecovery and BlindRecovery.chips_met_target and BlindRecovery.chips_met_target() then
         add_round_eval_row({dollars = G.GAME.blind.dollars, name='blind1', pitch = pitch})"""
 
 [[patches]]
@@ -562,7 +610,7 @@ target = "game.lua"
 pattern = "if G.GAME.chips - G.GAME.blind.chips >= 0 or G.GAME.current_round.hands_left < 1 then"
 position = "at"
 match_indent = true
-payload = "if (NaNProtection and NaNProtection.chips_met_target and NaNProtection.chips_met_target()) or G.GAME.current_round.hands_left < 1 then"
+payload = "if (BlindRecovery and BlindRecovery.chips_met_target and BlindRecovery.chips_met_target()) or G.GAME.current_round.hands_left < 1 then"
 
 [[patches]]
 [patches.pattern]
@@ -570,7 +618,7 @@ target = "blind.lua"
 pattern = "if self.boss and G.GAME.chips - G.GAME.blind.chips >= 0 then"
 position = "at"
 match_indent = true
-payload = "if self.boss and (NaNProtection and NaNProtection.chips_met_target and NaNProtection.chips_met_target()) then"
+payload = "if self.boss and (BlindRecovery and BlindRecovery.chips_met_target and BlindRecovery.chips_met_target()) then"
 
 # Defensive: run number_format sanitization before sign/abs handling.
 [[patches]]
@@ -587,11 +635,11 @@ payload = "if NaNProtection then local v, early = NaNProtection.sanitize_number_
 target = "functions/UI_definitions.lua"
 pattern = """scale = scale_number\\(saved_game\\.GAME\\.round_scores\\.hand\\.amt, 0\\.8\\*scale(?:, 100000000000)?\\)"""
 position = "at"
-payload = """scale = (NaNProtection and NaNProtection.scale_continue_best_hand and NaNProtection.scale_continue_best_hand(saved_game.GAME.round_scores.hand.amt, 0.8*scale, 100000000000)) or scale_number(saved_game.GAME.round_scores.hand.amt, 0.8*scale, 100000000000)"""
+payload = """scale = (BlindRecovery and BlindRecovery.scale_continue_best_hand and BlindRecovery.scale_continue_best_hand(saved_game.GAME.round_scores.hand.amt, 0.8*scale, 100000000000)) or scale_number(saved_game.GAME.round_scores.hand.amt, 0.8*scale, 100000000000)"""
 
-# Patch check_and_set_high_score to handle inf/overflow
-# round_scores/high_scores use NaNProtection assignment hooks
-# (preserve NaN by default, optional inf clamp via config)
+# Patch check_and_set_high_score to handle inf/overflow.
+# NaNProtection provides sanitize_round_score_assignment / sanitize_high_score_assignment.
+# Pre-save inf clamping for round_scores is handled separately by BlindRecovery.sanitize_round_scores_presave.
 [[patches]]
 [patches.pattern]
 target = "functions/misc_functions.lua"

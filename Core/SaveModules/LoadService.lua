@@ -26,7 +26,7 @@ return function(ctx)
       if REWINDER then REWINDER._rw_flush_fallback = false end
       M._pending_skip_reason = nil
       M._loaded_mark_applied = nil
-      M._loaded_display_type = nil
+      skip.clear_loaded_fields()
       M.current_index = nil
       M._restore_active = nil
       M._last_loaded_file = nil
@@ -194,7 +194,7 @@ return function(ctx)
 
       local current_idx = M.current_index or 0
       if current_idx == 0 or current_idx > #entries then
-         local current_file = (G and G.SAVED_GAME and G.SAVED_GAME._file) or M._last_loaded_file
+         local current_file = M.get_current_file and M.get_current_file() or ((G and G.SAVED_GAME and G.SAVED_GAME._file) or M._last_loaded_file)
          current_idx = current_file and M.get_index_by_file(current_file) or 0
       end
 

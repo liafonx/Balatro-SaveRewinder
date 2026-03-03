@@ -10,6 +10,7 @@ return function(ctx)
    local ordinal = ctx.ordinal
    local retention = ctx.retention
    local skip = ctx.skip
+   local EntrySchema = require("SaveManagerEntrySchema")
 
    local api = {}
 
@@ -203,7 +204,7 @@ return function(ctx)
          display_type = display_type,
          ordinal = ordinal_num,
       }
-      local meta_path = dir .. "/" .. filename:gsub("%.jkr$", ".meta")
+      local meta_path = dir .. "/" .. EntrySchema.meta_filename(filename)
       local meta_content = MetaFile.serialize_meta(meta_table)
       if not meta_content then
          M.debug_log("warning", "Failed to serialize meta for: " .. tostring(filename))
