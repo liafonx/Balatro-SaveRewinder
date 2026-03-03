@@ -7,7 +7,7 @@ local UIShared = require("UIShared")
 local Layout = require("UILayout")
 require("UIIconFactory")
 
-local log = Logger.create("UI")
+local log = Logger.create("UIHelpers")
 local M = {}
 local PENDING_BADGE_SIZE = 0.17
 local PENDING_BADGE_ALIGN = "cr"

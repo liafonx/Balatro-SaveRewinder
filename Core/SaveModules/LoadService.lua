@@ -259,6 +259,5 @@ return function(ctx)
       end
    end
 
-   api.pre_restore_compat_guard = _pre_restore_compat_guard
    return api
 end

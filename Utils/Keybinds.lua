@@ -4,7 +4,7 @@
 
 if not REWINDER then REWINDER = {} end
 local Logger = require("Logger")
-local log = Logger.create("UI")
+local log = Logger.create("Keybinds")
 
 -- Keybind manager (multi-key combos, configurable)
 local Keybinds = {}

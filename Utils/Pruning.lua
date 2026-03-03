@@ -6,6 +6,7 @@ local M = {}
 M.debug_log = Logger.create("Pruning")
 -- Config index to actual ante count mapping (matches main.lua options order)
 local KEEP_ANTES_VALUES = { 1, 2, 4, 6, 8, 16 }  -- Index 7 = "All" (nil)
+M.KEEP_ANTES_VALUES = KEEP_ANTES_VALUES
 
 local function _remove_save_file_pair(save_dir, file)
     if not file then return end

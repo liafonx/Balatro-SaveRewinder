@@ -22,10 +22,6 @@ return function(ctx)
       S.save_cache_view = nil
    end
 
-   function api.prepend_save_view_entry()
-      S.save_cache_view = nil
-   end
-
    function api.get_save_cache_view()
       if not S.save_cache then return nil end
       if S.save_cache_view then return S.save_cache_view end

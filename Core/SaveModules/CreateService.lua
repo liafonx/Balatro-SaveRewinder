@@ -294,7 +294,7 @@ return function(ctx)
       S.save_cache[#S.save_cache + 1] = new_entry
       new_entry[E.ENTRY_IS_CURRENT] = true
       if S.save_cache_by_file then S.save_cache_by_file[filename] = new_entry end
-      ctx.index.prepend_save_view_entry()
+      ctx.index.invalidate_save_cache_view()
 
       if wrote_async then ctx.index.mark_async_pending(filename) end
       run_data._file = filename

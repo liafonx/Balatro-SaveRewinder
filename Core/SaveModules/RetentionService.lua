@@ -7,7 +7,7 @@ return function(ctx)
 
    local api = {}
 
-   local KEEP_ANTES_VALUES = { 1, 2, 4, 6, 8, 16 }
+   local KEEP_ANTES_VALUES = Pruning.KEEP_ANTES_VALUES
 
    local function _compute_allowed_antes(entries)
       local keep_antes_config = (REWINDER and REWINDER.config and REWINDER.config.keep_antes) or 7

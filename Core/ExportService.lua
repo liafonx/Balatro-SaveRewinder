@@ -231,7 +231,7 @@ function ExportService.export_selected(selection_map)
             success = success + 1
             -- Optionally copy .meta sidecar
             if REWINDER and REWINDER.config and REWINDER.config.export_include_meta then
-               local meta_file = tostring(file):gsub("%.jkr$", ".meta")
+               local meta_file = EntrySchema.meta_filename(tostring(file))
                local meta_src  = save_dir .. "/" .. meta_file
                if love.filesystem.getInfo(meta_src) then
                   local meta_dest = dest_dir .. "/" .. final_name .. ".meta"
