@@ -79,7 +79,6 @@ test_saves/
 docs/*
 !docs/description.md
 !docs/NEXUSMODS_DESCRIPTION.txt
-!docs/TEST_FLOW.md
 
 # ========================================
 # AI Agent Files (local only)
