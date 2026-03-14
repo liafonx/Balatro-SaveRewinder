@@ -117,6 +117,12 @@ function Game:set_render_settings(...)
    -- This blocks briefly but is hidden by loading screen - no UI lag later
    if not REWINDER._cache_initialized then
       REWINDER._cache_initialized = true
+      -- Seal big_backend detection: SMODS has finished loading mods by this point.
+      -- This prevents a premature false cache from blocking Talisman/Amulet detection.
+      if NaNProtection.seal_big_backend then NaNProtection.seal_big_backend() end
+      if REWINDER.config then
+         REWINDER.config.big_backend_mode = NaNProtection.has_big_backend()
+      end
       local success, err = pcall(function()
          if SaveManager and SaveManager.preload_all_metadata then
             local entries = SaveManager.preload_all_metadata(true)

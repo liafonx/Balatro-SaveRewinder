@@ -13,6 +13,7 @@ return {
 	export_full_seed_non_seeded = false, -- non-seeded runs: false=first4…last4, true=full (seeded runs always full)
 	export_seed_mode = 1,       -- legacy compatibility: 1 = first4…last4, 2 = full
 	export_include_meta = false, -- also copy .meta sidecar alongside .jkr
+	big_backend_mode = false,   -- auto-detected at init: true when Talisman/Amulet FFI big-number backend is active
 	keybinds = {
 		step_back = {
 			keyboard = { s = true },

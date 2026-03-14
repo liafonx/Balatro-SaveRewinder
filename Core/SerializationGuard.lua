@@ -40,7 +40,8 @@ end
 
 local function _is_channel_serializable(v)
    local t = type(v)
-   return t == "nil" or t == "boolean" or t == "number" or t == "string" or t == "table"
+   -- cdata (FFI types from Talisman/Amulet big-number backends) are channel-serializable in LOVE2D.
+   return t == "nil" or t == "boolean" or t == "number" or t == "string" or t == "table" or t == "cdata"
 end
 
 local function _find_first_nonserializable_path(root, max_nodes)

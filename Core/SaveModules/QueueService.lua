@@ -76,7 +76,8 @@ return function(ctx)
          path = path,
          file = item.file or _basename(path),
          clamp_infinity_scores = config and config.clamp_infinity_scores,
-         big_backend_mode = config and config.big_backend_mode,
+         big_backend_mode = (config and config.big_backend_mode)
+            or (NaNProtection and NaNProtection.has_big_backend and NaNProtection.has_big_backend()),
          meta_path = item.rewinder_meta_path or item.meta_path,
          meta_data = item.rewinder_meta_data or item.meta_data,
       }
