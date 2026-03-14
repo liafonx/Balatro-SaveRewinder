@@ -1,0 +1,35 @@
+name: Test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua 5.4
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.4"
+
+      - name: Install luacheck
+        uses: leafo/gh-actions-luarocks@v4
+
+      - name: Install luacheck via luarocks
+        run: luarocks install luacheck
+
+      - name: Lint
+        # Exit code 1 = warnings only (acceptable); exit code 2 = errors (fail)
+        run: luacheck --config .luacheck . ; code=$?; [ $code -le 1 ]
+
+      - name: Validate module map
+        run: lua scripts/validate_module_map.lua
+
+      - name: Run unit tests
+        run: lua tests/run_tests.lua

@@ -95,7 +95,8 @@ function M.chips_met_target()
     local game = G and G.GAME
     local blind = game and game.blind
     if type(game) == "table" and type(blind) == "table" and
-       type(game.chips) == "number" and type(blind.chips) == "number" then
+       ((type(game.chips) == "number" and type(blind.chips) == "number")
+        or (NaN.has_big_backend() and game.chips ~= nil and blind.chips ~= nil)) then
         return game.chips - blind.chips >= 0
     end
     local bc = M.ensure_blind_chips(blind)
@@ -117,6 +118,13 @@ function M.safe_ease_chips(hand_chips, mult)
         return chips + math.floor(hand_chips * mult)
     end
 
+    -- Big-number path: Talisman/Amulet FFI cdata fails the type checks above.
+    -- Their metamethods handle *, +, and math.floor correctly, so delegate directly.
+    if NaN.has_big_backend() and hand_chips ~= nil and mult ~= nil then
+        return chips + math.floor(hand_chips * mult)
+    end
+
+    debug_log("warning", "safe_ease_chips slow path: hand_chips type=" .. type(hand_chips) .. " mult type=" .. type(mult))
     local score = (SMODS and SMODS.calculate_round_score and SMODS.calculate_round_score())
         or ((hand_chips or 0) * (mult or 0))
     if type(score) ~= "number" then score = tonumber(score) or 0 end

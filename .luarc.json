@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "Lua.runtime.version": "Lua 5.4",
+  "Lua.diagnostics.globals": [
+    "G", "Game", "REWINDER", "SMODS", "DV",
+    "love",
+    "UIBox", "UIBox_button", "DynaText", "AnimatedSprite",
+    "Node", "Moveable", "Object", "Event", "Controller",
+    "localize", "copy_table", "to_big", "to_number",
+    "number_format", "scale_number", "Big",
+    "darken", "lighten", "play_sound",
+    "get_compressed", "STR_PACK", "STR_UNPACK",
+    "recursive_table_cull", "prep_draw",
+    "create_UIBox_options", "create_UIBox_generic_options",
+    "create_option_cycle", "create_toggle", "create_text_input",
+    "Handy"
+  ],
+  "Lua.workspace.library": [],
+  "Lua.workspace.ignoreDir": ["smods", "Balatro_src", "Mods", ".agent"],
+  "Lua.format.enable": false
+}

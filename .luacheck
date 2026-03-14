@@ -1,0 +1,65 @@
+-- Luacheck config for Balatro mod (Save Rewinder)
+std = "lua54"
+max_line_length = 120
+
+-- All globals accessible in any file (both production and test code).
+globals = {
+    -- Mod globals
+    "REWINDER",
+    -- Balatro game globals
+    "G", "Game",
+    "love",
+    "SMODS", "DV",
+    -- Balatro UI constructors
+    "UIBox", "UIBox_button", "DynaText", "AnimatedSprite",
+    "Node", "Moveable", "Object", "Event", "Controller",
+    -- Balatro utility functions
+    "localize", "copy_table", "to_big", "to_number",
+    "number_format", "scale_number", "Big",
+    "darken", "lighten", "play_sound",
+    "get_compressed", "STR_PACK", "STR_UNPACK",
+    "recursive_table_cull", "prep_draw",
+    "create_UIBox_options", "create_UIBox_generic_options",
+    "create_option_cycle", "create_toggle", "create_text_input",
+    "Handy",
+    -- Blind objects referenced in main.lua config
+    "bl_small", "bl_big", "bl_hook", "bl_mark", "bl_wall",
+    "bl_wheel", "bl_arm", "bl_club", "bl_fish", "bl_goad",
+    "bl_head", "bl_house", "bl_mouth", "bl_mouth",
+    "bl_eye", "bl_needle", "bl_pillar", "bl_plant",
+    "bl_psychic", "bl_serpent", "bl_tooth", "bl_water",
+    "bl_window", "bl_ox", "bl_manacle", "bl_flint",
+    "bl_final_acorn", "bl_final_bell", "bl_final_heart",
+    "bl_final_leaf", "bl_final_vessel",
+    -- Test framework (luaunit) and suite table names
+    "lu",
+    "TestEntrySchema",
+    "TestRuntimeState",
+    "TestStateSignature",
+    "TestNaNProtection",
+    "TestBlindRecovery",
+    "TestMetaFile",
+    "TestPruning",
+    "TestConfig",
+    "TestExportService",
+    "TestQueueService",
+}
+
+-- Ignore unused self, loop vars, and empty branches
+ignore = {
+    "212/self",
+    "213",
+    "542",
+}
+
+-- Exclude vendored/game source directories and files with known syntax issues
+exclude_files = {
+    "smods/",
+    "Balatro_src/",
+    "Mods/",
+    "tests/lib/",     -- vendored luaunit (not our code)
+    "docs/",          -- reference docs, not mod code
+    "jkrs/",          -- decoded save data, not mod code
+    ".agent/",        -- skill template files, not mod code
+    ".agents/",       -- skill template files, not mod code
+}
