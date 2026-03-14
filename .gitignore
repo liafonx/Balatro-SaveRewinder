@@ -50,7 +50,8 @@ save_decoder.py
 # ========================================
 # Development scripts (local only)
 # ========================================
-scripts/
+scripts/*
+!scripts/validate_module_map.lua
 
 # ========================================
 # Logs and Debug Files
@@ -78,6 +79,7 @@ test_saves/
 docs/*
 !docs/description.md
 !docs/NEXUSMODS_DESCRIPTION.txt
+!docs/TEST_FLOW.md
 
 # ========================================
 # AI Agent Files (local only)
