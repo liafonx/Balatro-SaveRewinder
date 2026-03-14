@@ -10,7 +10,7 @@ test:
 	$(LUA) tests/run_tests.lua
 
 lint:
-	$(LUACHECK) --config .luacheck . ; code=$$?; [ $$code -le 1 ]
+	$(LUACHECK) --config .luacheck . || [ $$? -le 1 ]
 
 validate:
 	$(LUA) scripts/validate_module_map.lua

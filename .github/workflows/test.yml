@@ -25,8 +25,10 @@ jobs:
         run: luarocks install luacheck
 
       - name: Lint
-        # Exit code 1 = warnings only (acceptable); exit code 2 = errors (fail)
-        run: luacheck --config .luacheck . ; code=$?; [ $code -le 1 ]
+        # luacheck exits 1 for warnings-only, 2 for errors.
+        # bash -e kills on non-zero before `;` reaches the next command,
+        # so use `||` compound form which is exempt from errexit.
+        run: luacheck --config .luacheck . || [ $? -le 1 ]
 
       - name: Validate module map
         run: lua scripts/validate_module_map.lua

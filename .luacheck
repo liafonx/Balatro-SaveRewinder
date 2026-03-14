@@ -62,4 +62,5 @@ exclude_files = {
     "jkrs/",          -- decoded save data, not mod code
     ".agent/",        -- skill template files, not mod code
     ".agents/",       -- skill template files, not mod code
+    ".luarocks/",     -- luarocks install artifacts (CI only)
 }
