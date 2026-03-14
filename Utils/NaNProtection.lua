@@ -58,7 +58,11 @@ end
 
 -- Session-local cache: nil = not yet checked, true/false = cached result.
 -- Mods don't load/unload mid-session so this is safe to cache permanently.
+-- _big_backend_sealed: false until Init.lua calls seal_big_backend() after SMODS load phase.
+-- While unsealed, a negative result is NOT cached (Talisman may not have registered yet).
+-- A positive result is always cached immediately (finding Big/to_big early is always correct).
 local _big_backend_cached = nil
+local _big_backend_sealed = false
 
 function M.has_big_backend()
     if _big_backend_cached ~= nil then return _big_backend_cached end
@@ -74,8 +78,21 @@ function M.has_big_backend()
         _big_backend_cached = true
         return true
     end
-    _big_backend_cached = false
+    -- Only cache the negative result once we know SMODS has finished loading mods.
+    if _big_backend_sealed then
+        _big_backend_cached = false
+    end
     return false
+end
+
+-- Called from Init.lua after the SMODS load phase completes (inside Game:set_render_settings).
+-- Finalizes the cache so subsequent calls never re-check.
+function M.seal_big_backend()
+    _big_backend_sealed = true
+    if _big_backend_cached == nil then
+        -- Force a final check and cache the result now.
+        M.has_big_backend()
+    end
 end
 
 -- Lightweight sanitizer for hot paths (event easing values).

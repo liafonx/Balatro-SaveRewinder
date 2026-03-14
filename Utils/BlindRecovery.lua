@@ -96,7 +96,10 @@ function M.chips_met_target()
     local blind = game and game.blind
     if type(game) == "table" and type(blind) == "table" and
        ((type(game.chips) == "number" and type(blind.chips) == "number")
-        or (NaN.has_big_backend() and game.chips ~= nil and blind.chips ~= nil)) then
+        or (NaN.has_big_backend() and game.chips ~= nil and blind.chips ~= nil)
+        -- cdata fallback: if chips are non-nil non-number (FFI cdata), delegate directly to
+        -- Talisman/Amulet metamethods rather than falling through to ensure_* (which zero nil chips).
+        or (type(game.chips) == "cdata" and type(blind.chips) == "cdata")) then
         return game.chips - blind.chips >= 0
     end
     local bc = M.ensure_blind_chips(blind)
@@ -108,7 +111,7 @@ end
 -- Recovers nil G.GAME.chips and respects SMODS.calculate_round_score when present.
 function M.safe_ease_chips(hand_chips, mult)
     local game = G and G.GAME
-    local chips = (type(game) == "table" and type(game.chips) == "number") and game.chips or M.ensure_game_chips(game)
+    local chips = (type(game) == "table" and (type(game.chips) == "number" or type(game.chips) == "cdata")) and game.chips or M.ensure_game_chips(game)
 
     -- Fast path: vanilla numeric score computation.
     if type(hand_chips) == "number" and type(mult) == "number" and
@@ -127,7 +130,13 @@ function M.safe_ease_chips(hand_chips, mult)
     debug_log("warning", "safe_ease_chips slow path: hand_chips type=" .. type(hand_chips) .. " mult type=" .. type(mult))
     local score = (SMODS and SMODS.calculate_round_score and SMODS.calculate_round_score())
         or ((hand_chips or 0) * (mult or 0))
-    if type(score) ~= "number" then score = tonumber(score) or 0 end
+    if type(score) ~= "number" then
+        if type(score) == "cdata" then
+            -- Talisman/Amulet FFI type: math.floor and + are metamethod-patched.
+            return chips + math.floor(score)
+        end
+        score = tonumber(score) or 0
+    end
     return chips + math.floor(score)
 end
 
