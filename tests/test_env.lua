@@ -78,6 +78,10 @@ function tonumber(v, base) -- luacheck: ignore 121
    return _orig_tonumber(v)
 end
 
+-- ── Helpers path ────────────────────────────────────────────────────────────
+-- Allow require("ctx_factory"), require("fixtures"), etc. from tests/helpers/.
+package.path = "tests/helpers/?.lua;" .. package.path
+
 -- ── Module map ──────────────────────────────────────────────────────────────
 -- Maps Lovely module names → relative source paths (project root as CWD).
 -- Must match lovely.toml [patches.module] entries for all tested modules.
@@ -110,3 +114,23 @@ local MODULE_MAP = {
 for name, path in pairs(MODULE_MAP) do
    package.preload[name] = function() return dofile(path) end
 end
+
+-- ── UI / Utils preloads (outside MODULE_MAP; game-coupled in prod) ───────────
+-- These allow UI-module tests to require("UIShared") etc. without the Balatro
+-- game runtime. Stubs replicate only the interface surface needed by tests.
+
+-- Real source — no game-object dependencies at load time.
+package.preload["UIShared"]  = function() return dofile("UI/Shared.lua") end
+package.preload["UILayout"]  = function() return dofile("UI/Layout.lua") end
+
+-- Real source — pure Lua, no game-object dependencies at load time.
+package.preload["SaveListSync"] = function() return dofile("UI/SaveListSync.lua") end
+
+-- Real sources for UI modules under test; their game-object deps are stubbed below.
+package.preload["UISaveRows"]              = function() return dofile("UI/SaveRows.lua") end
+package.preload["UIButtonCallbackHelpers"] = function() return dofile("UI/ButtonCallbackHelpers.lua") end
+
+-- Stubs for game-coupled helpers (no Balatro runtime in test env).
+package.preload["UIIconFactory"]      = function() return {} end
+package.preload["ScaleNumberHook"]    = function() return { install = function() end, installed = false } end
+package.preload["ControllerNavigation"] = function() return { install = function() end } end

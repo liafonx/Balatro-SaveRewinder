@@ -85,4 +85,26 @@ function Fixtures.make_run_data(opts)
    }
 end
 
+-- Build n save-cache entries with incrementing index/file names.
+-- opts.ante: base ante (default 1)
+-- opts.display_type: display type for all entries (default "S")
+-- opts.is_key: is_key flag (default false)
+function Fixtures.make_save_cache(n, opts)
+   opts = opts or {}
+   local cache = {}
+   for i = 1, n do
+      cache[i] = Fixtures.make_entry({
+         file         = string.format("%d-%d-%d.jkr", opts.ante or 1, 1, i),
+         ante         = opts.ante,
+         round        = opts.round,
+         money        = opts.money,
+         index        = i,
+         ordinal      = i,
+         display_type = opts.display_type,
+         is_key       = opts.is_key,
+      })
+   end
+   return cache
+end
+
 return Fixtures

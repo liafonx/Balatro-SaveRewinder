@@ -787,4 +787,9 @@ end
 M.KeySaves = KeySaves
 M.log = log
 
+-- Expose private helpers for unit tests.
+M._normalize_custom_name     = _normalize_custom_name
+M._normalized_rename_value   = _normalized_rename_value
+M._entry_has_pending_badge   = _entry_has_pending_badge
+
 return M

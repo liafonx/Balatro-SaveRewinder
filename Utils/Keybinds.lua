@@ -674,6 +674,18 @@ local function hook_controller_button_release()
    end
 end
 
+-- Expose private helpers for unit tests.
+Keybinds._normalize_key_name    = _normalize_key_name
+Keybinds._normalize_button_name = _normalize_button_name
+Keybinds._format_key_name       = _format_key_name
+Keybinds._sorted_keys           = _sorted_keys
+Keybinds._binding_size          = _binding_size
+Keybinds._clone_binding         = _clone_binding
+Keybinds._is_keybind_pressed    = _is_keybind_pressed
+Keybinds._cooldown_gate         = _cooldown_gate
+Keybinds._ensure_config_keybinds = _ensure_config_keybinds
+Keybinds._is_enter_key          = _is_enter_key
+
 hook_controller_leftstick()
 hook_controller_button_release()
 ControllerNavigation.install()

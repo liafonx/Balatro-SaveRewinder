@@ -124,6 +124,23 @@ local function get_label_from_display_type(display_type)
    return text, show_ordinal
 end
 
+local function _assemble_tailing_text(state_text, tailing_number_text, display_type)
+   if state_text ~= "" then
+      if tailing_number_text ~= "" then
+         local is_selecting_hand = (display_type == "P" or display_type == "D" or display_type == "H")
+         local spacing = is_selecting_hand and loc("rewinder_card_number_spacing", " ") or loc("rewinder_tailing_number_spacing", " ")
+         if spacing == nil then spacing = " " end
+         return state_text .. spacing .. tailing_number_text
+      end
+      return state_text
+   elseif tailing_number_text ~= "" then
+      local spacing = loc("rewinder_tailing_number_spacing", " ")
+      if spacing == nil then spacing = " " end
+      return spacing .. tailing_number_text
+   end
+   return ""
+end
+
 local function _build_default_state_title(entry)
    if not entry then return "" end
    local display_type = entry[REWINDER.ENTRY_DISPLAY_TYPE]
@@ -146,21 +163,7 @@ local function _build_default_state_title(entry)
       tailing_number_text = tostring(ordinal)
    end
 
-   local state_tailing_text = ""
-   if state_text ~= "" then
-      state_tailing_text = state_text
-      if tailing_number_text ~= "" then
-         local is_selecting_hand = (display_type == "P" or display_type == "D" or display_type == "H")
-         local spacing = is_selecting_hand and loc("rewinder_card_number_spacing", " ") or loc("rewinder_tailing_number_spacing", " ")
-         if spacing == nil then spacing = " " end
-         state_tailing_text = state_tailing_text .. spacing .. tailing_number_text
-      end
-   elseif tailing_number_text ~= "" then
-      local spacing = loc("rewinder_tailing_number_spacing", " ")
-      if spacing == nil then spacing = " " end
-      state_tailing_text = spacing .. tailing_number_text
-   end
-   return state_tailing_text
+   return _assemble_tailing_text(state_text, tailing_number_text, display_type)
 end
 
 function REWINDER.get_default_state_title(file_or_entry)
@@ -336,25 +339,7 @@ function REWINDER.build_save_node(entry, opts)
       tailing_number_text = ""
    end
 
-   local state_tailing_text = ""
-   if state_text ~= "" then
-      state_tailing_text = state_text
-      if tailing_number_text ~= "" then
-         local is_selecting_hand = (display_type == "P" or display_type == "D" or display_type == "H")
-         local spacing
-         if is_selecting_hand then
-            spacing = loc("rewinder_card_number_spacing", " ")
-         else
-            spacing = loc("rewinder_tailing_number_spacing", " ")
-         end
-         if spacing == nil then spacing = " " end
-         state_tailing_text = state_tailing_text .. spacing .. tailing_number_text
-      end
-   elseif tailing_number_text ~= "" then
-      local spacing = loc("rewinder_tailing_number_spacing", " ")
-      if spacing == nil then spacing = " " end
-      state_tailing_text = spacing .. tailing_number_text
-   end
+   local state_tailing_text = _assemble_tailing_text(state_text, tailing_number_text, display_type)
 
    local is_rename_editing = (REWINDER._rename_active and REWINDER._rename_editing_file == file)
    if is_rename_editing then
@@ -551,4 +536,6 @@ function REWINDER.get_saves_page(args)
    }
 end
 
-return {}
+return {
+   _build_default_state_title = _build_default_state_title,
+}

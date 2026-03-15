@@ -86,5 +86,10 @@ return function(ctx)
    end
 
    api.apply_retention_policy = _apply_retention_policy
+
+   -- Expose private helpers for unit tests.
+   api._compute_allowed_antes          = _compute_allowed_antes
+   api._retention_should_preserve_entry = _retention_should_preserve_entry
+
    return api
 end

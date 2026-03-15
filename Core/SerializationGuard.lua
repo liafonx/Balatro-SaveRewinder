@@ -199,4 +199,10 @@ function REWINDER.validate_culled_table_once(culled_table)
    log("debug", string.format("Selective cull check passed: cardAreas scanned=%d%s", visited, suffix))
 end
 
-return
+return {
+   _contains_object_ref_bounded        = _contains_object_ref_bounded,
+   _is_channel_serializable            = _is_channel_serializable,
+   _find_first_nonserializable_path    = _find_first_nonserializable_path,
+   _is_back_center_nonserializable_path = _is_back_center_nonserializable_path,
+   _get_back_center_desc               = _get_back_center_desc,
+}

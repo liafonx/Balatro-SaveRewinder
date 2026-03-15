@@ -52,6 +52,7 @@ local function _save_gate_equal(a, b)
       and a.action_type == b.action_type
       and a.action_card == b.action_card
 end
+REWINDER._save_gate_equal = _save_gate_equal
 
 function REWINDER.should_skip_save_run()
    local snapshot = _build_save_gate_snapshot()

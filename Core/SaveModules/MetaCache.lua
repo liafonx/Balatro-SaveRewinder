@@ -326,5 +326,10 @@ return function(ctx)
       _purge_meta_cache()
    end
 
+   -- Expose private helpers for unit tests.
+   api._apply_meta_to_entry  = _apply_meta_to_entry
+   api._build_meta_from_entry = _build_meta_from_entry
+   api._clear_entry_meta     = _clear_entry_meta
+
    return api
 end

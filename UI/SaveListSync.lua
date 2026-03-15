@@ -169,6 +169,9 @@ function M.start(queue_depth, on_complete)
    return true
 end
 
+-- Expose private helper for unit tests.
+M._handle_sync_result = _handle_sync_result
+
 function M.cancel()
    local sync_state = REWINDER._saves_open_sync
    REWINDER._saves_open_sync = nil
