@@ -4,6 +4,18 @@ English | [简体中文](https://github.com/Liafonx/Balatro-SaveRewinder/blob/ma
 
 All notable changes to Save Rewinder will be documented in this file.
 
+## [1.6.2] - 2026-03-15
+
+### Fixed
+- **Missing save after restore**: The first action after a restore or step-back no longer gets silently skipped.
+- **Saves written late**: Saves queued during rapid actions are now flushed promptly, even without a follow-up action.
+- **Export folder not created**: Fixed export directory creation failing on some systems.
+
+### Improved
+- **Export path display**: Export settings now show the save folder and profile path separately for clarity.
+- **Talisman/Amulet compatibility**: Further improved compatibility with Talisman/Amulet.
+
+
 ## [1.6.1] - 2026-02-24
 ### Added
 - **Export saves**: Select saves from the overlay and export `.jkr` (and optionally `.meta`) files to an OS directory. Configurable export path, profile-aware default directory, paste/reset controls, and full seed display toggle for non-seeded runs.
