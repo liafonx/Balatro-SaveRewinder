@@ -14,18 +14,7 @@ return {
 	export_seed_mode = 1,       -- legacy compatibility: 1 = first4…last4, 2 = full
 	export_include_meta = false, -- also copy .meta sidecar alongside .jkr
 	big_backend_mode = false,   -- auto-detected at init: true when Talisman/Amulet FFI big-number backend is active
-	keybinds = {
-		step_back = {
-			keyboard = { s = true },
-			controller = { gp_leftstick = true },
-		},
-		toggle_saves = {
-			keyboard = { ctrl = true, s = true },
-			controller = { gp_x = true },
-		},
-		quick_saveload = {
-			keyboard = { l = true },
-			controller = { gp_rightstick = true },
-		},
-	},
+	-- keybinds are intentionally NOT listed here. Steamodded deep-merges this file into the saved
+	-- config, which re-adds default keys (e.g. "s") to a rebound key combo. Defaults live in
+	-- Utils/Keybinds.lua (DEFAULT_KEYBINDS) and are only applied when a binding is missing.
 }
